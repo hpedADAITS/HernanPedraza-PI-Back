@@ -49,19 +49,6 @@ src/
 
 ---
 
-##  Configuración
-
-Crea un archivo `.env` en la raíz del proyecto con las siguientes variables:
-
-```
-PORT=4000
-MONGO_URI=mongodb+srv://usuario:password@cluster.mongodb.net/syncrekuest
-JWT_SECRET=tu_clave_segura
-CORS_ORIGIN=http://localhost:5173
-```
-
----
-
 ##  Endpoints principales
 
 | Método | Ruta               | Descripción                                    |
