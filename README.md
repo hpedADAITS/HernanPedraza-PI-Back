@@ -14,10 +14,13 @@ Node.js + Express REST API con comunicación en tiempo real Socket.IO y persiste
 Este servidor backend maneja:
 - Autenticación de usuarios (registro, inicio de sesión, JWT)
 - Gestión de eventos (crear, actualizar, cerrar)
-- Cola de sugerencias de canciones (sugerir, aprobar, rechazar)
+- Cola de sugerencias de canciones (sugerir, aprobar, rechazar, saltar)
 - Sistema de votación (emitir voto, ranking, estadísticas)
 - Actualizaciones en tiempo real (WebSocket Socket.IO)
-- Gestión de participantes (unirse, salir, contar)
+- Gestión de participantes (unirse, salir, contar, sistema de cooldown)
+- Control de calidad de sugerencias (auto-rechazo de canciones antiguas)
+- Sistema de cola con prioridad (participantes premium)
+- Historial de reproducción (canciones saltadas, reproducidas)
 
 ## Pila Tecnológica
 
@@ -27,9 +30,8 @@ Este servidor backend maneja:
 | **Framework** | Express.js |
 | **Base de Datos** | MongoDB |
 | **Tiempo Real** | Socket.IO |
-| **Autenticación** | JWT (jsonwebtoken) |
+| **Autenticación** | JWT |
 | **Contraseña** | bcryptjs |
-| **Validación** | joi (schema validation) |
 | **Registro** | winston o morgan |
 
 ## Estructura del Proyecto
@@ -115,6 +117,8 @@ GET    /api/events/:eventId/songs/pending - Obtener pendientes (DJ)
 POST   /api/events/:eventId/songs/:songId/approve - Aprobar (DJ)
 POST   /api/events/:eventId/songs/:songId/reject - Rechazar (DJ)
 POST   /api/events/:eventId/songs/:songId/play - Marcar reproducción (DJ)
+POST   /api/events/:eventId/songs/:songId/skip - Saltar canción (DJ)
+GET    /api/events/:eventId/songs/:songId/position - Obtener posición en cola
 ```
 
 ### Votos
@@ -136,9 +140,13 @@ leave_event        - Usuario abandona el evento
 ```
 votes_updated      - Recuento de votos cambió
 song_suggested     - Nueva canción sugerida (DJ)
+song_skipped       - Canción saltada por DJ
 queue_updated      - Cola reordenada
+queue_position     - Posición actualizada en cola
 participant_joined - Usuario se unió a evento
 participant_left   - Usuario abandonó evento
+participant_cooldown - Participante en cooldown
+participant_premium - Cambio de estado premium
 song_status_changed - Estado de canción actualizado
 event_closed       - Evento finalizado
 ```
@@ -284,8 +292,16 @@ npm run test:coverage
   eventId: ObjectId,
   title: String,
   artist: String,
-  status: String (PENDING | APPROVED | PLAYING | SKIPPED),
-  suggestedBy: ObjectId,
+  status: String (PENDING | APPROVED | PLAYING | PLAYED | SKIPPED | REJECTED),
+  requestedBy: ObjectId,
+  queuePosition: Number,
+  voteScore: Number,
+  voteCount: Number,
+  startedPlayingAt: Date,
+  skippedAt: Date,
+  skippedBy: ObjectId,
+  skippedReason: String,
+  autoRejectedAt: Date,
   createdAt: Date,
   updatedAt: Date
 }
@@ -308,14 +324,57 @@ npm run test:coverage
 {
   _id: ObjectId,
   eventId: ObjectId,
-  userId: ObjectId,
+  nickname: String,
   joinedAt: Date,
   leftAt: Date,
-  active: Boolean
+  isBanned: Boolean,
+  cooldownUntil: Date,
+  cooldownReason: String,
+  isPremium: Boolean,
 }
 ```
 
-Para esquemas detallados, consulte [docs-backend/json-backend_ES.md](docs-backend/json-backend_ES.md#7-esquemas-de-documentos-de-base-de-datos-mongodb)
+## Características Avanzadas
+
+### Sistema de Cooldown
+Reemplaza el sistema de ban/kick con un sistema de cooldown de 2 horas:
+- Los participantes no pueden sugerir canciones durante el cooldown
+- Se registra la razón del cooldown
+- Automáticamente se levanta después de 2 horas
+- Se emite evento `participant_cooldown` en tiempo real
+
+### Cola de Prioridad Premium
+Participantes que compran bebidas reciben prioridad en la cola:
+- Flag `isPremium` en cada participante
+- Las canciones sugeridas por usuarios premium se ordenan con mayor prioridad
+- Se emite evento `participant_premium` cuando cambia el estado
+
+### Posición en Cola
+Los usuarios pueden ver su posición exacta:
+- Campo `queuePosition` en cada canción
+- Endpoint para obtener "Your song will play after X songs"
+- Se emite evento `queue_position` cuando cambia la posición
+
+### Historial de Reproducción
+Seguimiento completo del estado de cada canción:
+- `startedPlayingAt` - Marca cuándo comenzó la reproducción
+- `skippedAt` - Marca cuándo fue saltada
+- `skippedBy` - Usuario que saltó la canción
+- `skippedReason` - Razón del skip
+- Estado `SKIPPED` para canciones saltadas
+
+### Auto-Rechazo de Sugerencias Antiguas
+Control automático de calidad:
+- Canciones pendientes por más de 1 día se rechazan automáticamente
+- Campo `autoRejectedAt` registra cuándo fue rechazada
+- Se emite notificación al sugeridor original
+- Evita que la cola se llene de sugerencias obsoletas
+
+### QR Generado por DJ
+El DJ genera el código QR al crear el evento:
+- QR contiene el código de acceso del evento
+- Facilita que los asistentes se unan desde dispositivos móviles
+- Se almacena en `qrCodeUrl`
 
 ## Seguridad
 

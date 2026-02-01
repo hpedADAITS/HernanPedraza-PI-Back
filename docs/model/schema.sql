@@ -1,0 +1,143 @@
+CREATE TABLE Users (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    passwordHash VARCHAR(255) NOT NULL,
+    displayName VARCHAR(255) NOT NULL,
+    role ENUM('ATTENDEE', 'DJ', 'ADMIN') NOT NULL DEFAULT 'ATTENDEE',
+    isActive BOOLEAN NOT NULL DEFAULT TRUE,
+    lastLoginAt TIMESTAMP NULL,
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE Events (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    ownerId BIGINT NOT NULL,
+    accessCode VARCHAR(255) NOT NULL UNIQUE,
+    qrCodeUrl VARCHAR(255),
+    state ENUM('DRAFT', 'LIVE', 'ENDED', 'CANCELLED') NOT NULL DEFAULT 'DRAFT',
+    startsAt TIMESTAMP NOT NULL,
+    endedAt TIMESTAMP NULL,
+    cancelledAt TIMESTAMP NULL,
+    cancelledReason TEXT,
+    currentSongId BIGINT NULL,
+    settings JSON NOT NULL,
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (ownerId) REFERENCES Users(id),
+    FOREIGN KEY (currentSongId) REFERENCES Songs(id)
+);
+
+CREATE TABLE EventMembers (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    eventId BIGINT NOT NULL,
+    userId BIGINT NOT NULL,
+    role ENUM('OWNER', 'DJ', 'MODERATOR') NOT NULL,
+    permissions JSON NOT NULL,
+    addedBy BIGINT NOT NULL,
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (eventId) REFERENCES Events(id),
+    FOREIGN KEY (userId) REFERENCES Users(id),
+    FOREIGN KEY (addedBy) REFERENCES Users(id),
+    UNIQUE (eventId, userId),
+    INDEX (eventId, role)
+);
+
+
+CREATE TABLE Participants (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    eventId BIGINT NOT NULL,
+    nickname VARCHAR(255) NOT NULL,
+    nicknameLower VARCHAR(255) NOT NULL,
+    socketId VARCHAR(255) NULL,
+    joinedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    lastSeenAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    isBanned BOOLEAN NOT NULL DEFAULT FALSE,
+    kickedAt TIMESTAMP NULL,
+    kickedBy BIGINT NULL,
+    kickReason TEXT NULL,
+    bannedAt TIMESTAMP NULL,
+    bannedBy BIGINT NULL,
+    banReason TEXT NULL,
+    cooldownUntil TIMESTAMP NULL,
+    cooldownReason TEXT NULL,
+    isPremium BOOLEAN NOT NULL DEFAULT FALSE,
+    leftAt TIMESTAMP NULL,
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (eventId) REFERENCES Events(id),
+    FOREIGN KEY (kickedBy) REFERENCES Users(id),
+    FOREIGN KEY (bannedBy) REFERENCES Users(id),
+    UNIQUE (eventId, nicknameLower),
+    INDEX (eventId, socketId),
+    INDEX (cooldownUntil),
+    INDEX (isPremium)
+);
+
+CREATE TABLE Songs (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    eventId BIGINT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    artist VARCHAR(255) NOT NULL,
+    requestedBy BIGINT NOT NULL,
+    status ENUM('PENDING', 'APPROVED', 'PLAYING', 'PLAYED', 'SKIPPED', 'REJECTED') NOT NULL DEFAULT 'PENDING',
+    voteScore INT NOT NULL DEFAULT 0,
+    voteCount INT NOT NULL DEFAULT 0,
+    queuePosition INT NULL,
+    sortKey VARCHAR(255) NOT NULL,
+    pinned BOOLEAN NOT NULL DEFAULT FALSE,
+    startedPlayingAt TIMESTAMP NULL,
+    skippedAt TIMESTAMP NULL,
+    skippedBy BIGINT NULL,
+    skippedReason TEXT NULL,
+    removedAt TIMESTAMP NULL,
+    removedBy BIGINT NULL,
+    removalReason TEXT NULL,
+    autoRejectedAt TIMESTAMP NULL,
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (eventId) REFERENCES Events(id),
+    FOREIGN KEY (requestedBy) REFERENCES Participants(id),
+    FOREIGN KEY (skippedBy) REFERENCES Users(id),
+    FOREIGN KEY (removedBy) REFERENCES Users(id),
+    INDEX (eventId, status, sortKey),
+    INDEX (eventId, status, voteScore, createdAt),
+    INDEX (queuePosition),
+    INDEX (skippedAt),
+    INDEX (autoRejectedAt)
+);
+
+CREATE TABLE Votes (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    songId BIGINT NOT NULL,
+    participantId BIGINT NOT NULL,
+    value INT NOT NULL CHECK (value IN (-1, 1)),
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (songId) REFERENCES Songs(id),
+    FOREIGN KEY (participantId) REFERENCES Participants(id),
+    UNIQUE (songId, participantId),
+    INDEX (songId, createdAt)
+);
+
+CREATE TABLE EventActionLogs (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    eventId BIGINT NOT NULL,
+    actorUserId BIGINT NOT NULL,
+    type ENUM('EVENT_START', 'EVENT_END', 'EVENT_CANCEL', 'PARTICIPANT_KICK', 'PARTICIPANT_BAN', 
+    'PARTICIPANT_UNBAN', 'PARTICIPANT_COOLDOWN', 'SONG_APPROVE', 'SONG_REJECT', 'SONG_REMOVE', 
+    'SONG_REORDER', 'SONG_SKIP', 'SONG_STATUS_CHANGE', 'SETTINGS_CHANGE') NOT NULL,
+    participantId BIGINT NULL,
+    songId BIGINT NULL,
+    meta JSON NULL,
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (eventId) REFERENCES Events(id),
+    FOREIGN KEY (actorUserId) REFERENCES Users(id),
+    FOREIGN KEY (participantId) REFERENCES Participants(id),
+    FOREIGN KEY (songId) REFERENCES Songs(id),
+    INDEX (eventId, createdAt)
+);

@@ -1,0 +1,128 @@
+erDiagram
+    USER ||--o{ EVENT : owns
+    USER ||--o{ EVENT_MEMBER : added_by
+    USER ||--o{ EVENT_ACTION_LOG : performs
+    
+    EVENT ||--o{ EVENT_MEMBER : has
+    EVENT ||--o{ PARTICIPANT : has
+    EVENT ||--o{ SONG : contains
+    EVENT ||--o{ VOTE : tracks
+    EVENT ||--o{ EVENT_ACTION_LOG : logs
+    EVENT ||--o{ SONG : references_current
+    
+    PARTICIPANT ||--o{ SONG : requests
+    PARTICIPANT ||--o{ VOTE : casts
+    PARTICIPANT ||--o{ EVENT_MEMBER : associated_with
+    PARTICIPANT ||--o{ EVENT_ACTION_LOG : involved_in
+    
+    SONG ||--o{ VOTE : receives
+    SONG ||--o{ EVENT_ACTION_LOG : tracked_by
+    
+    USER {
+        objectid _id PK
+        string email UK
+        string passwordHash
+        string displayName
+        enum role "ATTENDEE|DJ|ADMIN"
+        boolean isActive
+        date lastLoginAt
+        date createdAt
+        date updatedAt
+    }
+    
+    EVENT {
+        objectid _id PK
+        string name
+        string description
+        objectid ownerId FK
+        string accessCode UK
+        string qrCodeUrl
+        enum state "DRAFT|LIVE|ENDED|CANCELLED"
+        date startsAt
+        date endedAt
+        date cancelledAt
+        string cancelledReason
+        objectid currentSongId FK
+        object settings
+        date createdAt
+        date updatedAt
+    }
+    
+    EVENT_MEMBER {
+        objectid _id PK
+        objectid eventId FK
+        objectid userId FK
+        enum role "OWNER|DJ|MODERATOR"
+        array permissions
+        objectid addedBy FK
+        date createdAt
+        date updatedAt
+    }
+    
+    PARTICIPANT {
+        objectid _id PK
+        objectid eventId FK
+        string nickname
+        string nicknameLower
+        string socketId
+        date joinedAt
+        date lastSeenAt
+        boolean isBanned
+        date kickedAt
+        objectid kickedBy FK
+        string kickReason
+        date bannedAt
+        objectid bannedBy FK
+        string banReason
+        date cooldownUntil
+        string cooldownReason
+        boolean isPremium
+        date leftAt
+        date createdAt
+        date updatedAt
+    }
+    
+    SONG {
+        objectid _id PK
+        objectid eventId FK
+        string title
+        string artist
+        objectid requestedBy FK
+        enum status "PENDING|APPROVED|PLAYING|PLAYED|SKIPPED|REJECTED"
+        number voteScore
+        number voteCount
+        number queuePosition
+        string sortKey
+        boolean pinned
+        date startedPlayingAt
+        date skippedAt
+        objectid skippedBy FK
+        string skippedReason
+        date removedAt
+        objectid removedBy FK
+        string removalReason
+        date autoRejectedAt
+        date createdAt
+        date updatedAt
+    }
+    
+    VOTE {
+        objectid _id PK
+        objectid songId FK
+        objectid participantId FK
+        number value "1|-1"
+        date createdAt
+        date updatedAt
+    }
+    
+    EVENT_ACTION_LOG {
+        objectid _id PK
+        objectid eventId FK
+        objectid actorUserId FK
+        enum type "EVENT_START|EVENT_END|EVENT_CANCEL|PARTICIPANT_KICK|PARTICIPANT_BAN|PARTICIPANT_UNBAN|PARTICIPANT_COOLDOWN|SONG_APPROVE|SONG_REJECT|SONG_REMOVE|SONG_REORDER|SONG_SKIP|SONG_STATUS_CHANGE|SETTINGS_CHANGE"
+        objectid participantId FK
+        objectid songId FK
+        object meta
+        date createdAt
+        date updatedAt
+    }
