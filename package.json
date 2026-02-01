@@ -1,0 +1,42 @@
+{
+  "name": "syncrekuest-backend",
+  "version": "1.0.0",
+  "description": "Backend for SyncRekuest - Real-time collaborative music voting platform",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest --detectOpenHandles",
+    "test:unit": "jest test/unit --detectOpenHandles",
+    "test:integration": "jest test/integration --detectOpenHandles",
+    "test:e2e": "jest test/e2e --detectOpenHandles",
+    "test:coverage": "jest --coverage"
+  },
+  "keywords": [
+    "music",
+    "voting",
+    "dj",
+    "realtime",
+    "socket.io"
+  ],
+  "author": "Hernan Pedraza",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.1.2",
+    "mongoose": "^8.0.0",
+    "socket.io": "^4.7.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.1",
+    "supertest": "^6.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

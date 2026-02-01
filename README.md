@@ -4,6 +4,13 @@ Node.js + Express REST API con comunicación en tiempo real Socket.IO y persiste
 
 ## Enlaces Rápidos
 
+### 🚀 Inicio Rápido
+- **Quick Start**: [QUICK_START.md](QUICK_START.md) - Comienza en 5 minutos
+- **Análisis de Ejecución**: [STARTUP_ANALYSIS.md](STARTUP_ANALYSIS.md) - Qué ocurre al ejecutar
+- **Checklist de Migración**: [MIGRATION_CHECKLIST.md](MIGRATION_CHECKLIST.md) - Progreso de implementación
+- **Guía de Estructura**: [CODE_STRUCTURE_ADAPTATION.md](CODE_STRUCTURE_ADAPTATION.md) - Adaptación a 17-code-structure
+
+### 📚 Documentación del Backend
 - **Arquitectura**: [docs-backend/architecture-backend_ES.md](docs-backend/architecture-backend_ES.md)
 - **Secuencias**: [docs-backend/sequence-backend_ES.md](docs-backend/sequence-backend_ES.md) (flujos internos del servidor)
 - **Esquemas JSON**: [docs-backend/json-backend_ES.md](docs-backend/json-backend_ES.md) (respuestas de API, eventos de socket)
@@ -153,35 +160,43 @@ event_closed       - Evento finalizado
 
 ## Instalación
 
+**Para una guía rápida, ver: [QUICK_START.md](QUICK_START.md)**
+
 ### Requisitos Previos
 - Node.js v18+
 - MongoDB (local o Atlas)
 - npm o yarn
 
-### Configuración
+### Configuración Rápida (5 minutos)
 
 ```bash
 # Clonar repositorio
 git clone https://github.com/hpedADAITS/HernanPedraza-PI-Back.git
-cd syncrekuest-backend
+cd HernanPedraza-PI-Back
 
 # Instalar dependencias
 npm install
 
-# Crear archivo .env
-cp .env.example .env
+# El archivo .env ya está configurado
+# Personalizar si es necesario:
+nano .env
 
-# Editar .env con su configuración
-# MONGODB_URI=mongodb://localhost:27017/syncrekuest
-# JWT_SECRET=su-clave-secreta-aqui
-# PORT=5000
-
-# Iniciar MongoDB (si es local)
+# Iniciar MongoDB (opción A - local)
 mongod
+
+# O usar Docker (opción B)
+docker run -d -p 27017:27017 --name syncrekuest-mongo mongo:latest
 
 # Servidor de desarrollo (con recarga en caliente)
 npm run dev
 
+# El servidor estará disponible en http://localhost:5000
+# Probar: curl http://localhost:5000/api/v1/ping
+```
+
+### Modo Producción
+
+```bash
 # Compilación de producción
 npm run build
 npm start
@@ -250,6 +265,142 @@ npm run test:coverage
 ```
 
 ## Esquema de Base de Datos
+
+### Diagrama de Entidades (ER Diagram)
+
+```mermaid
+erDiagram
+    USER ||--o{ EVENT : owns
+    USER ||--o{ EVENT_MEMBER : added_by
+    USER ||--o{ EVENT_ACTION_LOG : performs
+    
+    EVENT ||--o{ EVENT_MEMBER : has
+    EVENT ||--o{ PARTICIPANT : has
+    EVENT ||--o{ SONG : contains
+    EVENT ||--o{ VOTE : tracks
+    EVENT ||--o{ EVENT_ACTION_LOG : logs
+    EVENT ||--o{ SONG : references_current
+    
+    PARTICIPANT ||--o{ SONG : requests
+    PARTICIPANT ||--o{ VOTE : casts
+    PARTICIPANT ||--o{ EVENT_MEMBER : associated_with
+    PARTICIPANT ||--o{ EVENT_ACTION_LOG : involved_in
+    
+    SONG ||--o{ VOTE : receives
+    SONG ||--o{ EVENT_ACTION_LOG : tracked_by
+    
+    USER {
+        objectid _id PK
+        string email UK
+        string passwordHash
+        string displayName
+        enum role "ATTENDEE|DJ|ADMIN"
+        boolean isActive
+        date lastLoginAt
+        date createdAt
+        date updatedAt
+    }
+    
+    EVENT {
+        objectid _id PK
+        string name
+        string description
+        objectid ownerId FK
+        string accessCode UK
+        string qrCodeUrl
+        enum state "DRAFT|LIVE|ENDED|CANCELLED"
+        date startsAt
+        date endedAt
+        date cancelledAt
+        string cancelledReason
+        objectid currentSongId FK
+        object settings
+        date createdAt
+        date updatedAt
+    }
+    
+    EVENT_MEMBER {
+        objectid _id PK
+        objectid eventId FK
+        objectid userId FK
+        enum role "OWNER|DJ|MODERATOR"
+        array permissions
+        objectid addedBy FK
+        date createdAt
+        date updatedAt
+    }
+    
+    PARTICIPANT {
+        objectid _id PK
+        objectid eventId FK
+        string nickname
+        string nicknameLower
+        string socketId
+        date joinedAt
+        date lastSeenAt
+        boolean isBanned
+        date kickedAt
+        objectid kickedBy FK
+        string kickReason
+        date bannedAt
+        objectid bannedBy FK
+        string banReason
+        date cooldownUntil
+        string cooldownReason
+        boolean isPremium
+        date leftAt
+        date createdAt
+        date updatedAt
+    }
+    
+    SONG {
+        objectid _id PK
+        objectid eventId FK
+        string title
+        string artist
+        objectid requestedBy FK
+        enum status "PENDING|APPROVED|PLAYING|PLAYED|SKIPPED|REJECTED"
+        number voteScore
+        number voteCount
+        number queuePosition
+        string sortKey
+        boolean pinned
+        date startedPlayingAt
+        date skippedAt
+        objectid skippedBy FK
+        string skippedReason
+        date removedAt
+        objectid removedBy FK
+        string removalReason
+        date autoRejectedAt
+        date createdAt
+        date updatedAt
+    }
+    
+    VOTE {
+        objectid _id PK
+        objectid songId FK
+        objectid participantId FK
+        number value "1|-1"
+        date createdAt
+        date updatedAt
+    }
+    
+    EVENT_ACTION_LOG {
+        objectid _id PK
+        objectid eventId FK
+        objectid actorUserId FK
+        enum type "EVENT_START|EVENT_END|EVENT_CANCEL|PARTICIPANT_KICK|PARTICIPANT_BAN|PARTICIPANT_UNBAN|PARTICIPANT_COOLDOWN|SONG_APPROVE|SONG_REJECT|SONG_REMOVE|SONG_REORDER|SONG_SKIP|SONG_STATUS_CHANGE|SETTINGS_CHANGE"
+        objectid participantId FK
+        objectid songId FK
+        object meta
+        date createdAt
+        date updatedAt
+    }
+```
+
+- PlantUML: [docs-backend/database-schema.puml](docs-backend/database-schema.puml)
+- Mermaid: [docs-backend/database-schema.mmd](docs-backend/database-schema.mmd)
 
 ### Colecciones
 
