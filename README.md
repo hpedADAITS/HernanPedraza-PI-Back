@@ -683,15 +683,6 @@ Tiempo de espera de conexión → Verificar URL de backend desde frontend
 - Nombrar variables claramente
 - Una responsabilidad por función
 
-## Documentación Adicional
-
-- **Arquitectura Global del Sistema**: [../../docs/architecture-global_ES.md](../../docs/architecture-global_ES.md)
-- **Arquitectura Backend**: [docs-backend/architecture-backend_ES.md](docs-backend/architecture-backend_ES.md)
-- **Diagramas de Secuencia**: [docs-backend/sequence-backend_ES.md](docs-backend/sequence-backend_ES.md)
-- **Esquemas JSON**: [docs-backend/json-backend_ES.md](docs-backend/json-backend_ES.md)
-- **Casos de Uso Backend**: [docs-backend/use-cases-backend_ES.md](docs-backend/use-cases-backend_ES.md)
-- **Documentación Frontend**: [../syncrekuest-frontend/README_ES.md](../syncrekuest-frontend/README_ES.md)
-
 ## Soporte
 
 Para problemas o preguntas:
