@@ -16,22 +16,6 @@ Server runs on `http://localhost:5000`
 - Node.js v18+
 - MongoDB (local or MongoDB Atlas)
 
-## Configuration
-
-Create `.env` file (template in `env.template`):
-
-```
-PORT=5000
-NODE_ENV=development
-MONGODB_URI=mongodb://localhost:27017/syncrekuest
-JWT_SECRET=your-secret-key-change-in-production
-FRONTEND_URL=http://localhost:5173
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
-SOCKET_CORS_ORIGIN=http://localhost:5173
-LOG_LEVEL=info
-LOG_FILE=logs/app.log
-```
-
 ## Database
 
 Uses MongoDB with Mongoose. Collections auto-created on first connection:
@@ -132,37 +116,10 @@ npm run test:unit
 npm run test:integration
 ```
 
-## Database Population (Development Only)
-
-Optional test data seeding script in `scripts/populate_db.js`:
-
-```bash
-node scripts/populate_db.js
-```
-
 Creates test users, events, songs, and votes. Test credentials:
 - owner@example.com / password123 (DJ)
 - dj@example.com / password123 (DJ)
 - admin@example.com / password123 (Admin)
-
-## Deployment
-
-For deployment to Render with MongoDB Atlas, see `RENDER_DEPLOYMENT_GUIDE.md` in project root.
-
-## Error Responses
-
-All errors follow this format:
-
-```json
-{
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human readable message"
-  },
-  "statusCode": 400
-}
-```
 
 ## Security
 
@@ -172,25 +129,6 @@ All errors follow this format:
 - CORS restricted to configured origins
 - Input validation on all endpoints
 - Helmet.js security headers
-
-## Troubleshooting
-
-**MongoDB connection fails**
-- Check MONGODB_URI format
-- For Atlas: Verify IP whitelist
-- Test with: `mongosh "mongodb://..."`
-
-**JWT errors**
-- Verify JWT_SECRET matches frontend
-- Check Authorization header format: `Bearer <token>`
-
-**Socket.IO connection fails**
-- Check SOCKET_CORS_ORIGIN
-- Verify frontend URL matches
-
-**Port already in use**
-- Change PORT in .env
-- Or kill existing process: `lsof -i :5000`
 
 ## Stack
 
