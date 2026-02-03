@@ -28,9 +28,21 @@ app.use(loggerMiddleware);
 // Rutas de API
 app.use("/api/v1", routes);
 
-// Verificación de salud
+// Health check endpoints
+app.get("/", (req, res) => {
+  res.json({ status: "ok", environment: config.env });
+});
+
+app.head("/", (req, res) => {
+  res.status(200).end();
+});
+
 app.get("/health", (req, res) => {
-  res.json({ status: "OK", timestamp: new Date().toISOString() });
+  res.json({ status: "ok", environment: config.env });
+});
+
+app.head("/health", (req, res) => {
+  res.status(200).end();
 });
 
 // Manejador 404
