@@ -1,53 +1,22 @@
-import mongoose, { Schema, model, Types } from "mongoose";
+const mongoose = require("mongoose");
+const { Schema, model, Types } = mongoose;
 
-export type UserRole = "ATTENDEE" | "DJ" | "ADMIN";
+// ============ TYPES & ENUMS ============
 
-export type EventState = "DRAFT" | "LIVE" | "ENDED" | "CANCELLED";
+const emailLower = (v) => (typeof v === "string" ? v.trim().toLowerCase() : v);
+const upperTrim = (v) => (typeof v === "string" ? v.trim().toUpperCase() : v);
 
-export type EventMemberRole = "OWNER" | "DJ" | "MODERATOR";
-
-export type EventPermission =
-  | "QUEUE_READ"
-  | "QUEUE_EDIT"
-  | "SONG_APPROVE_REJECT"
-  | "PARTICIPANT_KICK"
-  | "PARTICIPANT_BAN"
-  | "EVENT_START"
-  | "EVENT_END"
-  | "EVENT_CANCEL"
-  | "EVENT_SETTINGS_EDIT"
-  | "ANALYTICS_READ";
-
-export type SongStatus = "PENDING" | "APPROVED" | "PLAYING" | "PLAYED" | "SKIPPED" | "REJECTED";
-
-export type EventActionType =
-  | "EVENT_START"
-  | "EVENT_END"
-  | "EVENT_CANCEL"
-  | "PARTICIPANT_KICK"
-  | "PARTICIPANT_BAN"
-  | "PARTICIPANT_UNBAN"
-  | "PARTICIPANT_COOLDOWN"
-  | "SONG_APPROVE"
-  | "SONG_REJECT"
-  | "SONG_REMOVE"
-  | "SONG_REORDER"
-  | "SONG_SKIP"
-  | "SONG_STATUS_CHANGE"
-  | "SETTINGS_CHANGE";
-
-const emailLower = (v: unknown) => (typeof v === "string" ? v.trim().toLowerCase() : v);
-const upperTrim = (v: unknown) => (typeof v === "string" ? v.trim().toUpperCase() : v);
-
-const stripPrivate = (_doc: any, ret: any) => {
+const stripPrivate = (_doc, ret) => {
   delete ret.passwordHash;
   delete ret.__v;
   return ret;
 };
 
-export const ALL_EVENT_PERMISSIONS: Readonly<EventPermission[]> = [
+const ALL_EVENT_PERMISSIONS = [
   "QUEUE_READ",
   "QUEUE_EDIT",
+  "SONG_SUGGEST",
+  "SONG_VOTE",
   "SONG_APPROVE_REJECT",
   "PARTICIPANT_KICK",
   "PARTICIPANT_BAN",
@@ -58,7 +27,7 @@ export const ALL_EVENT_PERMISSIONS: Readonly<EventPermission[]> = [
   "ANALYTICS_READ",
 ];
 
-export function defaultPermissionsForRole(role: EventMemberRole): EventPermission[] {
+function defaultPermissionsForRole(role) {
   switch (role) {
     case "OWNER":
       return [...ALL_EVENT_PERMISSIONS];
@@ -76,26 +45,16 @@ export function defaultPermissionsForRole(role: EventMemberRole): EventPermissio
       ];
     case "MODERATOR":
       return ["QUEUE_READ", "SONG_APPROVE_REJECT", "PARTICIPANT_KICK", "PARTICIPANT_BAN"];
+    case "ATTENDEE":
+      return ["QUEUE_READ", "SONG_SUGGEST", "SONG_VOTE"];
     default:
       return ["QUEUE_READ"];
   }
 }
 
+// ============ USER SCHEMA ============
 
-
-export interface IUser {
-  _id: Types.ObjectId;
-  email: string;
-  passwordHash: string;
-  displayName: string;
-  role: UserRole;
-  isActive: boolean;
-  lastLoginAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const UserSchema = new Schema<IUser>(
+const UserSchema = new Schema(
   {
     email: { type: String, required: true, unique: true, index: true, set: emailLower },
     passwordHash: { type: String, required: true, select: false },
@@ -110,17 +69,9 @@ const UserSchema = new Schema<IUser>(
 UserSchema.set("toJSON", { transform: stripPrivate });
 UserSchema.set("toObject", { transform: stripPrivate });
 
+// ============ EVENT SETTINGS & EVENT SCHEMA ============
 
-
-export interface IEventSettings {
-  allowRequests: boolean;
-  requireApproval: boolean;
-  votingEnabled: boolean;
-  allowDownvotes: boolean;
-  maxRequestsPerParticipant: number;
-}
-
-const EventSettingsSchema = new Schema<IEventSettings>(
+const EventSettingsSchema = new Schema(
   {
     allowRequests: { type: Boolean, default: true },
     requireApproval: { type: Boolean, default: false },
@@ -131,29 +82,7 @@ const EventSettingsSchema = new Schema<IEventSettings>(
   { _id: false }
 );
 
-export interface IEvent {
-  _id: Types.ObjectId;
-  name: string;
-  description?: string;
-  ownerId: Types.ObjectId; 
-  accessCode: string; 
-  qrCodeUrl?: string;
-  state: EventState;
-
-  startsAt: Date;
-  endedAt?: Date;
-  cancelledAt?: Date;
-  cancelledReason?: string;
-
-  currentSongId?: Types.ObjectId; 
-
-  settings: IEventSettings;
-
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const EventSchema = new Schema<IEvent>(
+const EventSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     description: { type: String },
@@ -185,25 +114,15 @@ const EventSchema = new Schema<IEvent>(
 
 EventSchema.index({ ownerId: 1, startsAt: -1 });
 EventSchema.index({ state: 1, startsAt: -1 });
-EventSchema.index({ accessCode: 1 }, { unique: true });
 
-export interface IEventMember {
-  _id: Types.ObjectId;
-  eventId: Types.ObjectId; 
-  userId: Types.ObjectId; 
-  role: EventMemberRole;
-  permissions: EventPermission[];
-  addedBy: Types.ObjectId; 
-  createdAt: Date;
-  updatedAt: Date;
-}
+// ============ EVENT MEMBER SCHEMA ============
 
-const EventMemberSchema = new Schema<IEventMember>(
+const EventMemberSchema = new Schema(
   {
     eventId: { type: Schema.Types.ObjectId, ref: "Event", required: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
 
-    role: { type: String, required: true, enum: ["OWNER", "DJ", "MODERATOR"], index: true },
+    role: { type: String, required: true, enum: ["OWNER", "DJ", "MODERATOR", "ATTENDEE"], index: true },
 
     permissions: {
       type: [String],
@@ -220,42 +139,9 @@ const EventMemberSchema = new Schema<IEventMember>(
 EventMemberSchema.index({ eventId: 1, userId: 1 }, { unique: true });
 EventMemberSchema.index({ eventId: 1, role: 1 });
 
-export interface IParticipant {
-  _id: Types.ObjectId;
-  eventId: Types.ObjectId;
+// ============ PARTICIPANT SCHEMA ============
 
-  nickname: string;
-  nicknameLower: string;
-
-  socketId?: string;
-
-  joinedAt: Date;
-  lastSeenAt: Date;
-
-  isBanned: boolean;
-
-  kickedAt?: Date;
-  kickedBy?: Types.ObjectId; 
-  kickReason?: string;
-
-  bannedAt?: Date;
-  bannedBy?: Types.ObjectId; 
-  banReason?: string;
-
-  // Cooldown system (replaces kick/ban)
-  cooldownUntil?: Date;
-  cooldownReason?: string;
-
-  // Premium participant (priority queue)
-  isPremium?: boolean;
-
-  leftAt?: Date;
-
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const ParticipantSchema = new Schema<IParticipant>(
+const ParticipantSchema = new Schema(
   {
     eventId: { type: Schema.Types.ObjectId, ref: "Event", required: true, index: true },
 
@@ -292,50 +178,12 @@ ParticipantSchema.pre("validate", function (next) {
   next();
 });
 
-
 ParticipantSchema.index({ eventId: 1, nicknameLower: 1 }, { unique: true });
-
 ParticipantSchema.index({ eventId: 1, socketId: 1 }, { unique: true, sparse: true });
 
+// ============ SONG SCHEMA ============
 
-
-export interface ISong {
-  _id: Types.ObjectId;
-  eventId: Types.ObjectId;
-
-  title: string;
-  artist: string;
-
-  requestedBy: Types.ObjectId; 
-  status: SongStatus;
-
-  voteScore: number;
-  voteCount: number;
-
-  // Queue positioning
-  queuePosition?: number;
-  
-  sortKey: string;
-  pinned: boolean;
-
-  // Playback tracking
-  startedPlayingAt?: Date;
-  skippedAt?: Date;
-  skippedBy?: Types.ObjectId;
-  skippedReason?: string;
-
-  removedAt?: Date;
-  removedBy?: Types.ObjectId; 
-  removalReason?: string;
-
-  // Auto-rejection for old pending songs
-  autoRejectedAt?: Date;
-
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const SongSchema = new Schema<ISong>(
+const SongSchema = new Schema(
   {
     eventId: { type: Schema.Types.ObjectId, ref: "Event", required: true, index: true },
 
@@ -356,7 +204,7 @@ const SongSchema = new Schema<ISong>(
     voteCount: { type: Number, default: 0 },
 
     queuePosition: { type: Number, index: true },
-    
+
     sortKey: { type: String, required: true, index: true },
     pinned: { type: Boolean, default: false, index: true },
 
@@ -374,23 +222,12 @@ const SongSchema = new Schema<ISong>(
   { timestamps: true }
 );
 
-
 SongSchema.index({ eventId: 1, status: 1, sortKey: 1 });
-
 SongSchema.index({ eventId: 1, status: 1, voteScore: -1, createdAt: 1 });
 
+// ============ VOTE SCHEMA ============
 
-
-export interface IVote {
-  _id: Types.ObjectId;
-  songId: Types.ObjectId; 
-  participantId: Types.ObjectId; 
-  value: -1 | 1;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const VoteSchema = new Schema<IVote>(
+const VoteSchema = new Schema(
   {
     songId: { type: Schema.Types.ObjectId, ref: "Song", required: true, index: true },
     participantId: { type: Schema.Types.ObjectId, ref: "Participant", required: true, index: true },
@@ -402,22 +239,9 @@ const VoteSchema = new Schema<IVote>(
 VoteSchema.index({ songId: 1, participantId: 1 }, { unique: true });
 VoteSchema.index({ songId: 1, createdAt: -1 });
 
-export interface IEventActionLog {
-  _id: Types.ObjectId;
-  eventId: Types.ObjectId; 
-  actorUserId: Types.ObjectId; 
-  type: EventActionType;
+// ============ EVENT ACTION LOG SCHEMA ============
 
-  participantId?: Types.ObjectId; 
-  songId?: Types.ObjectId; 
-
-  meta?: Record<string, unknown>;
-
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const EventActionLogSchema = new Schema<IEventActionLog>(
+const EventActionLogSchema = new Schema(
   {
     eventId: { type: Schema.Types.ObjectId, ref: "Event", required: true, index: true },
     actorUserId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -425,21 +249,21 @@ const EventActionLogSchema = new Schema<IEventActionLog>(
       type: String,
       required: true,
       enum: [
-         "EVENT_START",
-         "EVENT_END",
-         "EVENT_CANCEL",
-         "PARTICIPANT_KICK",
-         "PARTICIPANT_BAN",
-         "PARTICIPANT_UNBAN",
-         "PARTICIPANT_COOLDOWN",
-         "SONG_APPROVE",
-         "SONG_REJECT",
-         "SONG_REMOVE",
-         "SONG_REORDER",
-         "SONG_SKIP",
-         "SONG_STATUS_CHANGE",
-         "SETTINGS_CHANGE",
-       ],
+        "EVENT_START",
+        "EVENT_END",
+        "EVENT_CANCEL",
+        "PARTICIPANT_KICK",
+        "PARTICIPANT_BAN",
+        "PARTICIPANT_UNBAN",
+        "PARTICIPANT_COOLDOWN",
+        "SONG_APPROVE",
+        "SONG_REJECT",
+        "SONG_REMOVE",
+        "SONG_REORDER",
+        "SONG_SKIP",
+        "SONG_STATUS_CHANGE",
+        "SETTINGS_CHANGE",
+      ],
       index: true,
     },
     participantId: { type: Schema.Types.ObjectId, ref: "Participant", index: true },
@@ -451,27 +275,48 @@ const EventActionLogSchema = new Schema<IEventActionLog>(
 
 EventActionLogSchema.index({ eventId: 1, createdAt: -1 });
 
-export const UserModel = model<IUser>("User", UserSchema, "users");
-export const EventModel = model<IEvent>("Event", EventSchema, "events");
-export const EventMemberModel = model<IEventMember>("EventMember", EventMemberSchema, "event_members");
-export const ParticipantModel = model<IParticipant>("Participant", ParticipantSchema, "participants");
-export const SongModel = model<ISong>("Song", SongSchema, "songs");
-export const VoteModel = model<IVote>("Vote", VoteSchema, "votes");
-export const EventActionLogModel = model<IEventActionLog>("EventActionLog", EventActionLogSchema, "event_action_logs");
+// ============ CREATE MODELS ============
 
-export async function hasEventPermission(
-  user: Pick<IUser, "_id" | "role">,
-  eventId: Types.ObjectId,
-  permission: EventPermission
-): Promise<boolean> {
+const UserModel = model("User", UserSchema, "users");
+const EventModel = model("Event", EventSchema, "events");
+const EventMemberModel = model("EventMember", EventMemberSchema, "event_members");
+const ParticipantModel = model("Participant", ParticipantSchema, "participants");
+const SongModel = model("Song", SongSchema, "songs");
+const VoteModel = model("Vote", VoteSchema, "votes");
+const EventActionLogModel = model("EventActionLog", EventActionLogSchema, "event_action_logs");
+
+// ============ UTILITY FUNCTIONS ============
+
+async function hasEventPermission(user, eventId, permission) {
   if (user.role === "ADMIN") return true;
-  const member = await EventMemberModel.findOne({ eventId, userId: user._id }).select({ permissions: 1 }).lean();
+  const member = await EventMemberModel.findOne({ eventId, userId: user._id })
+    .select({ permissions: 1 })
+    .lean();
   if (!member) return false;
   return Array.isArray(member.permissions) && member.permissions.includes(permission);
 }
 
-export async function connectMongo(uri: string) {
+async function connectMongo(uri) {
   mongoose.set("strictQuery", true);
   await mongoose.connect(uri, { autoIndex: true });
   return mongoose.connection;
 }
+
+module.exports = {
+  // Models
+  UserModel,
+  EventModel,
+  EventMemberModel,
+  ParticipantModel,
+  SongModel,
+  VoteModel,
+  EventActionLogModel,
+
+  // Database functions
+  connectMongo,
+
+  // Utility functions
+  hasEventPermission,
+  defaultPermissionsForRole,
+  ALL_EVENT_PERMISSIONS,
+};

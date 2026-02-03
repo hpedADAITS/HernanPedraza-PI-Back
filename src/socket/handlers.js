@@ -2,46 +2,102 @@ const { logger } = require("../utils");
 const events = require("./events");
 
 /**
- * Manejar todos los eventos de socket
- * @param {Socket} socket - Instancia de socket de Socket.IO
- * @param {Server} io - Instancia de servidor de Socket.IO
+ * Handle all socket events
+ * @param {Socket} socket - Socket.IO socket instance
+ * @param {Server} io - Socket.IO server instance
  */
 const handleSocketEvents = (socket, io) => {
-  // Unirse a evento
+  // ============ PARTICIPATION ============
   socket.on("join_event", (data) => {
     try {
       events.handleJoinEvent(socket, io, data);
     } catch (error) {
-      logger.error("Error en join_event:", error);
-      socket.emit("error", { message: "Error al unirse al evento" });
+      logger.error("Error in join_event:", error);
+      socket.emit("error", { message: "Error joining event" });
     }
   });
 
-  // Abandonar evento
   socket.on("leave_event", (data) => {
     try {
       events.handleLeaveEvent(socket, io, data);
     } catch (error) {
-      logger.error("Error en leave_event:", error);
-      socket.emit("error", { message: "Error al abandonar el evento" });
+      logger.error("Error in leave_event:", error);
+      socket.emit("error", { message: "Error leaving event" });
     }
   });
 
-  // Manejar desconexión
   socket.on("disconnect", () => {
     try {
       events.handleDisconnect(socket, io);
     } catch (error) {
-      logger.error("Error en desconexión:", error);
+      logger.error("Error in disconnect:", error);
     }
   });
 
-  // TODO: Agregar más manejadores de eventos de socket
-  // - eventos de votos
-  // - eventos de sugerencia de canciones
-  // - eventos de cambio de estado de canción
-  // - eventos de participantes
-  // etc.
+  // ============ VOTING ============
+  socket.on("vote_cast", (data) => {
+    try {
+      events.handleVotesCast(socket, io, data);
+    } catch (error) {
+      logger.error("Error in vote_cast:", error);
+      socket.emit("error", { message: "Error casting vote" });
+    }
+  });
+
+  socket.on("vote_removed", (data) => {
+    try {
+      events.handleVoteRemoved(socket, io, data);
+    } catch (error) {
+      logger.error("Error in vote_removed:", error);
+      socket.emit("error", { message: "Error removing vote" });
+    }
+  });
+
+  // ============ SONGS ============
+  socket.on("song_suggested", (data) => {
+    try {
+      events.handleSongSuggested(socket, io, data);
+    } catch (error) {
+      logger.error("Error in song_suggested:", error);
+      socket.emit("error", { message: "Error suggesting song" });
+    }
+  });
+
+  socket.on("song_approved", (data) => {
+    try {
+      events.handleSongApproved(socket, io, data);
+    } catch (error) {
+      logger.error("Error in song_approved:", error);
+      socket.emit("error", { message: "Error approving song" });
+    }
+  });
+
+  socket.on("song_rejected", (data) => {
+    try {
+      events.handleSongRejected(socket, io, data);
+    } catch (error) {
+      logger.error("Error in song_rejected:", error);
+      socket.emit("error", { message: "Error rejecting song" });
+    }
+  });
+
+  socket.on("song_skipped", (data) => {
+    try {
+      events.handleSongSkipped(socket, io, data);
+    } catch (error) {
+      logger.error("Error in song_skipped:", error);
+      socket.emit("error", { message: "Error skipping song" });
+    }
+  });
+
+  socket.on("queue_updated", (data) => {
+    try {
+      events.handleQueueUpdated(socket, io, data);
+    } catch (error) {
+      logger.error("Error in queue_updated:", error);
+      socket.emit("error", { message: "Error updating queue" });
+    }
+  });
 };
 
 module.exports = handleSocketEvents;

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
+    "seed": "node scripts/seed.js",
     "test": "jest --detectOpenHandles",
     "test:unit": "jest test/unit --detectOpenHandles",
     "test:integration": "jest test/integration --detectOpenHandles",
@@ -27,7 +28,7 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "helmet": "^7.1.0",
-    "jsonwebtoken": "^9.1.2",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.0",
     "socket.io": "^4.7.2"
   },

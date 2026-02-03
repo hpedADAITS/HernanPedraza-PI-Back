@@ -5,6 +5,7 @@ const validationMiddleware = require("./validation.middleware");
 
 module.exports = {
   authMiddleware,
+  authenticate: authMiddleware, // Alias
   errorMiddleware,
   loggerMiddleware,
   validationMiddleware,
