@@ -80,6 +80,20 @@ class ParticipantsService {
       throw new Error("Participant not found");
     }
 
+    // Extract userId properly - handle string, ObjectId, or object with userId property
+    let userIdStr;
+    if (typeof actorUserId === 'string') {
+      userIdStr = actorUserId;
+    } else if (actorUserId && typeof actorUserId === 'object') {
+      // If it's an object, try to extract userId property
+      userIdStr = actorUserId.userId?.toString() || actorUserId._id?.toString();
+    }
+    
+    if (!userIdStr) {
+      logger.error("Invalid actorUserId:", actorUserId);
+      throw new Error("Invalid actor user ID");
+    }
+
     const cooldownUntil = new Date(Date.now() + durationMs);
     participant.cooldownUntil = cooldownUntil;
     participant.cooldownReason = reason;
@@ -87,14 +101,20 @@ class ParticipantsService {
 
     await EventActionLogModel.create({
       eventId: participant.eventId,
-      actorUserId,
+      actorUserId: userIdStr,
       type: "PARTICIPANT_COOLDOWN",
       participantId,
       meta: { reason, durationMs },
     });
 
     logger.info(`Participant ${participantId} on cooldown until ${cooldownUntil}`);
-    return this._formatParticipant(participant);
+    
+    // Return both formatted participant and event info for socket broadcast
+    return {
+      participant: this._formatParticipant(participant),
+      eventId: participant.eventId,
+      action: "participant_cooldown",
+    };
   }
 
   async kickParticipant(participantId, reason, actorUserId) {
@@ -103,22 +123,42 @@ class ParticipantsService {
       throw new Error("Participant not found");
     }
 
+    // Extract userId properly - handle string, ObjectId, or object with userId property
+    let userIdStr;
+    if (typeof actorUserId === 'string') {
+      userIdStr = actorUserId;
+    } else if (actorUserId && typeof actorUserId === 'object') {
+      // If it's an object, try to extract userId property
+      userIdStr = actorUserId.userId?.toString() || actorUserId._id?.toString();
+    }
+    
+    if (!userIdStr) {
+      logger.error("Invalid actorUserId:", actorUserId);
+      throw new Error("Invalid actor user ID");
+    }
+
     participant.kickedAt = new Date();
-    participant.kickedBy = actorUserId;
+    participant.kickedBy = userIdStr;
     participant.kickReason = reason;
     participant.leftAt = new Date();
     await participant.save();
 
     await EventActionLogModel.create({
       eventId: participant.eventId,
-      actorUserId,
+      actorUserId: userIdStr,
       type: "PARTICIPANT_KICK",
       participantId,
       meta: { reason },
     });
 
     logger.info(`Participant ${participantId} kicked: ${reason}`);
-    return this._formatParticipant(participant);
+    
+    // Return both formatted participant and event info for socket broadcast
+    return {
+      participant: this._formatParticipant(participant),
+      eventId: participant.eventId,
+      action: "participant_kicked",
+    };
   }
 
   async banParticipant(participantId, reason, actorUserId) {
@@ -157,7 +197,7 @@ class ParticipantsService {
 
   _formatParticipant(participant) {
     return {
-      id: participant._id,
+      _id: participant._id.toString(),
       eventId: participant.eventId,
       nickname: participant.nickname,
       socketId: participant.socketId,

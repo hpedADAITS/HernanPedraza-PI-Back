@@ -1,3 +1,6 @@
 docs
 node_modules/
 logs/app.log
+.env
+docs/
+scripts/populate_db.js

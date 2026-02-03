@@ -24,12 +24,12 @@ class EventsService {
 
     await event.save();
 
-    // Create owner as EventMember with OWNER role
+    // Create owner as EventMember with DJ role (full permissions)
     const eventMember = new EventMemberModel({
       eventId: event._id,
       userId: ownerId,
-      role: "OWNER",
-      permissions: defaultPermissionsForRole("OWNER"),
+      role: "DJ",
+      permissions: defaultPermissionsForRole("DJ"),
       addedBy: ownerId,
     });
 

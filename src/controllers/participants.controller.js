@@ -1,5 +1,11 @@
 const { participantsService } = require("../services");
 const { logger } = require("../utils");
+let io = null; // Will be injected
+
+// Inject Socket.IO instance
+const setIO = (ioInstance) => {
+  io = ioInstance;
+};
 
 class ParticipantsController {
   async joinEvent(req, res) {
@@ -125,16 +131,37 @@ class ParticipantsController {
         });
       }
 
-      const participant = await participantsService.setParticipantCooldown(
+      // Ensure actorUserId is a string
+      const actorUserId = typeof req.user.userId === 'string' 
+        ? req.user.userId 
+        : req.user.userId?.toString();
+      
+      if (!actorUserId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: "INVALID_USER", message: "Invalid user in token" },
+        });
+      }
+
+      const result = await participantsService.setParticipantCooldown(
         participantId,
         durationMs,
         reason,
-        req.user.userId
+        actorUserId
       );
+
+      // Emit socket event to all clients in event room
+      if (io) {
+        io.to(`event_${result.eventId}`).emit("participant_cooldown", {
+          participantId,
+          cooldownUntil: result.participant.cooldownUntil,
+          reason,
+        });
+      }
 
       res.json({
         success: true,
-        data: { participant },
+        data: { participant: result.participant },
       });
     } catch (error) {
       logger.error("Set cooldown error:", error);
@@ -157,15 +184,36 @@ class ParticipantsController {
         });
       }
 
-      const participant = await participantsService.kickParticipant(
+      // Ensure actorUserId is a string
+      const actorUserId = typeof req.user.userId === 'string' 
+        ? req.user.userId 
+        : req.user.userId?.toString();
+      
+      if (!actorUserId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: "INVALID_USER", message: "Invalid user in token" },
+        });
+      }
+
+      const result = await participantsService.kickParticipant(
         participantId,
         reason,
-        req.user.userId
+        actorUserId
       );
+
+      // Emit socket event to all clients in event room
+      if (io) {
+        io.to(`event_${result.eventId}`).emit("participant_kicked", {
+          participantId,
+          kickedAt: result.participant.kickedAt,
+          reason,
+        });
+      }
 
       res.json({
         success: true,
-        data: { participant },
+        data: { participant: result.participant },
       });
     } catch (error) {
       logger.error("Kick participant error:", error);
@@ -178,3 +226,4 @@ class ParticipantsController {
 }
 
 module.exports = new ParticipantsController();
+module.exports.setIO = setIO;

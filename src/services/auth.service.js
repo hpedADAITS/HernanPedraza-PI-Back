@@ -25,7 +25,7 @@ class AuthService {
     await user.save();
     logger.info(`User registered: ${email}`);
 
-    // Generate token for new user
+    // Generate token for new user with user metadata
     const token = generateToken({
       userId: user._id,
       email: user.email,
@@ -60,7 +60,7 @@ class AuthService {
     user.lastLoginAt = new Date();
     await user.save();
 
-    // Generate token
+    // Generate token with user metadata
     const token = generateToken({
       userId: user._id,
       email: user.email,

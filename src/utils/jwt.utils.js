@@ -2,9 +2,26 @@ const jwt = require("jsonwebtoken");
 const config = require("../config");
 const { logger } = require("./logger");
 
-const generateToken = (userId, expiresIn = config.jwtExpiry) => {
+const generateToken = (userPayload, expiresIn = config.jwtExpiry) => {
   try {
-    const token = jwt.sign({ userId }, config.jwtSecret, {
+    // Handle both string userId and user object with metadata
+    let payload;
+    if (typeof userPayload === 'string') {
+      payload = { userId: userPayload };
+    } else if (typeof userPayload === 'object' && userPayload.userId) {
+      // Ensure userId is a string
+      payload = {
+        userId: typeof userPayload.userId === 'string' 
+          ? userPayload.userId 
+          : userPayload.userId.toString(),
+        ...(userPayload.email && { email: userPayload.email }),
+        ...(userPayload.role && { role: userPayload.role }),
+      };
+    } else {
+      throw new Error("Invalid payload for token generation");
+    }
+
+    const token = jwt.sign(payload, config.jwtSecret, {
       expiresIn,
       algorithm: "HS256",
     });
