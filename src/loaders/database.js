@@ -5,8 +5,8 @@ let connection;
 
 const mongoLoader = async () => {
   try {
-    // Importar dinámicamente la conexión de mongoose desde mongo_schema
-    const { connectMongo } = require("../mongo_schema");
+    // Importar dinámicamente la conexión de mongoose desde models/schema
+    const { connectMongo } = require("../models/schema");
 
     logger.info("Conectando a MongoDB...");
     connection = await connectMongo(config.mongoUri);

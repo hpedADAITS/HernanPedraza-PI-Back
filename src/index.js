@@ -13,7 +13,7 @@ initLoaders()
     const { httpServer } = initSocketIO(app);
 
     // Listen on HTTP server (which wraps Express)
-    httpServer.listen(port, (err) => {
+    httpServer.listen(port, '0.0.0.0', (err) => {
       if (err) {
         logger.error(err);
         process.exit(1);

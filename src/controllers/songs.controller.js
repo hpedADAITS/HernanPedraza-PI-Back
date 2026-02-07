@@ -1,147 +1,144 @@
 const { songsService } = require("../services");
 const { logger } = require("../utils");
+const { httpStatus, messages } = require("../constants");
+const { ValidationError } = require("../errors");
 
 class SongsController {
-  async suggestSong(req, res) {
+  async suggestSong(req, res, next) {
     try {
       const { eventId } = req.params;
       const { participantId, title, artist } = req.body;
 
       if (!participantId || !title || !artist) {
-        return res.status(400).json({
-          success: false,
-          error: { code: "MISSING_FIELDS", message: "participantId, title, artist required" },
-        });
+        throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
       }
 
-      const song = await songsService.suggestSong(eventId, participantId, title, artist);
+      const song = await songsService.suggestSong(
+        eventId,
+        participantId,
+        title,
+        artist
+      );
 
-      res.status(201).json({
+      res.status(httpStatus.CREATED).json({
         success: true,
         data: { song },
       });
     } catch (error) {
       logger.error("Suggest song error:", error);
-      res.status(400).json({
-        success: false,
-        error: { code: "SUGGEST_SONG_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
-  async getQueue(req, res) {
+  async getQueue(req, res, next) {
     try {
       const { eventId } = req.params;
 
       const songs = await songsService.getQueueForEvent(eventId);
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: { queue: songs },
       });
     } catch (error) {
       logger.error("Get queue error:", error);
-      res.status(400).json({
-        success: false,
-        error: { code: "GET_QUEUE_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
-  async getPendingSongs(req, res) {
+  async getPendingSongs(req, res, next) {
     try {
       const { eventId } = req.params;
 
       const songs = await songsService.getPendingSongsForEvent(eventId);
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: { pending: songs },
       });
     } catch (error) {
       logger.error("Get pending songs error:", error);
-      res.status(400).json({
-        success: false,
-        error: { code: "GET_PENDING_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
-  async approveSong(req, res) {
+  async approveSong(req, res, next) {
     try {
       const { eventId, songId } = req.params;
 
-      const song = await songsService.approveSong(songId, eventId, req.user.userId);
+      const song = await songsService.approveSong(
+        songId,
+        eventId,
+        req.user.userId
+      );
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: { song },
       });
     } catch (error) {
       logger.error("Approve song error:", error);
-      res.status(400).json({
-        success: false,
-        error: { code: "APPROVE_SONG_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
-  async rejectSong(req, res) {
+  async rejectSong(req, res, next) {
     try {
       const { eventId, songId } = req.params;
       const { reason } = req.body;
 
-      const song = await songsService.rejectSong(songId, eventId, reason, req.user.userId);
+      const song = await songsService.rejectSong(
+        songId,
+        eventId,
+        reason,
+        req.user.userId
+      );
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: { song },
       });
     } catch (error) {
       logger.error("Reject song error:", error);
-      res.status(400).json({
-        success: false,
-        error: { code: "REJECT_SONG_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
-  async skipSong(req, res) {
+  async skipSong(req, res, next) {
     try {
       const { eventId, songId } = req.params;
       const { reason } = req.body;
 
-      const song = await songsService.skipSong(songId, eventId, reason, req.user.userId);
+      const song = await songsService.skipSong(
+        songId,
+        eventId,
+        reason,
+        req.user.userId
+      );
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: { song },
       });
     } catch (error) {
       logger.error("Skip song error:", error);
-      res.status(400).json({
-        success: false,
-        error: { code: "SKIP_SONG_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
-  async getSongPosition(req, res) {
+  async getSongPosition(req, res, next) {
     try {
       const { songId } = req.params;
 
       const data = await songsService.getSongPosition(songId);
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data,
       });
     } catch (error) {
       logger.error("Get song position error:", error);
-      res.status(404).json({
-        success: false,
-        error: { code: "SONG_NOT_FOUND", message: error.message },
-      });
+      next(error);
     }
   }
 }

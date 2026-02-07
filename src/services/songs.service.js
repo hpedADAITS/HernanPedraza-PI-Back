@@ -1,4 +1,4 @@
-const { SongModel, EventActionLogModel, ParticipantModel } = require("../mongo_schema");
+const { SongModel, EventActionLogModel, ParticipantModel } = require("../models/schema");
 const { logger } = require("../utils");
 
 class SongsService {

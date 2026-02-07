@@ -1,4 +1,4 @@
-// Import all MongoDB models from mongo_schema.ts
+// Import all MongoDB models from schema.js
 // This file serves as a central export point for all models
 
 const {
@@ -12,7 +12,8 @@ const {
   connectMongo,
   hasEventPermission,
   defaultPermissionsForRole,
-} = require("../mongo_schema");
+  ALL_EVENT_PERMISSIONS,
+} = require("./schema");
 
 module.exports = {
   // Models
@@ -30,4 +31,5 @@ module.exports = {
   // Utility functions
   hasEventPermission,
   defaultPermissionsForRole,
+  ALL_EVENT_PERMISSIONS,
 };

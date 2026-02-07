@@ -1,4 +1,4 @@
-const { VoteModel, SongModel } = require("../mongo_schema");
+const { VoteModel, SongModel } = require("../models/schema");
 const { logger } = require("../utils");
 
 class VotesService {

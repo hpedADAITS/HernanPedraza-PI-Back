@@ -1,31 +1,28 @@
 const { authService } = require("../services");
 const { logger } = require("../utils");
+const { httpStatus, messages } = require("../constants");
+const { ValidationError } = require("../errors");
 
 class AuthController {
   async register(req, res, next) {
     try {
       const { email, password, displayName, role } = req.body;
 
-      // Validation
-      if (!email || !password || !displayName) {
-        return res.status(400).json({
-          success: false,
-          error: { code: "MISSING_FIELDS", message: "Missing required fields" },
-        });
-      }
+      // Validation will be done in service
+      const result = await authService.register(
+        email,
+        password,
+        displayName,
+        role
+      );
 
-      const result = await authService.register(email, password, displayName, role);
-
-      res.status(201).json({
+      res.status(httpStatus.CREATED).json({
         success: true,
         data: result,
       });
     } catch (error) {
       logger.error("Register error:", error);
-      res.status(400).json({
-        success: false,
-        error: { code: "REGISTER_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
@@ -33,25 +30,20 @@ class AuthController {
     try {
       const { email, password } = req.body;
 
+      // Basic validation
       if (!email || !password) {
-        return res.status(400).json({
-          success: false,
-          error: { code: "MISSING_FIELDS", message: "Email and password required" },
-        });
+        throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
       }
 
       const result = await authService.login(email, password);
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: result,
       });
     } catch (error) {
       logger.error("Login error:", error);
-      res.status(401).json({
-        success: false,
-        error: { code: "LOGIN_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
@@ -59,25 +51,16 @@ class AuthController {
     try {
       const { token } = req.body;
 
-      if (!token) {
-        return res.status(400).json({
-          success: false,
-          error: { code: "MISSING_TOKEN", message: "Token required" },
-        });
-      }
-
+      // Validation will be done in service
       const result = await authService.refreshToken(token);
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: result,
       });
     } catch (error) {
       logger.error("Refresh token error:", error);
-      res.status(401).json({
-        success: false,
-        error: { code: "TOKEN_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
@@ -85,16 +68,13 @@ class AuthController {
     try {
       const user = await authService.getCurrentUser(req.user.userId);
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: { user },
       });
     } catch (error) {
       logger.error("Get current user error:", error);
-      res.status(404).json({
-        success: false,
-        error: { code: "USER_NOT_FOUND", message: error.message },
-      });
+      next(error);
     }
   }
 }

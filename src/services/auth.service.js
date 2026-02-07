@@ -1,14 +1,26 @@
 const bcrypt = require("bcryptjs");
-const { UserModel } = require("../mongo_schema");
+const { UserModel } = require("../models");
 const { generateToken, verifyToken } = require("../utils/jwt.utils");
 const { logger } = require("../utils");
+const { ValidationError, UnauthorizedError, NotFoundError } = require("../errors");
+const { messages } = require("../constants");
+const {
+  validateRegistration,
+  validateLogin,
+  validateTokenRefresh,
+} = require("../validators/auth.validator");
 
 class AuthService {
   async register(email, password, displayName, role = "ATTENDEE") {
+    // Validate input
+    validateRegistration({ email, password, displayName, role });
+
     // Check if user exists
-    const existingUser = await UserModel.findOne({ email: email.toLowerCase() });
+    const existingUser = await UserModel.findOne({
+      email: email.toLowerCase(),
+    });
     if (existingUser) {
-      throw new Error("Email already registered");
+      throw new ValidationError(messages.AUTH.USER_ALREADY_EXISTS);
     }
 
     // Hash password
@@ -44,16 +56,21 @@ class AuthService {
   }
 
   async login(email, password) {
+    // Validate input
+    validateLogin({ email, password });
+
     // Find user with password field
-    const user = await UserModel.findOne({ email: email.toLowerCase() }).select("+passwordHash");
+    const user = await UserModel.findOne({
+      email: email.toLowerCase(),
+    }).select("+passwordHash");
     if (!user) {
-      throw new Error("Invalid email or password");
+      throw new UnauthorizedError(messages.AUTH.INVALID_CREDENTIALS);
     }
 
     // Verify password
     const isValid = await bcrypt.compare(password, user.passwordHash);
     if (!isValid) {
-      throw new Error("Invalid email or password");
+      throw new UnauthorizedError(messages.AUTH.INVALID_CREDENTIALS);
     }
 
     // Update last login
@@ -81,12 +98,15 @@ class AuthService {
   }
 
   async refreshToken(token) {
+    // Validate input
+    validateTokenRefresh({ token });
+
     try {
       const decoded = verifyToken(token);
       const user = await UserModel.findById(decoded.userId);
 
       if (!user) {
-        throw new Error("User not found");
+        throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
       }
 
       const newToken = generateToken({
@@ -97,14 +117,17 @@ class AuthService {
 
       return { token: newToken };
     } catch (error) {
-      throw new Error("Invalid or expired token");
+      if (error instanceof NotFoundError) {
+        throw error;
+      }
+      throw new UnauthorizedError(messages.AUTH.INVALID_TOKEN);
     }
   }
 
   async getCurrentUser(userId) {
     const user = await UserModel.findById(userId);
     if (!user) {
-      throw new Error("User not found");
+      throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
     }
 
     return {

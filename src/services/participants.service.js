@@ -1,4 +1,4 @@
-const { ParticipantModel, EventActionLogModel } = require("../mongo_schema");
+const { ParticipantModel, EventActionLogModel } = require("../models/schema");
 const { logger } = require("../utils");
 
 class ParticipantsService {

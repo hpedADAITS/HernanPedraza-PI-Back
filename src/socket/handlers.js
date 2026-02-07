@@ -7,8 +7,9 @@ const events = require("./events");
  * @param {Server} io - Socket.IO server instance
  */
 const handleSocketEvents = (socket, io) => {
-  // ============ PARTICIPATION ============
+  console.log(`[Socket Handler] Setting up handlers for socket ${socket.id}`);
   socket.on("join_event", (data) => {
+    console.log(`[Socket Handler] Received join_event on socket ${socket.id}`);
     try {
       events.handleJoinEvent(socket, io, data);
     } catch (error) {
@@ -63,9 +64,9 @@ const handleSocketEvents = (socket, io) => {
     }
   });
 
-  socket.on("song_approved", (data) => {
+  socket.on("song_approved", async (data) => {
     try {
-      events.handleSongApproved(socket, io, data);
+      await events.handleSongApproved(socket, io, data);
     } catch (error) {
       logger.error("Error in song_approved:", error);
       socket.emit("error", { message: "Error approving song" });

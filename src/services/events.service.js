@@ -1,4 +1,4 @@
-const { EventModel, EventMemberModel, ParticipantModel, SongModel, defaultPermissionsForRole, EventActionLogModel } = require("../mongo_schema");
+const { EventModel, EventMemberModel, ParticipantModel, SongModel, defaultPermissionsForRole, EventActionLogModel } = require("../models/schema");
 const { generateAccessCode } = require("../utils/code-generator");
 const { logger } = require("../utils");
 

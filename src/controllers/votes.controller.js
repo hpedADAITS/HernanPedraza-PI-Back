@@ -1,87 +1,74 @@
 const { votesService } = require("../services");
 const { logger } = require("../utils");
+const { httpStatus, messages } = require("../constants");
+const { ValidationError } = require("../errors");
 
 class VotesController {
-  async castVote(req, res) {
+  async castVote(req, res, next) {
     try {
       const { songId, participantId, value } = req.body;
 
       if (!songId || !participantId || value === undefined) {
-        return res.status(400).json({
-          success: false,
-          error: { code: "MISSING_FIELDS", message: "songId, participantId, value required" },
-        });
+        throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
       }
 
       const vote = await votesService.castVote(songId, participantId, value);
 
-      res.status(201).json({
+      res.status(httpStatus.CREATED).json({
         success: true,
         data: { vote },
       });
     } catch (error) {
       logger.error("Cast vote error:", error);
-      res.status(400).json({
-        success: false,
-        error: { code: "CAST_VOTE_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
-  async removeVote(req, res) {
+  async removeVote(req, res, next) {
     try {
       const { songId, participantId } = req.params;
 
       await votesService.removeVote(songId, participantId);
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: { message: "Vote removed" },
       });
     } catch (error) {
       logger.error("Remove vote error:", error);
-      res.status(404).json({
-        success: false,
-        error: { code: "VOTE_NOT_FOUND", message: error.message },
-      });
+      next(error);
     }
   }
 
-  async getVoteStats(req, res) {
+  async getVoteStats(req, res, next) {
     try {
       const { eventId } = req.params;
 
       const stats = await votesService.getVoteStats(eventId);
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: stats,
       });
     } catch (error) {
       logger.error("Get vote stats error:", error);
-      res.status(400).json({
-        success: false,
-        error: { code: "GET_STATS_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 
-  async getParticipantVote(req, res) {
+  async getParticipantVote(req, res, next) {
     try {
       const { songId, participantId } = req.params;
 
       const vote = await votesService.getParticipantVote(songId, participantId);
 
-      res.json({
+      res.status(httpStatus.OK).json({
         success: true,
         data: { vote },
       });
     } catch (error) {
       logger.error("Get participant vote error:", error);
-      res.status(400).json({
-        success: false,
-        error: { code: "GET_VOTE_ERROR", message: error.message },
-      });
+      next(error);
     }
   }
 }
