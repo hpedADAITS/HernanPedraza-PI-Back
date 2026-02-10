@@ -1,7 +1,9 @@
 const { participantsService } = require("../services");
 const { logger } = require("../utils");
 const { httpStatus, messages } = require("../constants");
-const { ValidationError, UnauthorizedError } = require("../errors");
+const { UnauthorizedError } = require("../errors");
+const { participantsValidator } = require("../validators");
+const { participantsDtos } = require("../dtos");
 
 let io = null; // Will be injected
 
@@ -14,15 +16,12 @@ class ParticipantsController {
   async joinEvent(req, res, next) {
     try {
       const { eventId } = req.params;
-      const { nickname } = req.body;
-
-      if (!nickname) {
-        throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
-      }
+      const dto = participantsDtos.toJoinEventDTO(req.body);
+      participantsValidator.validateJoinEvent(dto);
 
       const participant = await participantsService.joinEvent(
         eventId,
-        nickname,
+        dto.nickname,
       );
 
       res.status(httpStatus.CREATED).json({
@@ -88,15 +87,12 @@ class ParticipantsController {
   async setPremium(req, res, next) {
     try {
       const { participantId } = req.params;
-      const { isPremium } = req.body;
-
-      if (typeof isPremium !== "boolean") {
-        throw new ValidationError("isPremium must be boolean");
-      }
+      const dto = participantsDtos.toSetPremiumDTO(req.body);
+      participantsValidator.validateSetPremium(dto);
 
       const participant = await participantsService.setPremium(
         participantId,
-        isPremium,
+        dto.isPremium,
       );
 
       res.status(httpStatus.OK).json({
@@ -112,13 +108,9 @@ class ParticipantsController {
   async setCooldown(req, res, next) {
     try {
       const { participantId } = req.params;
-      const { durationMs, reason } = req.body;
+      const dto = participantsDtos.toCooldownDTO(req.body);
+      participantsValidator.validateCooldown(dto);
 
-      if (!durationMs || !reason) {
-        throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
-      }
-
-      // Ensure actorUserId is a string
       const actorUserId =
         typeof req.user.userId === "string"
           ? req.user.userId
@@ -130,17 +122,16 @@ class ParticipantsController {
 
       const result = await participantsService.setParticipantCooldown(
         participantId,
-        durationMs,
-        reason,
+        dto.durationMs,
+        dto.reason,
         actorUserId,
       );
 
-      // Emit socket event to all clients in event room
       if (io) {
         io.to(`event_${result.eventId}`).emit("participant_cooldown", {
           participantId,
           cooldownUntil: result.participant.cooldownUntil,
-          reason,
+          reason: dto.reason,
         });
       }
 
@@ -157,13 +148,9 @@ class ParticipantsController {
   async kickParticipant(req, res, next) {
     try {
       const { participantId } = req.params;
-      const { reason } = req.body;
+      const dto = participantsDtos.toKickDTO(req.body);
+      participantsValidator.validateKickParticipant(dto);
 
-      if (!reason) {
-        throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
-      }
-
-      // Ensure actorUserId is a string
       const actorUserId =
         typeof req.user.userId === "string"
           ? req.user.userId
@@ -175,16 +162,15 @@ class ParticipantsController {
 
       const result = await participantsService.kickParticipant(
         participantId,
-        reason,
+        dto.reason,
         actorUserId,
       );
 
-      // Emit socket event to all clients in event room
       if (io) {
         io.to(`event_${result.eventId}`).emit("participant_kicked", {
           participantId,
           kickedAt: result.participant.kickedAt,
-          reason,
+          reason: dto.reason,
         });
       }
 

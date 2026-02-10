@@ -1,22 +1,21 @@
 const { eventsService } = require("../services");
 const { logger } = require("../utils");
-const { httpStatus, messages } = require("../constants");
-const { ValidationError } = require("../errors");
+const { httpStatus } = require("../constants");
+const { eventsValidator } = require("../validators");
+const { eventsDtos } = require("../dtos");
 
 class EventsController {
   async createEvent(req, res, next) {
     try {
-      const { name, description, startsAt } = req.body;
+      const dto = eventsDtos.toCreateEventDTO(req.body);
 
-      if (!name || !startsAt) {
-        throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
-      }
+      eventsValidator.validateCreateEvent(dto);
 
       const event = await eventsService.createEvent(
         req.user.userId,
-        name,
-        description,
-        startsAt
+        dto.name,
+        dto.description,
+        dto.startsAt
       );
 
       res.status(httpStatus.CREATED).json({
@@ -83,12 +82,14 @@ class EventsController {
   async updateEvent(req, res, next) {
     try {
       const { eventId } = req.params;
-      const updates = req.body;
+      const dto = eventsDtos.toUpdateEventDTO(req.body);
+
+      eventsValidator.validateUpdateEvent(dto);
 
       const event = await eventsService.updateEvent(
         eventId,
         req.user.userId,
-        updates
+        dto
       );
 
       res.status(httpStatus.OK).json({

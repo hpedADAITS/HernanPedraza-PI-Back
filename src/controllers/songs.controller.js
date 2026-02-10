@@ -1,23 +1,22 @@
 const { songsService } = require("../services");
 const { logger } = require("../utils");
-const { httpStatus, messages } = require("../constants");
-const { ValidationError } = require("../errors");
+const { httpStatus } = require("../constants");
+const { songsValidator } = require("../validators");
+const { songsDtos } = require("../dtos");
 
 class SongsController {
   async suggestSong(req, res, next) {
     try {
       const { eventId } = req.params;
-      const { participantId, title, artist } = req.body;
+      const dto = songsDtos.toSuggestSongDTO(req.body);
 
-      if (!participantId || !title || !artist) {
-        throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
-      }
+      songsValidator.validateSuggestSong(dto);
 
       const song = await songsService.suggestSong(
         eventId,
-        participantId,
-        title,
-        artist
+        dto.participantId,
+        dto.title,
+        dto.artist
       );
 
       res.status(httpStatus.CREATED).json({

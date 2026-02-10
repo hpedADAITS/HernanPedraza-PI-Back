@@ -1,18 +1,16 @@
 const { votesService } = require("../services");
 const { logger } = require("../utils");
-const { httpStatus, messages } = require("../constants");
-const { ValidationError } = require("../errors");
+const { httpStatus } = require("../constants");
+const { votesValidator } = require("../validators");
+const { votesDtos } = require("../dtos");
 
 class VotesController {
   async castVote(req, res, next) {
     try {
-      const { songId, participantId, value } = req.body;
+      const dto = votesDtos.toCastVoteDTO(req.body);
+      votesValidator.validateCastVote(dto);
 
-      if (!songId || !participantId || value === undefined) {
-        throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
-      }
-
-      const vote = await votesService.castVote(songId, participantId, value);
+      const vote = await votesService.castVote(dto.songId, dto.participantId, dto.value);
 
       res.status(httpStatus.CREATED).json({
         success: true,
