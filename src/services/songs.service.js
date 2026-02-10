@@ -206,6 +206,7 @@ class SongsService {
 
   _formatSong(song) {
     return {
+      _id: song._id,
       id: song._id,
       eventId: song.eventId,
       title: song.title,

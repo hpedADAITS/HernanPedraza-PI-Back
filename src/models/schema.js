@@ -364,9 +364,11 @@ async function hasEventPermission(user, eventId, permission) {
   );
 }
 
-async function connectMongo(uri) {
+async function connectMongo(uri, dbName) {
   mongoose.set("strictQuery", true);
-  await mongoose.connect(uri, { autoIndex: true });
+  const opts = { autoIndex: true };
+  if (dbName) opts.dbName = dbName;
+  await mongoose.connect(uri, opts);
   return mongoose.connection;
 }
 

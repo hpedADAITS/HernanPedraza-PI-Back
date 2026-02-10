@@ -9,7 +9,7 @@ const mongoLoader = async () => {
     const { connectMongo } = require("../models/schema");
 
     logger.info("Conectando a MongoDB...");
-    connection = await connectMongo(config.mongoUri);
+    connection = await connectMongo(config.mongoUri, config.dbName);
 
     logger.info(`MongoDB conectado exitosamente a ${config.dbName}`);
     return connection;

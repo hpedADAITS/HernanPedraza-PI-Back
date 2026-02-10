@@ -36,9 +36,9 @@ const handleSocketEvents = (socket, io) => {
   });
 
   // ============ VOTING ============
-  socket.on("vote_cast", (data) => {
+  socket.on("vote_cast", async (data) => {
     try {
-      events.handleVotesCast(socket, io, data);
+      await events.handleVotesCast(socket, io, data);
     } catch (error) {
       logger.error("Error in vote_cast:", error);
       socket.emit("error", { message: "Error casting vote" });

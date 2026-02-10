@@ -4,6 +4,7 @@ const cors = require("cors");
 const config = require("../config");
 const routes = require("../routes");
 const { errorMiddleware, loggerMiddleware } = require("../middleware");
+const { initSwagger } = require("./swagger");
 
 const app = express();
 
@@ -24,6 +25,9 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Registro de solicitudes
 app.use(loggerMiddleware);
+
+// Swagger API docs
+initSwagger(app);
 
 // Rutas de API
 app.use("/api/v1", routes);

@@ -58,7 +58,7 @@ const handleDisconnect = (socket, io) => {
 
 // ============ VOTING ============
 
-const handleVotesCast = (socket, io, data) => {
+const handleVotesCast = async (socket, io, data) => {
   const { eventId, songId, participantId, value } = data;
 
   if (!eventId || !songId || !participantId) {
@@ -68,10 +68,15 @@ const handleVotesCast = (socket, io, data) => {
 
   logger.info(`Vote cast: song ${songId}, value ${value}`);
 
+  const { SongModel } = require("../models/schema");
+  const song = await SongModel.findById(songId).select("voteScore voteCount");
+
   io.to(`event:${eventId}`).emit("votes_updated", {
     songId,
     participantId,
     value,
+    voteScore: song ? song.voteScore : null,
+    voteCount: song ? song.voteCount : null,
     timestamp: new Date().toISOString(),
   });
 };
