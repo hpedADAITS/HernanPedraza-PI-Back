@@ -15,4 +15,5 @@ dist/
 .DS_Store
 Thumbs.db
 docs/
-Dockerfile
+DockerfileAGENTS.md
+AGENTS.md
