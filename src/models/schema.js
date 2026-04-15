@@ -1,8 +1,8 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 const { Schema, model, Types } = mongoose;
 
-const emailLower = (v) => (typeof v === "string" ? v.trim().toLowerCase() : v);
-const upperTrim = (v) => (typeof v === "string" ? v.trim().toUpperCase() : v);
+const emailLower = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v);
+const upperTrim = (v) => (typeof v === 'string' ? v.trim().toUpperCase() : v);
 
 const stripPrivate = (_doc, ret) => {
   delete ret.passwordHash;
@@ -11,38 +11,38 @@ const stripPrivate = (_doc, ret) => {
 };
 
 const ALL_EVENT_PERMISSIONS = [
-  "QUEUE_READ",
-  "QUEUE_EDIT",
-  "SONG_SUGGEST",
-  "SONG_VOTE",
-  "SONG_APPROVE_REJECT",
-  "PARTICIPANT_KICK",
-  "PARTICIPANT_BAN",
-  "EVENT_START",
-  "EVENT_END",
-  "EVENT_CANCEL",
-  "EVENT_SETTINGS_EDIT",
-  "ANALYTICS_READ",
+  'QUEUE_READ',
+  'QUEUE_EDIT',
+  'SONG_SUGGEST',
+  'SONG_VOTE',
+  'SONG_APPROVE_REJECT',
+  'PARTICIPANT_KICK',
+  'PARTICIPANT_BAN',
+  'EVENT_START',
+  'EVENT_END',
+  'EVENT_CANCEL',
+  'EVENT_SETTINGS_EDIT',
+  'ANALYTICS_READ',
 ];
 
 function defaultPermissionsForRole(role) {
   switch (role) {
-    case "DJ":
+    case 'DJ':
       return [
-        "QUEUE_READ",
-        "QUEUE_EDIT",
-        "SONG_APPROVE_REJECT",
-        "PARTICIPANT_KICK",
-        "PARTICIPANT_BAN",
-        "EVENT_START",
-        "EVENT_END",
-        "EVENT_CANCEL",
-        "EVENT_SETTINGS_EDIT",
+        'QUEUE_READ',
+        'QUEUE_EDIT',
+        'SONG_APPROVE_REJECT',
+        'PARTICIPANT_KICK',
+        'PARTICIPANT_BAN',
+        'EVENT_START',
+        'EVENT_END',
+        'EVENT_CANCEL',
+        'EVENT_SETTINGS_EDIT',
       ];
-    case "ATTENDEE":
-      return ["QUEUE_READ", "SONG_SUGGEST", "SONG_VOTE"];
+    case 'ATTENDEE':
+      return ['QUEUE_READ', 'SONG_SUGGEST', 'SONG_VOTE'];
     default:
-      return ["QUEUE_READ"];
+      return ['QUEUE_READ'];
   }
 }
 
@@ -60,8 +60,8 @@ const UserSchema = new Schema(
     role: {
       type: String,
       required: true,
-      enum: ["ATTENDEE", "DJ", "ADMIN"],
-      default: "ATTENDEE",
+      enum: ['ATTENDEE', 'DJ', 'ADMIN'],
+      default: 'ATTENDEE',
       index: true,
     },
     isActive: { type: Boolean, default: true, index: true },
@@ -70,8 +70,8 @@ const UserSchema = new Schema(
   { timestamps: true },
 );
 
-UserSchema.set("toJSON", { transform: stripPrivate });
-UserSchema.set("toObject", { transform: stripPrivate });
+UserSchema.set('toJSON', { transform: stripPrivate });
+UserSchema.set('toObject', { transform: stripPrivate });
 
 const EventSettingsSchema = new Schema(
   {
@@ -91,7 +91,7 @@ const EventSchema = new Schema(
 
     ownerId: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: 'User',
       required: true,
       index: true,
     },
@@ -108,8 +108,8 @@ const EventSchema = new Schema(
     state: {
       type: String,
       required: true,
-      enum: ["DRAFT", "LIVE", "ENDED", "CANCELLED"],
-      default: "DRAFT",
+      enum: ['DRAFT', 'LIVE', 'ENDED', 'CANCELLED'],
+      default: 'DRAFT',
       index: true,
     },
 
@@ -118,7 +118,7 @@ const EventSchema = new Schema(
     cancelledAt: { type: Date },
     cancelledReason: { type: String },
 
-    currentSongId: { type: Schema.Types.ObjectId, ref: "Song" },
+    currentSongId: { type: Schema.Types.ObjectId, ref: 'Song' },
 
     settings: { type: EventSettingsSchema, default: () => ({}) },
   },
@@ -132,13 +132,13 @@ const EventMemberSchema = new Schema(
   {
     eventId: {
       type: Schema.Types.ObjectId,
-      ref: "Event",
+      ref: 'Event',
       required: true,
       index: true,
     },
     userId: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: 'User',
       required: true,
       index: true,
     },
@@ -146,7 +146,7 @@ const EventMemberSchema = new Schema(
     role: {
       type: String,
       required: true,
-      enum: ["DJ", "ATTENDEE"],
+      enum: ['DJ', 'ATTENDEE'],
       index: true,
     },
 
@@ -154,10 +154,10 @@ const EventMemberSchema = new Schema(
       type: [String],
       required: true,
       enum: ALL_EVENT_PERMISSIONS,
-      default: ["QUEUE_READ"],
+      default: ['QUEUE_READ'],
     },
 
-    addedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    addedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true },
 );
@@ -169,7 +169,7 @@ const ParticipantSchema = new Schema(
   {
     eventId: {
       type: Schema.Types.ObjectId,
-      ref: "Event",
+      ref: 'Event',
       required: true,
       index: true,
     },
@@ -185,11 +185,11 @@ const ParticipantSchema = new Schema(
     isBanned: { type: Boolean, default: false, index: true },
 
     kickedAt: { type: Date },
-    kickedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    kickedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     kickReason: { type: String },
 
     bannedAt: { type: Date },
-    bannedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    bannedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     banReason: { type: String },
 
     cooldownUntil: { type: Date, index: true },
@@ -202,7 +202,7 @@ const ParticipantSchema = new Schema(
   { timestamps: true },
 );
 
-ParticipantSchema.pre("validate", function (next) {
+ParticipantSchema.pre('validate', function (next) {
   if (this.nickname) this.nicknameLower = this.nickname.trim().toLowerCase();
   next();
 });
@@ -215,7 +215,7 @@ const SongSchema = new Schema(
   {
     eventId: {
       type: Schema.Types.ObjectId,
-      ref: "Event",
+      ref: 'Event',
       required: true,
       index: true,
     },
@@ -225,7 +225,7 @@ const SongSchema = new Schema(
 
     requestedBy: {
       type: Schema.Types.ObjectId,
-      ref: "Participant",
+      ref: 'Participant',
       required: true,
       index: true,
     },
@@ -233,8 +233,8 @@ const SongSchema = new Schema(
     status: {
       type: String,
       required: true,
-      enum: ["PENDING", "APPROVED", "PLAYING", "PLAYED", "SKIPPED", "REJECTED"],
-      default: "PENDING",
+      enum: ['PENDING', 'APPROVED', 'PLAYING', 'PLAYED', 'SKIPPED', 'REJECTED'],
+      default: 'PENDING',
       index: true,
     },
 
@@ -248,11 +248,11 @@ const SongSchema = new Schema(
 
     startedPlayingAt: { type: Date },
     skippedAt: { type: Date, index: true },
-    skippedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    skippedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     skippedReason: { type: String },
 
     removedAt: { type: Date },
-    removedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    removedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     removalReason: { type: String },
 
     autoRejectedAt: { type: Date, index: true },
@@ -267,13 +267,13 @@ const VoteSchema = new Schema(
   {
     songId: {
       type: Schema.Types.ObjectId,
-      ref: "Song",
+      ref: 'Song',
       required: true,
       index: true,
     },
     participantId: {
       type: Schema.Types.ObjectId,
-      ref: "Participant",
+      ref: 'Participant',
       required: true,
       index: true,
     },
@@ -289,13 +289,13 @@ const EventActionLogSchema = new Schema(
   {
     eventId: {
       type: Schema.Types.ObjectId,
-      ref: "Event",
+      ref: 'Event',
       required: true,
       index: true,
     },
     actorUserId: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: 'User',
       required: true,
       index: true,
     },
@@ -303,29 +303,29 @@ const EventActionLogSchema = new Schema(
       type: String,
       required: true,
       enum: [
-        "EVENT_START",
-        "EVENT_END",
-        "EVENT_CANCEL",
-        "PARTICIPANT_KICK",
-        "PARTICIPANT_BAN",
-        "PARTICIPANT_UNBAN",
-        "PARTICIPANT_COOLDOWN",
-        "SONG_APPROVE",
-        "SONG_REJECT",
-        "SONG_REMOVE",
-        "SONG_REORDER",
-        "SONG_SKIP",
-        "SONG_STATUS_CHANGE",
-        "SETTINGS_CHANGE",
+        'EVENT_START',
+        'EVENT_END',
+        'EVENT_CANCEL',
+        'PARTICIPANT_KICK',
+        'PARTICIPANT_BAN',
+        'PARTICIPANT_UNBAN',
+        'PARTICIPANT_COOLDOWN',
+        'SONG_APPROVE',
+        'SONG_REJECT',
+        'SONG_REMOVE',
+        'SONG_REORDER',
+        'SONG_SKIP',
+        'SONG_STATUS_CHANGE',
+        'SETTINGS_CHANGE',
       ],
       index: true,
     },
     participantId: {
       type: Schema.Types.ObjectId,
-      ref: "Participant",
+      ref: 'Participant',
       index: true,
     },
-    songId: { type: Schema.Types.ObjectId, ref: "Song", index: true },
+    songId: { type: Schema.Types.ObjectId, ref: 'Song', index: true },
     meta: { type: Schema.Types.Mixed },
   },
   { timestamps: true },
@@ -333,28 +333,28 @@ const EventActionLogSchema = new Schema(
 
 EventActionLogSchema.index({ eventId: 1, createdAt: -1 });
 
-const UserModel = model("User", UserSchema, "users");
-const EventModel = model("Event", EventSchema, "events");
+const UserModel = model('User', UserSchema, 'users');
+const EventModel = model('Event', EventSchema, 'events');
 const EventMemberModel = model(
-  "EventMember",
+  'EventMember',
   EventMemberSchema,
-  "event_members",
+  'event_members',
 );
 const ParticipantModel = model(
-  "Participant",
+  'Participant',
   ParticipantSchema,
-  "participants",
+  'participants',
 );
-const SongModel = model("Song", SongSchema, "songs");
-const VoteModel = model("Vote", VoteSchema, "votes");
+const SongModel = model('Song', SongSchema, 'songs');
+const VoteModel = model('Vote', VoteSchema, 'votes');
 const EventActionLogModel = model(
-  "EventActionLog",
+  'EventActionLog',
   EventActionLogSchema,
-  "event_action_logs",
+  'event_action_logs',
 );
 
 async function hasEventPermission(user, eventId, permission) {
-  if (user.role === "ADMIN") return true;
+  if (user.role === 'ADMIN') return true;
   const member = await EventMemberModel.findOne({ eventId, userId: user._id })
     .select({ permissions: 1 })
     .lean();
@@ -365,7 +365,7 @@ async function hasEventPermission(user, eventId, permission) {
 }
 
 async function connectMongo(uri, dbName) {
-  mongoose.set("strictQuery", true);
+  mongoose.set('strictQuery', true);
   const opts = { autoIndex: true };
   if (dbName) opts.dbName = dbName;
   await mongoose.connect(uri, opts);

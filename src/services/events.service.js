@@ -1,6 +1,13 @@
-const { EventModel, EventMemberModel, ParticipantModel, SongModel, defaultPermissionsForRole, EventActionLogModel } = require("../models/schema");
-const { generateAccessCode } = require("../utils/code-generator");
-const { logger } = require("../utils");
+const {
+  EventModel,
+  EventMemberModel,
+  ParticipantModel,
+  SongModel,
+  defaultPermissionsForRole,
+  EventActionLogModel,
+} = require('../models/schema');
+const { generateAccessCode } = require('../utils/code-generator');
+const { logger } = require('../utils');
 
 class EventsService {
   async createEvent(ownerId, name, description, startsAt) {
@@ -12,7 +19,7 @@ class EventsService {
       ownerId,
       accessCode,
       startsAt: new Date(startsAt),
-      state: "DRAFT",
+      state: 'DRAFT',
       settings: {
         allowRequests: true,
         requireApproval: false,
@@ -28,8 +35,8 @@ class EventsService {
     const eventMember = new EventMemberModel({
       eventId: event._id,
       userId: ownerId,
-      role: "DJ",
-      permissions: defaultPermissionsForRole("DJ"),
+      role: 'DJ',
+      permissions: defaultPermissionsForRole('DJ'),
       addedBy: ownerId,
     });
 
@@ -41,24 +48,29 @@ class EventsService {
   }
 
   async getEvent(eventId) {
-    const event = await EventModel.findById(eventId).populate("ownerId", "email displayName");
+    const event = await EventModel.findById(eventId).populate(
+      'ownerId',
+      'email displayName',
+    );
     if (!event) {
-      throw new Error("Event not found");
+      throw new Error('Event not found');
     }
     return this._formatEvent(event);
   }
 
   async getEventByAccessCode(accessCode) {
-    const event = await EventModel.findOne({ accessCode: accessCode.toUpperCase() }).populate("ownerId", "email displayName");
+    const event = await EventModel.findOne({
+      accessCode: accessCode.toUpperCase(),
+    }).populate('ownerId', 'email displayName');
     if (!event) {
-      throw new Error("Event not found");
+      throw new Error('Event not found');
     }
     return this._formatEvent(event);
   }
 
   async listActiveEvents(limit = 50, skip = 0) {
-    const events = await EventModel.find({ state: "LIVE" })
-      .populate("ownerId", "email displayName")
+    const events = await EventModel.find({ state: 'LIVE' })
+      .populate('ownerId', 'email displayName')
       .limit(limit)
       .skip(skip)
       .sort({ startsAt: -1 });
@@ -69,18 +81,19 @@ class EventsService {
   async updateEvent(eventId, ownerId, updates) {
     const event = await EventModel.findById(eventId);
     if (!event) {
-      throw new Error("Event not found");
+      throw new Error('Event not found');
     }
 
     // Check ownership
     if (event.ownerId.toString() !== ownerId.toString()) {
-      throw new Error("Unauthorized");
+      throw new Error('Unauthorized');
     }
 
     // Allow updating: name, description, settings
     if (updates.name) event.name = updates.name;
     if (updates.description) event.description = updates.description;
-    if (updates.settings) event.settings = { ...event.settings, ...updates.settings };
+    if (updates.settings)
+      event.settings = { ...event.settings, ...updates.settings };
 
     await event.save();
     logger.info(`Event updated: ${eventId}`);
@@ -90,16 +103,17 @@ class EventsService {
 
   async startEvent(eventId, userId) {
     const event = await EventModel.findById(eventId);
-    if (!event) throw new Error("Event not found");
-    if (event.ownerId.toString() !== userId.toString()) throw new Error("Unauthorized");
+    if (!event) throw new Error('Event not found');
+    if (event.ownerId.toString() !== userId.toString())
+      throw new Error('Unauthorized');
 
-    event.state = "LIVE";
+    event.state = 'LIVE';
     await event.save();
 
     await EventActionLogModel.create({
       eventId,
       actorUserId: userId,
-      type: "EVENT_START",
+      type: 'EVENT_START',
     });
 
     logger.info(`Event started: ${eventId}`);
@@ -108,17 +122,18 @@ class EventsService {
 
   async endEvent(eventId, userId) {
     const event = await EventModel.findById(eventId);
-    if (!event) throw new Error("Event not found");
-    if (event.ownerId.toString() !== userId.toString()) throw new Error("Unauthorized");
+    if (!event) throw new Error('Event not found');
+    if (event.ownerId.toString() !== userId.toString())
+      throw new Error('Unauthorized');
 
-    event.state = "ENDED";
+    event.state = 'ENDED';
     event.endedAt = new Date();
     await event.save();
 
     await EventActionLogModel.create({
       eventId,
       actorUserId: userId,
-      type: "EVENT_END",
+      type: 'EVENT_END',
     });
 
     logger.info(`Event ended: ${eventId}`);
@@ -127,10 +142,11 @@ class EventsService {
 
   async cancelEvent(eventId, userId, reason) {
     const event = await EventModel.findById(eventId);
-    if (!event) throw new Error("Event not found");
-    if (event.ownerId.toString() !== userId.toString()) throw new Error("Unauthorized");
+    if (!event) throw new Error('Event not found');
+    if (event.ownerId.toString() !== userId.toString())
+      throw new Error('Unauthorized');
 
-    event.state = "CANCELLED";
+    event.state = 'CANCELLED';
     event.cancelledAt = new Date();
     event.cancelledReason = reason;
     await event.save();
@@ -138,7 +154,7 @@ class EventsService {
     await EventActionLogModel.create({
       eventId,
       actorUserId: userId,
-      type: "EVENT_CANCEL",
+      type: 'EVENT_CANCEL',
       meta: { reason },
     });
 
@@ -159,7 +175,7 @@ class EventsService {
     // Check if already a member
     const existing = await EventMemberModel.findOne({ eventId, userId });
     if (existing) {
-      throw new Error("User is already an event member");
+      throw new Error('User is already an event member');
     }
 
     const member = new EventMemberModel({

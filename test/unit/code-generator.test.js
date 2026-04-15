@@ -1,4 +1,8 @@
-const { generateEventCode, generateUniqueId, generateNonce } = require('../../src/utils/code-generator');
+const {
+  generateEventCode,
+  generateUniqueId,
+  generateNonce,
+} = require('../../src/utils/code-generator');
 
 describe('Code Generator Utils', () => {
   describe('generateEventCode', () => {

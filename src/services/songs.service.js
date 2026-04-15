@@ -1,16 +1,20 @@
-const { SongModel, EventActionLogModel, ParticipantModel } = require("../models/schema");
-const { logger } = require("../utils");
+const {
+  SongModel,
+  EventActionLogModel,
+  ParticipantModel,
+} = require('../models/schema');
+const { logger } = require('../utils');
 
 class SongsService {
   async suggestSong(eventId, participantId, title, artist) {
     // Check if participant is on cooldown
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error("Participant not found");
+      throw new Error('Participant not found');
     }
 
     if (participant.cooldownUntil && participant.cooldownUntil > new Date()) {
-      throw new Error("Participant is on cooldown");
+      throw new Error('Participant is on cooldown');
     }
 
     const song = new SongModel({
@@ -18,7 +22,7 @@ class SongsService {
       title,
       artist,
       requestedBy: participantId,
-      status: "PENDING",
+      status: 'PENDING',
       sortKey: `${Date.now()}_${Math.random()}`,
     });
 
@@ -31,9 +35,9 @@ class SongsService {
   async getQueueForEvent(eventId) {
     const songs = await SongModel.find({
       eventId,
-      status: { $in: ["APPROVED", "PLAYING"] },
+      status: { $in: ['APPROVED', 'PLAYING'] },
     })
-      .populate("requestedBy", "nickname")
+      .populate('requestedBy', 'nickname')
       .sort({ pinned: -1, voteScore: -1, sortKey: 1 });
 
     return songs.map((s) => this._formatSong(s));
@@ -42,9 +46,9 @@ class SongsService {
   async getPendingSongsForEvent(eventId) {
     const songs = await SongModel.find({
       eventId,
-      status: "PENDING",
+      status: 'PENDING',
     })
-      .populate("requestedBy", "nickname")
+      .populate('requestedBy', 'nickname')
       .sort({ createdAt: 1 });
 
     return songs.map((s) => this._formatSong(s));
@@ -53,20 +57,20 @@ class SongsService {
   async approveSong(songId, eventId, userId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error("Song not found");
+      throw new Error('Song not found');
     }
 
     if (song.eventId.toString() !== eventId.toString()) {
-      throw new Error("Song not in this event");
+      throw new Error('Song not in this event');
     }
 
-    song.status = "APPROVED";
+    song.status = 'APPROVED';
     await song.save();
 
     await EventActionLogModel.create({
       eventId,
       actorUserId: userId,
-      type: "SONG_APPROVE",
+      type: 'SONG_APPROVE',
       songId,
     });
 
@@ -77,20 +81,20 @@ class SongsService {
   async rejectSong(songId, eventId, reason, userId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error("Song not found");
+      throw new Error('Song not found');
     }
 
     if (song.eventId.toString() !== eventId.toString()) {
-      throw new Error("Song not in this event");
+      throw new Error('Song not in this event');
     }
 
-    song.status = "REJECTED";
+    song.status = 'REJECTED';
     await song.save();
 
     await EventActionLogModel.create({
       eventId,
       actorUserId: userId,
-      type: "SONG_REJECT",
+      type: 'SONG_REJECT',
       songId,
       meta: { reason },
     });
@@ -102,10 +106,10 @@ class SongsService {
   async skipSong(songId, eventId, reason, userId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error("Song not found");
+      throw new Error('Song not found');
     }
 
-    song.status = "SKIPPED";
+    song.status = 'SKIPPED';
     song.skippedAt = new Date();
     song.skippedBy = userId;
     song.skippedReason = reason;
@@ -114,7 +118,7 @@ class SongsService {
     await EventActionLogModel.create({
       eventId,
       actorUserId: userId,
-      type: "SONG_SKIP",
+      type: 'SONG_SKIP',
       songId,
       meta: { reason },
     });
@@ -127,22 +131,22 @@ class SongsService {
     const nextSong = await SongModel.findOneAndUpdate(
       {
         eventId,
-        status: "APPROVED",
+        status: 'APPROVED',
       },
       {
-        status: "PLAYING",
+        status: 'PLAYING',
         startedPlayingAt: new Date(),
       },
-      { new: true, sort: { pinned: -1, voteScore: -1, sortKey: 1 } }
+      { new: true, sort: { pinned: -1, voteScore: -1, sortKey: 1 } },
     );
 
     if (nextSong) {
       await EventActionLogModel.create({
         eventId,
         actorUserId: userId,
-        type: "SONG_STATUS_CHANGE",
+        type: 'SONG_STATUS_CHANGE',
         songId: nextSong._id,
-        meta: { newStatus: "PLAYING" },
+        meta: { newStatus: 'PLAYING' },
       });
 
       logger.info(`Playing song: ${nextSong._id}`);
@@ -154,18 +158,18 @@ class SongsService {
   async markSongAsPlayed(songId, eventId, userId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error("Song not found");
+      throw new Error('Song not found');
     }
 
-    song.status = "PLAYED";
+    song.status = 'PLAYED';
     await song.save();
 
     await EventActionLogModel.create({
       eventId,
       actorUserId: userId,
-      type: "SONG_STATUS_CHANGE",
+      type: 'SONG_STATUS_CHANGE',
       songId,
-      meta: { newStatus: "PLAYED" },
+      meta: { newStatus: 'PLAYED' },
     });
 
     logger.info(`Song marked as played: ${song._id}`);
@@ -175,16 +179,20 @@ class SongsService {
   async getSongPosition(songId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error("Song not found");
+      throw new Error('Song not found');
     }
 
     const position = await SongModel.countDocuments({
       eventId: song.eventId,
-      status: { $in: ["APPROVED", "PLAYING"] },
+      status: { $in: ['APPROVED', 'PLAYING'] },
       $or: [
         { pinned: true, sortKey: { $lt: song.sortKey } },
         { pinned: false, voteScore: { $gt: song.voteScore } },
-        { pinned: false, voteScore: song.voteScore, sortKey: { $lt: song.sortKey } },
+        {
+          pinned: false,
+          voteScore: song.voteScore,
+          sortKey: { $lt: song.sortKey },
+        },
       ],
     });
 
@@ -194,7 +202,7 @@ class SongsService {
   async getSongStats(songId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error("Song not found");
+      throw new Error('Song not found');
     }
 
     return {

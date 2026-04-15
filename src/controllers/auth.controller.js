@@ -1,7 +1,7 @@
-const { authService } = require("../services");
-const { logger } = require("../utils");
-const { httpStatus, messages } = require("../constants");
-const { ValidationError } = require("../errors");
+const { authService } = require('../services');
+const { logger } = require('../utils');
+const { httpStatus, messages } = require('../constants');
+const { ValidationError } = require('../errors');
 
 class AuthController {
   async register(req, res, next) {
@@ -13,7 +13,7 @@ class AuthController {
         email,
         password,
         displayName,
-        role
+        role,
       );
 
       res.status(httpStatus.CREATED).json({
@@ -21,7 +21,7 @@ class AuthController {
         data: result,
       });
     } catch (error) {
-      logger.error("Register error:", error);
+      logger.error('Register error:', error);
       next(error);
     }
   }
@@ -42,7 +42,7 @@ class AuthController {
         data: result,
       });
     } catch (error) {
-      logger.error("Login error:", error);
+      logger.error('Login error:', error);
       next(error);
     }
   }
@@ -59,7 +59,7 @@ class AuthController {
         data: result,
       });
     } catch (error) {
-      logger.error("Refresh token error:", error);
+      logger.error('Refresh token error:', error);
       next(error);
     }
   }
@@ -73,7 +73,7 @@ class AuthController {
         data: { user },
       });
     } catch (error) {
-      logger.error("Get current user error:", error);
+      logger.error('Get current user error:', error);
       next(error);
     }
   }

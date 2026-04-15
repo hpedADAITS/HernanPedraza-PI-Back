@@ -1,11 +1,11 @@
-const { logger } = require("../utils");
-const { httpStatus } = require("../constants");
-const { ApiError } = require("../errors");
+const { logger } = require('../utils');
+const { httpStatus } = require('../constants');
+const { ApiError } = require('../errors');
 
 const errorMiddleware = (err, req, res, next) => {
   let statusCode = httpStatus.INTERNAL_SERVER_ERROR;
-  let message = "Internal server error";
-  let errorCode = "INTERNAL_SERVER_ERROR";
+  let message = 'Internal server error';
+  let errorCode = 'INTERNAL_SERVER_ERROR';
   let details = null;
 
   // Handle custom ApiError instances
@@ -18,18 +18,18 @@ const errorMiddleware = (err, req, res, next) => {
     // Handle errors with statusCode property
     statusCode = err.statusCode;
     message = err.message;
-    errorCode = err.code || "ERROR";
+    errorCode = err.code || 'ERROR';
   } else if (err instanceof Error) {
     // Handle generic JavaScript errors
-    message = err.message || "An unexpected error occurred";
-    errorCode = "ERROR";
+    message = err.message || 'An unexpected error occurred';
+    errorCode = 'ERROR';
   }
 
   // Log error with context
   logger.error(`[${statusCode}] ${errorCode}: ${message}`, {
     path: req.path,
     method: req.method,
-    userId: req.user?.userId || "anonymous",
+    userId: req.user?.userId || 'anonymous',
     stack: err.stack,
     details,
   });

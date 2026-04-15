@@ -1,4 +1,8 @@
-const { generateToken, verifyToken, decodeToken } = require('../../src/utils/jwt.utils');
+const {
+  generateToken,
+  verifyToken,
+  decodeToken,
+} = require('../../src/utils/jwt.utils');
 const config = require('../../src/config');
 
 describe('JWT Utils', () => {
@@ -22,7 +26,7 @@ describe('JWT Utils', () => {
       };
       const token = generateToken(payload);
       expect(token).toBeDefined();
-      
+
       const decoded = decodeToken(token);
       expect(decoded.userId).toBe(testUserId);
       expect(decoded.email).toBe(testEmail);
@@ -33,7 +37,7 @@ describe('JWT Utils', () => {
       const customExpiry = '1h';
       const token = generateToken(testUserId, customExpiry);
       expect(token).toBeDefined();
-      
+
       const decoded = decodeToken(token);
       expect(decoded.exp).toBeDefined();
     });
@@ -56,7 +60,7 @@ describe('JWT Utils', () => {
     test('should verify valid token', () => {
       const token = generateToken(testUserId);
       const decoded = verifyToken(token);
-      
+
       expect(decoded).toBeDefined();
       expect(decoded.userId).toBe(testUserId);
     });
@@ -69,7 +73,7 @@ describe('JWT Utils', () => {
       // This test would require mocking time or using an already expired token
       // For now, we create a minimal example
       const expiredToken = generateToken(testUserId, '0s');
-      
+
       setTimeout(() => {
         expect(() => verifyToken(expiredToken)).toThrow();
         done();
@@ -90,7 +94,7 @@ describe('JWT Utils', () => {
       };
       const token = generateToken(payload);
       const decoded = verifyToken(token);
-      
+
       expect(decoded.userId).toBe(testUserId);
       expect(decoded.email).toBe(testEmail);
       expect(decoded.role).toBe(testRole);
@@ -101,7 +105,7 @@ describe('JWT Utils', () => {
     test('should decode valid token without verification', () => {
       const token = generateToken(testUserId);
       const decoded = decodeToken(token);
-      
+
       expect(decoded).toBeDefined();
       expect(decoded.userId).toBe(testUserId);
     });
@@ -126,7 +130,7 @@ describe('JWT Utils', () => {
       };
       const token = generateToken(payload);
       const decoded = decodeToken(token);
-      
+
       expect(decoded.userId).toBe(testUserId);
       expect(decoded.email).toBe(testEmail);
       expect(decoded.role).toBe(testRole);

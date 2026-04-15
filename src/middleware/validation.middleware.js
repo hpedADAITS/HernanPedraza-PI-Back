@@ -1,4 +1,4 @@
-const { logger } = require("../utils");
+const { logger } = require('../utils');
 
 /**
  * Factoría de middleware de validación
@@ -17,17 +17,17 @@ const validationMiddleware = (schema) => {
         {
           abortEarly: false,
           stripUnknown: true,
-        }
+        },
       );
 
       if (error) {
-        const messages = error.details.map((d) => d.message).join(", ");
+        const messages = error.details.map((d) => d.message).join(', ');
         logger.warn(`Error de validación: ${messages}`);
         return res.status(400).json({
           success: false,
           error: {
-            code: "VALIDATION_ERROR",
-            message: "Validación fallida",
+            code: 'VALIDATION_ERROR',
+            message: 'Validación fallida',
             details: error.details,
           },
         });
@@ -40,12 +40,12 @@ const validationMiddleware = (schema) => {
 
       next();
     } catch (err) {
-      logger.error("Error del middleware de validación:", err);
+      logger.error('Error del middleware de validación:', err);
       res.status(500).json({
         success: false,
         error: {
-          code: "INTERNAL_ERROR",
-          message: "Error interno de validación",
+          code: 'INTERNAL_ERROR',
+          message: 'Error interno de validación',
         },
       });
     }

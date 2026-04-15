@@ -1,4 +1,4 @@
-const handleSocketEvents = require("./handlers");
+const handleSocketEvents = require('./handlers');
 
 /**
  * Initialize Socket.IO handlers

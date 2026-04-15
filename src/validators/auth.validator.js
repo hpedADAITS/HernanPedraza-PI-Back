@@ -3,7 +3,7 @@
  *  Valida credenciales de autorizacion y establece criterios de contrase;as
  */
 
-const { ValidationError } = require("../errors");
+const { ValidationError } = require('../errors');
 
 /**
  * Valida formato email
@@ -11,11 +11,11 @@ const { ValidationError } = require("../errors");
 
 function validateEmail(email) {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!email || typeof email !== "string") {
-    throw new ValidationError("Email required");
+  if (!email || typeof email !== 'string') {
+    throw new ValidationError('Email required');
   }
   if (!emailRegex.test(email)) {
-    throw new ValidationError("Invalid mail format");
+    throw new ValidationError('Invalid mail format');
   }
 }
 
@@ -24,14 +24,14 @@ function validateEmail(email) {
  */
 
 function validatePassword(password) {
-  if (!password || typeof password !== "string") {
-    throw new ValidationError("Password required");
+  if (!password || typeof password !== 'string') {
+    throw new ValidationError('Password required');
   }
   if (password.length < 8) {
-    throw new ValidationError("Password must be AT LEAST 8 characters long");
+    throw new ValidationError('Password must be AT LEAST 8 characters long');
   }
   if (password.length > 128) {
-    throw new ValidationError("Password too long");
+    throw new ValidationError('Password too long');
   }
 }
 
@@ -40,15 +40,15 @@ function validatePassword(password) {
  */
 
 function validateDisplayName(displayName) {
-  if (!displayName || typeof displayName !== "string") {
-    throw new ValidationError("Display name required");
+  if (!displayName || typeof displayName !== 'string') {
+    throw new ValidationError('Display name required');
   }
   const trimmed = displayName.trim();
   if (trimmed.length < 2) {
-    throw new ValidationError("Display name must be at least 2 characters");
+    throw new ValidationError('Display name must be at least 2 characters');
   }
   if (trimmed.length > 50) {
-    throw new ValidationError("Display name must be less than 50 characters");
+    throw new ValidationError('Display name must be less than 50 characters');
   }
 }
 
@@ -64,9 +64,9 @@ function validateRegistration(data) {
   validateDisplayName(displayName);
 
   // Validate role if provided
-  if (data.role && !["ATTENDEE", "DJ", "ADMIN"].includes(data.role)) {
+  if (data.role && !['ATTENDEE', 'DJ', 'ADMIN'].includes(data.role)) {
     throw new ValidationError(
-      "Invalid role. It must be either ATTENDEE, DJ, or ADMIN",
+      'Invalid role. It must be either ATTENDEE, DJ, or ADMIN',
     );
   }
 }
@@ -79,15 +79,15 @@ function validateLogin(data) {
   const { email, password } = data;
 
   if (!email) {
-    throw new ValidationError("Email is required");
+    throw new ValidationError('Email is required');
   }
   if (!password) {
-    throw new ValidationError("Password is required");
+    throw new ValidationError('Password is required');
   }
 
   validateEmail(email);
-  if (typeof password !== "string" || password.length === 0) {
-    throw new ValidationError("Invalid password");
+  if (typeof password !== 'string' || password.length === 0) {
+    throw new ValidationError('Invalid password');
   }
 }
 
@@ -99,10 +99,10 @@ function validateTokenRefresh(data) {
   const { token } = data;
 
   if (!token) {
-    throw new ValidationError("Token is required");
+    throw new ValidationError('Token is required');
   }
-  if (typeof token !== "string") {
-    throw new ValidationError("Invalid token format");
+  if (typeof token !== 'string') {
+    throw new ValidationError('Invalid token format');
   }
 }
 

@@ -1,5 +1,5 @@
-const { ParticipantModel, EventActionLogModel } = require("../models/schema");
-const { logger } = require("../utils");
+const { ParticipantModel, EventActionLogModel } = require('../models/schema');
+const { logger } = require('../utils');
 
 class ParticipantsService {
   async joinEvent(eventId, nickname) {
@@ -11,7 +11,7 @@ class ParticipantsService {
     });
 
     if (existing) {
-      throw new Error("Nickname already taken in this event");
+      throw new Error('Nickname already taken in this event');
     }
 
     const participant = new ParticipantModel({
@@ -31,7 +31,7 @@ class ParticipantsService {
   async leaveEvent(participantId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error("Participant not found");
+      throw new Error('Participant not found');
     }
 
     participant.leftAt = new Date();
@@ -44,7 +44,7 @@ class ParticipantsService {
   async getParticipant(participantId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error("Participant not found");
+      throw new Error('Participant not found');
     }
     return this._formatParticipant(participant);
   }
@@ -69,7 +69,7 @@ class ParticipantsService {
     const participant = await ParticipantModel.findByIdAndUpdate(
       participantId,
       { lastSeenAt: new Date() },
-      { new: true }
+      { new: true },
     );
     return participant;
   }
@@ -77,7 +77,7 @@ class ParticipantsService {
   async setParticipantCooldown(participantId, durationMs, reason, actorUserId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error("Participant not found");
+      throw new Error('Participant not found');
     }
 
     // Extract userId properly - handle string, ObjectId, or object with userId property
@@ -88,10 +88,10 @@ class ParticipantsService {
       // If it's an object, try to extract userId property
       userIdStr = actorUserId.userId?.toString() || actorUserId._id?.toString();
     }
-    
+
     if (!userIdStr) {
-      logger.error("Invalid actorUserId:", actorUserId);
-      throw new Error("Invalid actor user ID");
+      logger.error('Invalid actorUserId:', actorUserId);
+      throw new Error('Invalid actor user ID');
     }
 
     const cooldownUntil = new Date(Date.now() + durationMs);
@@ -102,25 +102,27 @@ class ParticipantsService {
     await EventActionLogModel.create({
       eventId: participant.eventId,
       actorUserId: userIdStr,
-      type: "PARTICIPANT_COOLDOWN",
+      type: 'PARTICIPANT_COOLDOWN',
       participantId,
       meta: { reason, durationMs },
     });
 
-    logger.info(`Participant ${participantId} on cooldown until ${cooldownUntil}`);
-    
+    logger.info(
+      `Participant ${participantId} on cooldown until ${cooldownUntil}`,
+    );
+
     // Return both formatted participant and event info for socket broadcast
     return {
       participant: this._formatParticipant(participant),
       eventId: participant.eventId,
-      action: "participant_cooldown",
+      action: 'participant_cooldown',
     };
   }
 
   async kickParticipant(participantId, reason, actorUserId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error("Participant not found");
+      throw new Error('Participant not found');
     }
 
     // Extract userId properly - handle string, ObjectId, or object with userId property
@@ -131,10 +133,10 @@ class ParticipantsService {
       // If it's an object, try to extract userId property
       userIdStr = actorUserId.userId?.toString() || actorUserId._id?.toString();
     }
-    
+
     if (!userIdStr) {
-      logger.error("Invalid actorUserId:", actorUserId);
-      throw new Error("Invalid actor user ID");
+      logger.error('Invalid actorUserId:', actorUserId);
+      throw new Error('Invalid actor user ID');
     }
 
     participant.kickedAt = new Date();
@@ -146,25 +148,25 @@ class ParticipantsService {
     await EventActionLogModel.create({
       eventId: participant.eventId,
       actorUserId: userIdStr,
-      type: "PARTICIPANT_KICK",
+      type: 'PARTICIPANT_KICK',
       participantId,
       meta: { reason },
     });
 
     logger.info(`Participant ${participantId} kicked: ${reason}`);
-    
+
     // Return both formatted participant and event info for socket broadcast
     return {
       participant: this._formatParticipant(participant),
       eventId: participant.eventId,
-      action: "participant_kicked",
+      action: 'participant_kicked',
     };
   }
 
   async banParticipant(participantId, reason, actorUserId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error("Participant not found");
+      throw new Error('Participant not found');
     }
 
     participant.bannedAt = new Date();
@@ -177,7 +179,7 @@ class ParticipantsService {
     await EventActionLogModel.create({
       eventId: participant.eventId,
       actorUserId,
-      type: "PARTICIPANT_BAN",
+      type: 'PARTICIPANT_BAN',
       participantId,
       meta: { reason },
     });
@@ -190,7 +192,7 @@ class ParticipantsService {
     const participant = await ParticipantModel.findByIdAndUpdate(
       participantId,
       { isPremium },
-      { new: true }
+      { new: true },
     );
     return this._formatParticipant(participant);
   }

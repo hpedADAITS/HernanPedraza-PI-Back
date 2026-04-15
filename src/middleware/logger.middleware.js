@@ -1,12 +1,12 @@
-const { logger } = require("../utils");
+const { logger } = require('../utils');
 
 const loggerMiddleware = (req, res, next) => {
   const start = Date.now();
 
   // Registrar la respuesta cuando finaliza
-  res.on("finish", () => {
+  res.on('finish', () => {
     const duration = Date.now() - start;
-    const logLevel = res.statusCode >= 400 ? "error" : "info";
+    const logLevel = res.statusCode >= 400 ? 'error' : 'info';
 
     logger[logLevel](
       `${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`,
@@ -16,7 +16,7 @@ const loggerMiddleware = (req, res, next) => {
         codigoEstado: res.statusCode,
         duracion: duration,
         ip: req.ip,
-      }
+      },
     );
   });
 

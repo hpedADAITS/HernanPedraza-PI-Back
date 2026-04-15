@@ -1,8 +1,8 @@
-const { votesService } = require("../services");
-const { logger } = require("../utils");
-const { httpStatus } = require("../constants");
-const { votesValidator } = require("../validators");
-const { votesDtos } = require("../dtos");
+const { votesService } = require('../services');
+const { logger } = require('../utils');
+const { httpStatus } = require('../constants');
+const { votesValidator } = require('../validators');
+const { votesDtos } = require('../dtos');
 
 class VotesController {
   async castVote(req, res, next) {
@@ -10,14 +10,18 @@ class VotesController {
       const dto = votesDtos.toCastVoteDTO(req.body);
       votesValidator.validateCastVote(dto);
 
-      const vote = await votesService.castVote(dto.songId, dto.participantId, dto.value);
+      const vote = await votesService.castVote(
+        dto.songId,
+        dto.participantId,
+        dto.value,
+      );
 
       res.status(httpStatus.CREATED).json({
         success: true,
         data: { vote },
       });
     } catch (error) {
-      logger.error("Cast vote error:", error);
+      logger.error('Cast vote error:', error);
       next(error);
     }
   }
@@ -30,10 +34,10 @@ class VotesController {
 
       res.status(httpStatus.OK).json({
         success: true,
-        data: { message: "Vote removed" },
+        data: { message: 'Vote removed' },
       });
     } catch (error) {
-      logger.error("Remove vote error:", error);
+      logger.error('Remove vote error:', error);
       next(error);
     }
   }
@@ -49,7 +53,7 @@ class VotesController {
         data: stats,
       });
     } catch (error) {
-      logger.error("Get vote stats error:", error);
+      logger.error('Get vote stats error:', error);
       next(error);
     }
   }
@@ -65,7 +69,7 @@ class VotesController {
         data: { vote },
       });
     } catch (error) {
-      logger.error("Get participant vote error:", error);
+      logger.error('Get participant vote error:', error);
       next(error);
     }
   }

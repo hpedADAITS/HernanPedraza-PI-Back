@@ -1,18 +1,18 @@
-const { Router } = require("express");
-const mongoose = require("mongoose");
+const { Router } = require('express');
+const mongoose = require('mongoose');
 
 const router = Router();
 
-router.get("/", (req, res) => {
+router.get('/', (req, res) => {
   res.json({
     success: true,
-    message: "La API de SyncRekuest está ejecutándose",
+    message: 'La API de SyncRekuest está ejecutándose',
     timestamp: new Date().toISOString(),
   });
 });
 
 // Health check endpoint (DB + API status)
-router.get("/health", (req, res) => {
+router.get('/health', (req, res) => {
   const dbConnected = mongoose.connection.readyState === 1; // 1 = connected
   res.status(dbConnected ? 200 : 503).json({
     success: dbConnected,

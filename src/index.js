@@ -1,8 +1,8 @@
-const { logger } = require("./utils");
-const app = require("./app");
-const config = require("./config");
-const { initLoaders } = require("./loaders");
-const { initSocketIO } = require("./loaders/socket");
+const { logger } = require('./utils');
+const app = require('./app');
+const config = require('./config');
+const { initLoaders } = require('./loaders');
+const { initSocketIO } = require('./loaders/socket');
 
 const { port } = config;
 
@@ -23,16 +23,16 @@ initLoaders()
     });
   })
   .catch((err) => {
-    logger.error("Error al inicializar la aplicación:", err);
+    logger.error('Error al inicializar la aplicación:', err);
     process.exit(1);
   });
 
-process.on("SIGTERM", () => {
-  logger.info("Señal SIGTERM recibida: cerrando servidor HTTP");
+process.on('SIGTERM', () => {
+  logger.info('Señal SIGTERM recibida: cerrando servidor HTTP');
   process.exit(0);
 });
 
-process.on("SIGINT", () => {
-  logger.info("Señal SIGINT recibida: cerrando servidor HTTP");
+process.on('SIGINT', () => {
+  logger.info('Señal SIGINT recibida: cerrando servidor HTTP');
   process.exit(0);
 });

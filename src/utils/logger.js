@@ -1,6 +1,6 @@
-const fs = require("fs");
-const path = require("path");
-const config = require("../config");
+const fs = require('fs');
+const path = require('path');
+const config = require('../config');
 
 const logsDir = path.dirname(config.logFile);
 
@@ -16,11 +16,11 @@ const levels = {
 };
 
 const colors = {
-  error: "\x1b[31m",
-  warn: "\x1b[33m",
-  info: "\x1b[36m",
-  debug: "\x1b[35m",
-  reset: "\x1b[0m",
+  error: '\x1b[31m',
+  warn: '\x1b[33m',
+  info: '\x1b[36m',
+  debug: '\x1b[35m',
+  reset: '\x1b[0m',
 };
 
 const formatTimestamp = () => {
@@ -29,7 +29,7 @@ const formatTimestamp = () => {
 
 const formatMessage = (level, message, meta = {}) => {
   const timestamp = formatTimestamp();
-  const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : "";
+  const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : '';
   return `[${timestamp}] [${level.toUpperCase()}] ${message} ${metaStr}`;
 };
 
@@ -38,24 +38,24 @@ const log = (level, message, meta = {}) => {
 
   const formatted = formatMessage(level, message, meta);
 
-  if (config.env === "development") {
+  if (config.env === 'development') {
     console.log(`${colors[level]}${formatted}${colors.reset}`);
   } else {
     console.log(formatted);
   }
 
   try {
-    fs.appendFileSync(config.logFile, formatted + "\n");
+    fs.appendFileSync(config.logFile, formatted + '\n');
   } catch (err) {
-    console.error("Error al escribir en archivo de log:", err);
+    console.error('Error al escribir en archivo de log:', err);
   }
 };
 
 const logger = {
-  error: (message, meta) => log("error", message, meta),
-  warn: (message, meta) => log("warn", message, meta),
-  info: (message, meta) => log("info", message, meta),
-  debug: (message, meta) => log("debug", message, meta),
+  error: (message, meta) => log('error', message, meta),
+  warn: (message, meta) => log('warn', message, meta),
+  info: (message, meta) => log('info', message, meta),
+  debug: (message, meta) => log('debug', message, meta),
 };
 
 module.exports = logger;

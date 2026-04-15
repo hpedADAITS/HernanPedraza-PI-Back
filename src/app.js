@@ -1,3 +1,3 @@
-const app = require("./loaders/express");
+const app = require('./loaders/express');
 
 module.exports = app;

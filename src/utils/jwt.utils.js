@@ -1,6 +1,6 @@
-const jwt = require("jsonwebtoken");
-const config = require("../config");
-const { logger } = require("./logger");
+const jwt = require('jsonwebtoken');
+const config = require('../config');
+const { logger } = require('./logger');
 
 const generateToken = (userPayload, expiresIn = config.jwtExpiry) => {
   try {
@@ -11,23 +11,24 @@ const generateToken = (userPayload, expiresIn = config.jwtExpiry) => {
     } else if (typeof userPayload === 'object' && userPayload.userId) {
       // Ensure userId is a string
       payload = {
-        userId: typeof userPayload.userId === 'string' 
-          ? userPayload.userId 
-          : userPayload.userId.toString(),
+        userId:
+          typeof userPayload.userId === 'string'
+            ? userPayload.userId
+            : userPayload.userId.toString(),
         ...(userPayload.email && { email: userPayload.email }),
         ...(userPayload.role && { role: userPayload.role }),
       };
     } else {
-      throw new Error("Invalid payload for token generation");
+      throw new Error('Invalid payload for token generation');
     }
 
     const token = jwt.sign(payload, config.jwtSecret, {
       expiresIn,
-      algorithm: "HS256",
+      algorithm: 'HS256',
     });
     return token;
   } catch (error) {
-    logger.error("Error al generar token:", error);
+    logger.error('Error al generar token:', error);
     throw error;
   }
 };
@@ -35,11 +36,11 @@ const generateToken = (userPayload, expiresIn = config.jwtExpiry) => {
 const verifyToken = (token) => {
   try {
     const decoded = jwt.verify(token, config.jwtSecret, {
-      algorithms: ["HS256"],
+      algorithms: ['HS256'],
     });
     return decoded;
   } catch (error) {
-    logger.error("Error al verificar token:", error.message);
+    logger.error('Error al verificar token:', error.message);
     throw error;
   }
 };
@@ -48,7 +49,7 @@ const decodeToken = (token) => {
   try {
     return jwt.decode(token);
   } catch (error) {
-    logger.error("Error al decodificar token:", error);
+    logger.error('Error al decodificar token:', error);
     return null;
   }
 };

@@ -13,7 +13,7 @@ const {
   hasEventPermission,
   defaultPermissionsForRole,
   ALL_EVENT_PERMISSIONS,
-} = require("./schema");
+} = require('./schema');
 
 module.exports = {
   // Models

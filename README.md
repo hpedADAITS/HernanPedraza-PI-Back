@@ -19,6 +19,7 @@ Server runs on `http://localhost:5000`
 ## Database
 
 Uses MongoDB with Mongoose. Collections auto-created on first connection:
+
 - users
 - events
 - event_members
@@ -30,6 +31,7 @@ Uses MongoDB with Mongoose. Collections auto-created on first connection:
 ## API Endpoints
 
 ### Auth
+
 ```
 POST   /api/auth/register
 POST   /api/auth/login
@@ -38,6 +40,7 @@ GET    /api/auth/me
 ```
 
 ### Events
+
 ```
 POST   /api/events
 GET    /api/events
@@ -48,6 +51,7 @@ GET    /api/events/:eventId/participants
 ```
 
 ### Songs
+
 ```
 POST   /api/songs/suggestions
 GET    /api/events/:eventId/queue
@@ -59,6 +63,7 @@ POST   /api/events/:eventId/songs/:songId/skip
 ```
 
 ### Votes
+
 ```
 POST   /api/votes
 DELETE /api/votes/:songId
@@ -68,10 +73,12 @@ GET    /api/events/:eventId/votes/stats
 ## Socket.IO Events
 
 ### From Client
+
 - `join_event` - Join an event
 - `leave_event` - Leave an event
 
 ### From Server
+
 - `votes_updated` - Vote count changed
 - `song_suggested` - New song suggestion
 - `song_skipped` - Song skipped by DJ
@@ -99,11 +106,13 @@ src/
 ## Running
 
 ### Development
+
 ```bash
 npm run dev
 ```
 
 ### Production
+
 ```bash
 npm start
 ```
@@ -117,6 +126,7 @@ npm run test:integration
 ```
 
 Creates test users, events, songs, and votes. Test credentials:
+
 - owner@example.com / password123 (DJ)
 - dj@example.com / password123 (DJ)
 - admin@example.com / password123 (Admin)
@@ -132,13 +142,13 @@ Creates test users, events, songs, and votes. Test credentials:
 
 ## Stack
 
-| Component | Technology |
-|-----------|-----------|
-| Runtime | Node.js v18+ |
-| Framework | Express.js |
-| Database | MongoDB |
-| Real-time | Socket.IO |
-| Auth | JWT + bcryptjs |
+| Component  | Technology       |
+| ---------- | ---------------- |
+| Runtime    | Node.js v18+     |
+| Framework  | Express.js       |
+| Database   | MongoDB          |
+| Real-time  | Socket.IO        |
+| Auth       | JWT + bcryptjs   |
 | Validation | mongoose schemas |
 
 ## License

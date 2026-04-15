@@ -1,17 +1,21 @@
-const bcrypt = require("bcryptjs");
-const { UserModel } = require("../models");
-const { generateToken, verifyToken } = require("../utils/jwt.utils");
-const { logger } = require("../utils");
-const { ValidationError, UnauthorizedError, NotFoundError } = require("../errors");
-const { messages } = require("../constants");
+const bcrypt = require('bcryptjs');
+const { UserModel } = require('../models');
+const { generateToken, verifyToken } = require('../utils/jwt.utils');
+const { logger } = require('../utils');
+const {
+  ValidationError,
+  UnauthorizedError,
+  NotFoundError,
+} = require('../errors');
+const { messages } = require('../constants');
 const {
   validateRegistration,
   validateLogin,
   validateTokenRefresh,
-} = require("../validators/auth.validator");
+} = require('../validators/auth.validator');
 
 class AuthService {
-  async register(email, password, displayName, role = "ATTENDEE") {
+  async register(email, password, displayName, role = 'ATTENDEE') {
     // Validate input
     validateRegistration({ email, password, displayName, role });
 
@@ -62,7 +66,7 @@ class AuthService {
     // Find user with password field
     const user = await UserModel.findOne({
       email: email.toLowerCase(),
-    }).select("+passwordHash");
+    }).select('+passwordHash');
     if (!user) {
       throw new UnauthorizedError(messages.AUTH.INVALID_CREDENTIALS);
     }

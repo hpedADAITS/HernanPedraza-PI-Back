@@ -1,17 +1,17 @@
-const { VoteModel, SongModel } = require("../models/schema");
-const { logger } = require("../utils");
+const { VoteModel, SongModel } = require('../models/schema');
+const { logger } = require('../utils');
 
 class VotesService {
   async castVote(songId, participantId, value) {
     // Validate vote value
     if (![1, -1].includes(value)) {
-      throw new Error("Vote value must be 1 or -1");
+      throw new Error('Vote value must be 1 or -1');
     }
 
     // Check if song exists
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error("Song not found");
+      throw new Error('Song not found');
     }
 
     // Check if participant already voted
@@ -53,7 +53,7 @@ class VotesService {
     const vote = await VoteModel.findOneAndDelete({ songId, participantId });
 
     if (!vote) {
-      throw new Error("Vote not found");
+      throw new Error('Vote not found');
     }
 
     // Update song vote score
@@ -71,7 +71,7 @@ class VotesService {
   async getVoteStats(eventId) {
     const songs = await SongModel.find({
       eventId,
-      status: { $in: ["PENDING", "APPROVED", "PLAYING"] },
+      status: { $in: ['PENDING', 'APPROVED', 'PLAYING'] },
     }).sort({ voteScore: -1 });
 
     return {
@@ -85,7 +85,10 @@ class VotesService {
       })),
       stats: {
         total_votes: songs.reduce((sum, s) => sum + Math.abs(s.voteScore), 0),
-        average_votes_per_song: songs.length > 0 ? songs.reduce((sum, s) => sum + s.voteCount, 0) / songs.length : 0,
+        average_votes_per_song:
+          songs.length > 0
+            ? songs.reduce((sum, s) => sum + s.voteCount, 0) / songs.length
+            : 0,
       },
     };
   }

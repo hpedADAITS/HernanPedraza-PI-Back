@@ -1,14 +1,14 @@
-const { logger } = require("../utils");
+const { logger } = require('../utils');
 
 // ============ EVENT PARTICIPATION ============
 
 const handleJoinEvent = (socket, io, data) => {
-  console.log("Received data:", data);
-  console.log("Socket ID:", socket.id);
+  console.log('Received data:', data);
+  console.log('Socket ID:', socket.id);
   const { eventId, participantId, nickname } = data;
 
   if (!eventId || !participantId) {
-    socket.emit("error", { message: "Invalid event or participant ID" });
+    socket.emit('error', { message: 'Invalid event or participant ID' });
     return;
   }
 
@@ -19,21 +19,21 @@ const handleJoinEvent = (socket, io, data) => {
 
   logger.info(`Participant ${participantId} joined event ${eventId}`);
   console.log(`Socket ${socket.id} joined room ${room}`);
-  console.log("Socket rooms after join:", socket.rooms);
+  console.log('Socket rooms after join:', socket.rooms);
 
-  io.to(room).emit("participant_joined", {
+  io.to(room).emit('participant_joined', {
     participantId,
     nickname,
     joinedAt: new Date().toISOString(),
   });
-  console.log("Broadcast complete");
+  console.log('Broadcast complete');
 };
 
 const handleLeaveEvent = (socket, io, data) => {
   const { eventId, participantId } = data;
 
   if (!eventId || !participantId) {
-    socket.emit("error", { message: "Invalid event or participant ID" });
+    socket.emit('error', { message: 'Invalid event or participant ID' });
     return;
   }
 
@@ -41,7 +41,7 @@ const handleLeaveEvent = (socket, io, data) => {
 
   logger.info(`Participant ${participantId} left event ${eventId}`);
 
-  io.to(`event:${eventId}`).emit("participant_left", {
+  io.to(`event:${eventId}`).emit('participant_left', {
     participantId,
     leftAt: new Date().toISOString(),
   });
@@ -49,7 +49,7 @@ const handleLeaveEvent = (socket, io, data) => {
 
 const handleDisconnect = (socket, io) => {
   if (socket.eventId && socket.participantId) {
-    io.to(`event:${socket.eventId}`).emit("participant_disconnected", {
+    io.to(`event:${socket.eventId}`).emit('participant_disconnected', {
       participantId: socket.participantId,
     });
   }
@@ -62,16 +62,16 @@ const handleVotesCast = async (socket, io, data) => {
   const { eventId, songId, participantId, value } = data;
 
   if (!eventId || !songId || !participantId) {
-    socket.emit("error", { message: "Invalid vote data" });
+    socket.emit('error', { message: 'Invalid vote data' });
     return;
   }
 
   logger.info(`Vote cast: song ${songId}, value ${value}`);
 
-  const { SongModel } = require("../models/schema");
-  const song = await SongModel.findById(songId).select("voteScore voteCount");
+  const { SongModel } = require('../models/schema');
+  const song = await SongModel.findById(songId).select('voteScore voteCount');
 
-  io.to(`event:${eventId}`).emit("votes_updated", {
+  io.to(`event:${eventId}`).emit('votes_updated', {
     songId,
     participantId,
     value,
@@ -85,13 +85,13 @@ const handleVoteRemoved = (socket, io, data) => {
   const { eventId, songId, participantId } = data;
 
   if (!eventId || !songId || !participantId) {
-    socket.emit("error", { message: "Invalid vote data" });
+    socket.emit('error', { message: 'Invalid vote data' });
     return;
   }
 
   logger.info(`Vote removed: song ${songId}`);
 
-  io.to(`event:${eventId}`).emit("vote_removed", {
+  io.to(`event:${eventId}`).emit('vote_removed', {
     songId,
     participantId,
     timestamp: new Date().toISOString(),
@@ -104,13 +104,13 @@ const handleSongSuggested = (socket, io, data) => {
   const { eventId, songId, title, artist, participantId } = data;
 
   if (!eventId || !songId || !title || !artist) {
-    socket.emit("error", { message: "Invalid song data" });
+    socket.emit('error', { message: 'Invalid song data' });
     return;
   }
 
   logger.info(`Song suggested: ${title} by ${artist}`);
 
-  io.to(`event:${eventId}`).emit("song_suggested", {
+  io.to(`event:${eventId}`).emit('song_suggested', {
     songId,
     title,
     artist,
@@ -120,46 +120,46 @@ const handleSongSuggested = (socket, io, data) => {
 };
 
 const handleSongApproved = async (socket, io, data) => {
-  console.log("\n========== BACKEND: SONG APPROVED ==========");
-  console.log("Received data:", data);
+  console.log('\n========== BACKEND: SONG APPROVED ==========');
+  console.log('Received data:', data);
 
   const { eventId, songId } = data;
-  console.log("Extracted - eventId:", eventId, "songId:", songId);
+  console.log('Extracted - eventId:', eventId, 'songId:', songId);
 
   if (!eventId || !songId) {
     logger.error(
       `Invalid song data - eventId: ${eventId}, songId: ${songId}`,
       data,
     );
-    socket.emit("error", {
-      message: "Invalid song data",
+    socket.emit('error', {
+      message: 'Invalid song data',
       details: { eventId: !eventId, songId: !songId },
     });
     return;
   }
 
   logger.info(`Song approved: ${songId}`);
-  console.log("Fetching song details for:", songId);
+  console.log('Fetching song details for:', songId);
 
   // Get song details to send with the event
-  const { SongModel } = require("../models/schema");
-  const song = await SongModel.findById(songId).select("title artist");
-  console.log("Song found:", song);
+  const { SongModel } = require('../models/schema');
+  const song = await SongModel.findById(songId).select('title artist');
+  console.log('Song found:', song);
 
   const eventRoom = `event:${eventId}`;
   console.log(`Broadcasting to room: ${eventRoom}`);
-  io.to(eventRoom).emit("song_approved", {
+  io.to(eventRoom).emit('song_approved', {
     songId,
-    title: song?.title || "Unknown",
-    artist: song?.artist || "Unknown",
+    title: song?.title || 'Unknown',
+    artist: song?.artist || 'Unknown',
     timestamp: new Date().toISOString(),
   });
-  console.log("Broadcast complete");
+  console.log('Broadcast complete');
 };
 
 const handleSongRejected = (socket, io, data) => {
-  console.log("\n========== BACKEND: SONG REJECTED ==========");
-  console.log("Received data:", data);
+  console.log('\n========== BACKEND: SONG REJECTED ==========');
+  console.log('Received data:', data);
 
   const { eventId, songId, reason } = data;
 
@@ -168,8 +168,8 @@ const handleSongRejected = (socket, io, data) => {
       `Invalid song data - eventId: ${eventId}, songId: ${songId}`,
       data,
     );
-    socket.emit("error", {
-      message: "Invalid song data",
+    socket.emit('error', {
+      message: 'Invalid song data',
       details: { eventId: !eventId, songId: !songId },
     });
     return;
@@ -179,12 +179,12 @@ const handleSongRejected = (socket, io, data) => {
 
   const eventRoom = `event:${eventId}`;
   console.log(`Broadcasting to room: ${eventRoom}`, { songId, reason });
-  io.to(eventRoom).emit("song_rejected", {
+  io.to(eventRoom).emit('song_rejected', {
     songId,
     reason,
     timestamp: new Date().toISOString(),
   });
-  console.log("Broadcast complete");
+  console.log('Broadcast complete');
 };
 
 const handleSongSkipped = (socket, io, data) => {
@@ -195,8 +195,8 @@ const handleSongSkipped = (socket, io, data) => {
       `Invalid song data - eventId: ${eventId}, songId: ${songId}`,
       data,
     );
-    socket.emit("error", {
-      message: "Invalid song data",
+    socket.emit('error', {
+      message: 'Invalid song data',
       details: { eventId: !eventId, songId: !songId },
     });
     return;
@@ -204,7 +204,7 @@ const handleSongSkipped = (socket, io, data) => {
 
   logger.info(`Song skipped: ${songId}`);
 
-  io.to(`event:${eventId}`).emit("song_skipped", {
+  io.to(`event:${eventId}`).emit('song_skipped', {
     songId,
     reason,
     timestamp: new Date().toISOString(),
@@ -215,13 +215,13 @@ const handleQueueUpdated = (socket, io, data) => {
   const { eventId, queue } = data;
 
   if (!eventId || !queue) {
-    socket.emit("error", { message: "Invalid queue data" });
+    socket.emit('error', { message: 'Invalid queue data' });
     return;
   }
 
   logger.info(`Queue updated for event ${eventId}`);
 
-  io.to(`event:${eventId}`).emit("queue_updated", {
+  io.to(`event:${eventId}`).emit('queue_updated', {
     queue,
     timestamp: new Date().toISOString(),
   });

@@ -5,11 +5,11 @@
  */
 const generateEventCode = (length = 6) => {
   if (length < 4 || length > 10) {
-    throw new Error("La longitud del código debe estar entre 4 y 10");
+    throw new Error('La longitud del código debe estar entre 4 y 10');
   }
 
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "";
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
 
   for (let i = 0; i < length; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -32,8 +32,8 @@ const generateUniqueId = () => {
  */
 const generateNonce = (length = 16) => {
   const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let nonce = "";
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let nonce = '';
 
   for (let i = 0; i < length; i++) {
     nonce += chars.charAt(Math.floor(Math.random() * chars.length));

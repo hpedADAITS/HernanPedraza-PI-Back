@@ -1,8 +1,8 @@
-const { eventsService } = require("../services");
-const { logger } = require("../utils");
-const { httpStatus } = require("../constants");
-const { eventsValidator } = require("../validators");
-const { eventsDtos } = require("../dtos");
+const { eventsService } = require('../services');
+const { logger } = require('../utils');
+const { httpStatus } = require('../constants');
+const { eventsValidator } = require('../validators');
+const { eventsDtos } = require('../dtos');
 
 class EventsController {
   async createEvent(req, res, next) {
@@ -15,7 +15,7 @@ class EventsController {
         req.user.userId,
         dto.name,
         dto.description,
-        dto.startsAt
+        dto.startsAt,
       );
 
       res.status(httpStatus.CREATED).json({
@@ -23,7 +23,7 @@ class EventsController {
         data: { event },
       });
     } catch (error) {
-      logger.error("Create event error:", error);
+      logger.error('Create event error:', error);
       next(error);
     }
   }
@@ -39,7 +39,7 @@ class EventsController {
         data: { event },
       });
     } catch (error) {
-      logger.error("Get event error:", error);
+      logger.error('Get event error:', error);
       next(error);
     }
   }
@@ -55,7 +55,7 @@ class EventsController {
         data: { event },
       });
     } catch (error) {
-      logger.error("Get event by access code error:", error);
+      logger.error('Get event by access code error:', error);
       next(error);
     }
   }
@@ -66,7 +66,7 @@ class EventsController {
 
       const events = await eventsService.listActiveEvents(
         parseInt(limit),
-        parseInt(skip)
+        parseInt(skip),
       );
 
       res.status(httpStatus.OK).json({
@@ -74,7 +74,7 @@ class EventsController {
         data: { events, total: events.length },
       });
     } catch (error) {
-      logger.error("List events error:", error);
+      logger.error('List events error:', error);
       next(error);
     }
   }
@@ -89,7 +89,7 @@ class EventsController {
       const event = await eventsService.updateEvent(
         eventId,
         req.user.userId,
-        dto
+        dto,
       );
 
       res.status(httpStatus.OK).json({
@@ -97,7 +97,7 @@ class EventsController {
         data: { event },
       });
     } catch (error) {
-      logger.error("Update event error:", error);
+      logger.error('Update event error:', error);
       next(error);
     }
   }
@@ -113,7 +113,7 @@ class EventsController {
         data: { event },
       });
     } catch (error) {
-      logger.error("Start event error:", error);
+      logger.error('Start event error:', error);
       next(error);
     }
   }
@@ -129,7 +129,7 @@ class EventsController {
         data: { event },
       });
     } catch (error) {
-      logger.error("End event error:", error);
+      logger.error('End event error:', error);
       next(error);
     }
   }
@@ -142,7 +142,7 @@ class EventsController {
       const event = await eventsService.cancelEvent(
         eventId,
         req.user.userId,
-        reason
+        reason,
       );
 
       res.status(httpStatus.OK).json({
@@ -150,7 +150,7 @@ class EventsController {
         data: { event },
       });
     } catch (error) {
-      logger.error("Cancel event error:", error);
+      logger.error('Cancel event error:', error);
       next(error);
     }
   }
@@ -167,7 +167,7 @@ class EventsController {
         data: { participants, count },
       });
     } catch (error) {
-      logger.error("Get participants error:", error);
+      logger.error('Get participants error:', error);
       next(error);
     }
   }

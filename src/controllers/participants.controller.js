@@ -1,9 +1,9 @@
-const { participantsService } = require("../services");
-const { logger } = require("../utils");
-const { httpStatus, messages } = require("../constants");
-const { UnauthorizedError } = require("../errors");
-const { participantsValidator } = require("../validators");
-const { participantsDtos } = require("../dtos");
+const { participantsService } = require('../services');
+const { logger } = require('../utils');
+const { httpStatus, messages } = require('../constants');
+const { UnauthorizedError } = require('../errors');
+const { participantsValidator } = require('../validators');
+const { participantsDtos } = require('../dtos');
 
 let io = null; // Will be injected
 
@@ -29,7 +29,7 @@ class ParticipantsController {
         data: { participant },
       });
     } catch (error) {
-      logger.error("Join event error:", error);
+      logger.error('Join event error:', error);
       next(error);
     }
   }
@@ -45,7 +45,7 @@ class ParticipantsController {
         data: { participant },
       });
     } catch (error) {
-      logger.error("Leave event error:", error);
+      logger.error('Leave event error:', error);
       next(error);
     }
   }
@@ -62,7 +62,7 @@ class ParticipantsController {
         data: { participant },
       });
     } catch (error) {
-      logger.error("Get participant error:", error);
+      logger.error('Get participant error:', error);
       next(error);
     }
   }
@@ -79,7 +79,7 @@ class ParticipantsController {
         data: { participants, count: participants.length },
       });
     } catch (error) {
-      logger.error("Get event participants error:", error);
+      logger.error('Get event participants error:', error);
       next(error);
     }
   }
@@ -100,7 +100,7 @@ class ParticipantsController {
         data: { participant },
       });
     } catch (error) {
-      logger.error("Set premium error:", error);
+      logger.error('Set premium error:', error);
       next(error);
     }
   }
@@ -112,7 +112,7 @@ class ParticipantsController {
       participantsValidator.validateCooldown(dto);
 
       const actorUserId =
-        typeof req.user.userId === "string"
+        typeof req.user.userId === 'string'
           ? req.user.userId
           : req.user.userId?.toString();
 
@@ -128,7 +128,7 @@ class ParticipantsController {
       );
 
       if (io) {
-        io.to(`event_${result.eventId}`).emit("participant_cooldown", {
+        io.to(`event_${result.eventId}`).emit('participant_cooldown', {
           participantId,
           cooldownUntil: result.participant.cooldownUntil,
           reason: dto.reason,
@@ -140,7 +140,7 @@ class ParticipantsController {
         data: { participant: result.participant },
       });
     } catch (error) {
-      logger.error("Set cooldown error:", error);
+      logger.error('Set cooldown error:', error);
       next(error);
     }
   }
@@ -152,7 +152,7 @@ class ParticipantsController {
       participantsValidator.validateKickParticipant(dto);
 
       const actorUserId =
-        typeof req.user.userId === "string"
+        typeof req.user.userId === 'string'
           ? req.user.userId
           : req.user.userId?.toString();
 
@@ -167,7 +167,7 @@ class ParticipantsController {
       );
 
       if (io) {
-        io.to(`event_${result.eventId}`).emit("participant_kicked", {
+        io.to(`event_${result.eventId}`).emit('participant_kicked', {
           participantId,
           kickedAt: result.participant.kickedAt,
           reason: dto.reason,
@@ -179,7 +179,7 @@ class ParticipantsController {
         data: { participant: result.participant },
       });
     } catch (error) {
-      logger.error("Kick participant error:", error);
+      logger.error('Kick participant error:', error);
       next(error);
     }
   }

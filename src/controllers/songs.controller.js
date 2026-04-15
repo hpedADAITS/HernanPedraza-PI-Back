@@ -1,8 +1,8 @@
-const { songsService } = require("../services");
-const { logger } = require("../utils");
-const { httpStatus } = require("../constants");
-const { songsValidator } = require("../validators");
-const { songsDtos } = require("../dtos");
+const { songsService } = require('../services');
+const { logger } = require('../utils');
+const { httpStatus } = require('../constants');
+const { songsValidator } = require('../validators');
+const { songsDtos } = require('../dtos');
 
 class SongsController {
   async suggestSong(req, res, next) {
@@ -16,7 +16,7 @@ class SongsController {
         eventId,
         dto.participantId,
         dto.title,
-        dto.artist
+        dto.artist,
       );
 
       res.status(httpStatus.CREATED).json({
@@ -24,7 +24,7 @@ class SongsController {
         data: { song },
       });
     } catch (error) {
-      logger.error("Suggest song error:", error);
+      logger.error('Suggest song error:', error);
       next(error);
     }
   }
@@ -40,7 +40,7 @@ class SongsController {
         data: { queue: songs },
       });
     } catch (error) {
-      logger.error("Get queue error:", error);
+      logger.error('Get queue error:', error);
       next(error);
     }
   }
@@ -56,7 +56,7 @@ class SongsController {
         data: { pending: songs },
       });
     } catch (error) {
-      logger.error("Get pending songs error:", error);
+      logger.error('Get pending songs error:', error);
       next(error);
     }
   }
@@ -68,7 +68,7 @@ class SongsController {
       const song = await songsService.approveSong(
         songId,
         eventId,
-        req.user.userId
+        req.user.userId,
       );
 
       res.status(httpStatus.OK).json({
@@ -76,7 +76,7 @@ class SongsController {
         data: { song },
       });
     } catch (error) {
-      logger.error("Approve song error:", error);
+      logger.error('Approve song error:', error);
       next(error);
     }
   }
@@ -90,7 +90,7 @@ class SongsController {
         songId,
         eventId,
         reason,
-        req.user.userId
+        req.user.userId,
       );
 
       res.status(httpStatus.OK).json({
@@ -98,7 +98,7 @@ class SongsController {
         data: { song },
       });
     } catch (error) {
-      logger.error("Reject song error:", error);
+      logger.error('Reject song error:', error);
       next(error);
     }
   }
@@ -112,7 +112,7 @@ class SongsController {
         songId,
         eventId,
         reason,
-        req.user.userId
+        req.user.userId,
       );
 
       res.status(httpStatus.OK).json({
@@ -120,7 +120,7 @@ class SongsController {
         data: { song },
       });
     } catch (error) {
-      logger.error("Skip song error:", error);
+      logger.error('Skip song error:', error);
       next(error);
     }
   }
@@ -136,7 +136,7 @@ class SongsController {
         data,
       });
     } catch (error) {
-      logger.error("Get song position error:", error);
+      logger.error('Get song position error:', error);
       next(error);
     }
   }
