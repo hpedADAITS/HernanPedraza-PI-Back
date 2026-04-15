@@ -7,7 +7,7 @@ const { httpStatus } = require('../constants');
 
 class NotFoundError extends ApiError {
   constructor(message = 'Resource not found') {
-    super(httpStatus.NOT_FOUND, message);
+    super(message, httpStatus.NOT_FOUND);
   }
 }
 

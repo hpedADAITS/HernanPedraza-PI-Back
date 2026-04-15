@@ -7,7 +7,7 @@ const { httpStatus } = require('../constants');
 
 class ForbiddenError extends ApiError {
   constructor(message = 'Forbidden') {
-    super(httpStatus.FORBIDDEN, message);
+    super(message, httpStatus.FORBIDDEN);
   }
 }
 

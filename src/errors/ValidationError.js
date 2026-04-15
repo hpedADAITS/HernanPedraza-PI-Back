@@ -7,7 +7,7 @@ const { httpStatus } = require('../constants');
 
 class ValidationError extends ApiError {
   constructor(message, errors = null) {
-    super(httpStatus.BAD_REQUEST, message, errors);
+    super(message, httpStatus.BAD_REQUEST, errors);
   }
 }
 

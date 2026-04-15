@@ -3,7 +3,7 @@
  * All API errors should extend this class for consistent error handling
  */
 class ApiError extends Error {
-  constructor(statusCode, message, details = null) {
+  constructor(message, statusCode = 500, details = null) {
     super(message);
     this.statusCode = statusCode;
     this.message = message;

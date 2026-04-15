@@ -18,7 +18,7 @@ describe('Code Generator Utils', () => {
     });
 
     test('should only contain uppercase letters and numbers', () => {
-      const code = generateEventCode(20);
+      const code = generateEventCode(10);
       expect(/^[A-Z0-9]+$/.test(code)).toBe(true);
     });
 
@@ -68,8 +68,9 @@ describe('Code Generator Utils', () => {
       expect(/^[a-z0-9]+$/.test(parts[1])).toBe(true); // random part is alphanumeric
     });
 
-    test('should be compatible with sorting by generation time', () => {
+    test('should be compatible with sorting by generation time', async () => {
       const id1 = generateUniqueId();
+      await new Promise((r) => setTimeout(r, 2));
       const id2 = generateUniqueId();
       expect(id1 < id2).toBe(true);
     });

@@ -7,7 +7,7 @@ const { httpStatus } = require('../constants');
 
 class UnauthorizedError extends ApiError {
   constructor(message = 'Unauthorized access') {
-    super(httpStatus.UNAUTHORIZED, message);
+    super(message, httpStatus.UNAUTHORIZED);
   }
 }
 

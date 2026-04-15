@@ -4,7 +4,7 @@
  * @returns {string} Código de acceso del evento
  */
 const generateEventCode = (length = 6) => {
-  if (length < 4 || length > 10) {
+  if (!Number.isInteger(length) || length < 4 || length > 10) {
     throw new Error('La longitud del código debe estar entre 4 y 10');
   }
 
