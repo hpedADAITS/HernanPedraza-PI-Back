@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "seed": "node scripts/seed.js",
+    "seed": "node scripts/populate.js",
     "populate": "node scripts/populate.js",
     "test": "jest --detectOpenHandles",
     "test:unit": "jest test/unit --detectOpenHandles",
@@ -38,6 +38,7 @@
   "devDependencies": {
     "eslint-config-prettier": "^10.1.8",
     "jest": "^29.7.0",
+    "mongodb-memory-server": "^11.0.1",
     "nodemon": "^3.0.1",
     "supertest": "^6.3.3"
   },

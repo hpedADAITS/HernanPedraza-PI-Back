@@ -6,12 +6,17 @@ const {
   defaultPermissionsForRole,
   EventActionLogModel,
 } = require('../models/schema');
-const { generateAccessCode } = require('../utils/code-generator');
+const { generateEventCode } = require('../utils/code-generator');
 const { logger } = require('../utils');
+const {
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+} = require('../errors');
 
 class EventsService {
   async createEvent(ownerId, name, description, startsAt) {
-    const accessCode = generateAccessCode();
+    const accessCode = generateEventCode();
 
     const event = new EventModel({
       name,
@@ -53,7 +58,7 @@ class EventsService {
       'email displayName',
     );
     if (!event) {
-      throw new Error('Event not found');
+      throw new NotFoundError('Event not found');
     }
     return this._formatEvent(event);
   }
@@ -63,7 +68,7 @@ class EventsService {
       accessCode: accessCode.toUpperCase(),
     }).populate('ownerId', 'email displayName');
     if (!event) {
-      throw new Error('Event not found');
+      throw new NotFoundError('Event not found');
     }
     return this._formatEvent(event);
   }
@@ -81,12 +86,12 @@ class EventsService {
   async updateEvent(eventId, ownerId, updates) {
     const event = await EventModel.findById(eventId);
     if (!event) {
-      throw new Error('Event not found');
+      throw new NotFoundError('Event not found');
     }
 
     // Check ownership
     if (event.ownerId.toString() !== ownerId.toString()) {
-      throw new Error('Unauthorized');
+      throw new UnauthorizedError('Unauthorized');
     }
 
     // Allow updating: name, description, settings
@@ -103,9 +108,9 @@ class EventsService {
 
   async startEvent(eventId, userId) {
     const event = await EventModel.findById(eventId);
-    if (!event) throw new Error('Event not found');
+    if (!event) throw new NotFoundError('Event not found');
     if (event.ownerId.toString() !== userId.toString())
-      throw new Error('Unauthorized');
+      throw new UnauthorizedError('Unauthorized');
 
     event.state = 'LIVE';
     await event.save();
@@ -122,9 +127,9 @@ class EventsService {
 
   async endEvent(eventId, userId) {
     const event = await EventModel.findById(eventId);
-    if (!event) throw new Error('Event not found');
+    if (!event) throw new NotFoundError('Event not found');
     if (event.ownerId.toString() !== userId.toString())
-      throw new Error('Unauthorized');
+      throw new UnauthorizedError('Unauthorized');
 
     event.state = 'ENDED';
     event.endedAt = new Date();
@@ -142,9 +147,9 @@ class EventsService {
 
   async cancelEvent(eventId, userId, reason) {
     const event = await EventModel.findById(eventId);
-    if (!event) throw new Error('Event not found');
+    if (!event) throw new NotFoundError('Event not found');
     if (event.ownerId.toString() !== userId.toString())
-      throw new Error('Unauthorized');
+      throw new UnauthorizedError('Unauthorized');
 
     event.state = 'CANCELLED';
     event.cancelledAt = new Date();
@@ -175,7 +180,7 @@ class EventsService {
     // Check if already a member
     const existing = await EventMemberModel.findOne({ eventId, userId });
     if (existing) {
-      throw new Error('User is already an event member');
+      throw new ValidationError('User is already an event member');
     }
 
     const member = new EventMemberModel({

@@ -16,4 +16,16 @@ router.get(
   authController.getCurrentUser.bind(authController),
 );
 
+router.patch(
+  '/me',
+  authenticate,
+  authController.updateProfile.bind(authController),
+);
+
+router.patch(
+  '/me/picture',
+  authenticate,
+  authController.updateProfilePicture.bind(authController),
+);
+
 module.exports = router;

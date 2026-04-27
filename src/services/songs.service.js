@@ -4,17 +4,18 @@ const {
   ParticipantModel,
 } = require('../models/schema');
 const { logger } = require('../utils');
+const { ValidationError, NotFoundError } = require('../errors');
 
 class SongsService {
   async suggestSong(eventId, participantId, title, artist) {
     // Check if participant is on cooldown
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error('Participant not found');
+      throw new NotFoundError('Participant not found');
     }
 
     if (participant.cooldownUntil && participant.cooldownUntil > new Date()) {
-      throw new Error('Participant is on cooldown');
+      throw new ValidationError('Participant is on cooldown');
     }
 
     const song = new SongModel({
@@ -57,11 +58,11 @@ class SongsService {
   async approveSong(songId, eventId, userId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error('Song not found');
+      throw new NotFoundError('Song not found');
     }
 
     if (song.eventId.toString() !== eventId.toString()) {
-      throw new Error('Song not in this event');
+      throw new NotFoundError('Song not in this event');
     }
 
     song.status = 'APPROVED';
@@ -81,11 +82,11 @@ class SongsService {
   async rejectSong(songId, eventId, reason, userId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error('Song not found');
+      throw new NotFoundError('Song not found');
     }
 
     if (song.eventId.toString() !== eventId.toString()) {
-      throw new Error('Song not in this event');
+      throw new NotFoundError('Song not in this event');
     }
 
     song.status = 'REJECTED';
@@ -106,7 +107,7 @@ class SongsService {
   async skipSong(songId, eventId, reason, userId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error('Song not found');
+      throw new NotFoundError('Song not found');
     }
 
     song.status = 'SKIPPED';
@@ -158,7 +159,7 @@ class SongsService {
   async markSongAsPlayed(songId, eventId, userId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error('Song not found');
+      throw new NotFoundError('Song not found');
     }
 
     song.status = 'PLAYED';
@@ -179,7 +180,7 @@ class SongsService {
   async getSongPosition(songId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error('Song not found');
+      throw new NotFoundError('Song not found');
     }
 
     const position = await SongModel.countDocuments({
@@ -202,7 +203,7 @@ class SongsService {
   async getSongStats(songId) {
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error('Song not found');
+      throw new NotFoundError('Song not found');
     }
 
     return {

@@ -1,17 +1,18 @@
 const { VoteModel, SongModel } = require('../models/schema');
 const { logger } = require('../utils');
+const { ValidationError, NotFoundError } = require('../errors');
 
 class VotesService {
   async castVote(songId, participantId, value) {
     // Validate vote value
     if (![1, -1].includes(value)) {
-      throw new Error('Vote value must be 1 or -1');
+      throw new ValidationError('Vote value must be 1 or -1');
     }
 
     // Check if song exists
     const song = await SongModel.findById(songId);
     if (!song) {
-      throw new Error('Song not found');
+      throw new NotFoundError('Song not found');
     }
 
     // Check if participant already voted
@@ -53,7 +54,7 @@ class VotesService {
     const vote = await VoteModel.findOneAndDelete({ songId, participantId });
 
     if (!vote) {
-      throw new Error('Vote not found');
+      throw new NotFoundError('Vote not found');
     }
 
     // Update song vote score

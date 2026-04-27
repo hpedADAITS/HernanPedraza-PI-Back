@@ -77,6 +77,42 @@ class AuthController {
       next(error);
     }
   }
+  async updateProfile(req, res, next) {
+    try {
+      const { displayName } = req.body;
+
+      const user = await authService.updateProfile(req.user.userId, {
+        displayName,
+      });
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { user },
+      });
+    } catch (error) {
+      logger.error('Update profile error:', error);
+      next(error);
+    }
+  }
+
+  async updateProfilePicture(req, res, next) {
+    try {
+      const { profilePicture } = req.body;
+
+      const user = await authService.updateProfilePicture(
+        req.user.userId,
+        profilePicture,
+      );
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { user },
+      });
+    } catch (error) {
+      logger.error('Update profile picture error:', error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new AuthController();

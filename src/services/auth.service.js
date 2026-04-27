@@ -138,8 +138,68 @@ class AuthService {
       id: user._id,
       email: user.email,
       displayName: user.displayName,
+      profilePicture: user.profilePicture,
       role: user.role,
       lastLoginAt: user.lastLoginAt,
+    };
+  }
+
+  async updateProfile(userId, updates) {
+    const { displayName } = updates;
+
+    if (!userId) {
+      throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
+    }
+
+    if (displayName && displayName.trim().length < 2) {
+      throw new ValidationError('Display name must be at least 2 characters');
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
+    }
+
+    if (displayName) {
+      user.displayName = displayName.trim();
+    }
+
+    await user.save();
+    logger.info(`User profile updated: ${user.email}`);
+
+    return {
+      id: user._id,
+      email: user.email,
+      displayName: user.displayName,
+      profilePicture: user.profilePicture,
+      role: user.role,
+    };
+  }
+
+  async updateProfilePicture(userId, profilePicture) {
+    if (!userId) {
+      throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
+    }
+
+    if (!profilePicture || typeof profilePicture !== 'string') {
+      throw new ValidationError('Profile picture must be a valid string');
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
+    }
+
+    user.profilePicture = profilePicture;
+    await user.save();
+    logger.info(`User profile picture updated: ${user.email}`);
+
+    return {
+      id: user._id,
+      email: user.email,
+      displayName: user.displayName,
+      profilePicture: user.profilePicture,
+      role: user.role,
     };
   }
 }

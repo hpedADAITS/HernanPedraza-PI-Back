@@ -57,6 +57,7 @@ const UserSchema = new Schema(
     },
     passwordHash: { type: String, required: true, select: false },
     displayName: { type: String, required: true, trim: true },
+    profilePicture: { type: String, default: null },
     role: {
       type: String,
       required: true,

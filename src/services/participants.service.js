@@ -1,5 +1,6 @@
 const { ParticipantModel, EventActionLogModel } = require('../models/schema');
 const { logger } = require('../utils');
+const { ValidationError, NotFoundError } = require('../errors');
 
 class ParticipantsService {
   async joinEvent(eventId, nickname) {
@@ -11,7 +12,7 @@ class ParticipantsService {
     });
 
     if (existing) {
-      throw new Error('Nickname already taken in this event');
+      throw new ValidationError('Nickname already taken in this event');
     }
 
     const participant = new ParticipantModel({
@@ -31,7 +32,7 @@ class ParticipantsService {
   async leaveEvent(participantId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error('Participant not found');
+      throw new NotFoundError('Participant not found');
     }
 
     participant.leftAt = new Date();
@@ -44,7 +45,7 @@ class ParticipantsService {
   async getParticipant(participantId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error('Participant not found');
+      throw new NotFoundError('Participant not found');
     }
     return this._formatParticipant(participant);
   }
@@ -77,7 +78,7 @@ class ParticipantsService {
   async setParticipantCooldown(participantId, durationMs, reason, actorUserId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error('Participant not found');
+      throw new NotFoundError('Participant not found');
     }
 
     // Extract userId properly - handle string, ObjectId, or object with userId property
@@ -91,7 +92,7 @@ class ParticipantsService {
 
     if (!userIdStr) {
       logger.error('Invalid actorUserId:', actorUserId);
-      throw new Error('Invalid actor user ID');
+      throw new ValidationError('Invalid actor user ID');
     }
 
     const cooldownUntil = new Date(Date.now() + durationMs);
@@ -122,7 +123,7 @@ class ParticipantsService {
   async kickParticipant(participantId, reason, actorUserId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error('Participant not found');
+      throw new NotFoundError('Participant not found');
     }
 
     // Extract userId properly - handle string, ObjectId, or object with userId property
@@ -136,7 +137,7 @@ class ParticipantsService {
 
     if (!userIdStr) {
       logger.error('Invalid actorUserId:', actorUserId);
-      throw new Error('Invalid actor user ID');
+      throw new ValidationError('Invalid actor user ID');
     }
 
     participant.kickedAt = new Date();
@@ -166,7 +167,7 @@ class ParticipantsService {
   async banParticipant(participantId, reason, actorUserId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
-      throw new Error('Participant not found');
+      throw new NotFoundError('Participant not found');
     }
 
     participant.bannedAt = new Date();
