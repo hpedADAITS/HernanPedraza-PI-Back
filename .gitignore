@@ -17,3 +17,5 @@ Thumbs.db
 docs/
 DockerfileAGENTS.md
 AGENTS.md
+.env
+.env.production
