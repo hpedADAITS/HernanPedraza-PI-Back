@@ -16,6 +16,7 @@ class EventsController {
         dto.name,
         dto.description,
         dto.startsAt,
+        dto.eventId,
       );
 
       res.status(httpStatus.CREATED).json({
@@ -168,6 +169,25 @@ class EventsController {
       });
     } catch (error) {
       logger.error('Get participants error:', error);
+      next(error);
+    }
+  }
+
+  async regenerateAccessCode(req, res, next) {
+    try {
+      const { eventId } = req.params;
+
+      const event = await eventsService.regenerateAccessCode(
+        eventId,
+        req.user.userId,
+      );
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { event },
+      });
+    } catch (error) {
+      logger.error('Regenerate access code error:', error);
       next(error);
     }
   }

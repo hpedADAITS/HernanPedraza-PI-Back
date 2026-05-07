@@ -97,6 +97,14 @@ const EventSchema = new Schema(
       index: true,
     },
 
+    eventId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+      set: upperTrim,
+    },
+
     accessCode: {
       type: String,
       required: true,

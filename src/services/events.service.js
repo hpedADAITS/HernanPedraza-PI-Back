@@ -15,13 +15,17 @@ const {
 } = require('../errors');
 
 class EventsService {
-  async createEvent(ownerId, name, description, startsAt) {
-    const accessCode = generateEventCode();
+  async createEvent(ownerId, name, description, startsAt, eventId = null) {
+    // Use provided eventId or generate a random one
+    const finalEventId = eventId || generateEventCode(8);
+    // Generate random accessCode (separate from eventId, regenerable)
+    const accessCode = generateEventCode(6);
 
     const event = new EventModel({
       name,
       description,
       ownerId,
+      eventId: finalEventId,
       accessCode,
       startsAt: new Date(startsAt),
       state: 'DRAFT',
@@ -176,6 +180,26 @@ class EventsService {
     return await ParticipantModel.countDocuments({ eventId, leftAt: null });
   }
 
+  async regenerateAccessCode(eventId, userId) {
+    const event = await EventModel.findById(eventId);
+    if (!event) {
+      throw new NotFoundError('Event not found');
+    }
+
+    // Check ownership
+    if (event.ownerId.toString() !== userId.toString()) {
+      throw new UnauthorizedError('Unauthorized');
+    }
+
+    // Generate new access code
+    const newAccessCode = generateEventCode(6);
+    event.accessCode = newAccessCode;
+    await event.save();
+
+    logger.info(`Access code regenerated for event ${eventId}`);
+    return this._formatEvent(event);
+  }
+
   async addEventMember(eventId, userId, role, actorUserId) {
     // Check if already a member
     const existing = await EventMemberModel.findOne({ eventId, userId });
@@ -202,6 +226,7 @@ class EventsService {
       name: event.name,
       description: event.description,
       ownerId: event.ownerId._id || event.ownerId,
+      eventId: event.eventId,
       accessCode: event.accessCode,
       qrCodeUrl: event.qrCodeUrl,
       state: event.state,

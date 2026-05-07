@@ -27,6 +27,10 @@ router.post(
   '/:eventId/cancel',
   eventsController.cancelEvent.bind(eventsController),
 );
+router.post(
+  '/:eventId/regenerate-code',
+  eventsController.regenerateAccessCode.bind(eventsController),
+);
 
 // Participants
 router.get(
