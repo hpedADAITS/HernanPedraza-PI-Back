@@ -1,8 +1,9 @@
-const { eventsService } = require('../services');
+const { eventsService, authService } = require('../services');
 const { logger } = require('../utils');
 const { httpStatus } = require('../constants');
 const { eventsValidator } = require('../validators');
 const { eventsDtos } = require('../dtos');
+const { ValidationError } = require('../errors');
 
 class EventsController {
   async createEvent(req, res, next) {
@@ -10,6 +11,14 @@ class EventsController {
       const dto = eventsDtos.toCreateEventDTO(req.body);
 
       eventsValidator.validateCreateEvent(dto);
+
+      // Check if user's email is registered (for DJ users)
+      const user = await authService.getCurrentUser(req.user.userId);
+      if (user.role === 'DJ' && !user.emailRegistered) {
+        throw new ValidationError(
+          'Please confirm your email before creating an event. Check your inbox for the welcome email.'
+        );
+      }
 
       const event = await eventsService.createEvent(
         req.user.userId,
