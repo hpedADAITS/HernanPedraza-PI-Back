@@ -48,6 +48,12 @@ class AuthService {
       role: user.role,
     });
 
+    if (role === 'DJ') {
+      emailService.sendWelcomeEmail(user, displayName).catch((err) => {
+        logger.error(`Failed to send welcome email to ${email}:`, err);
+      });
+    }
+
     return {
       token,
       user: {
@@ -102,7 +108,6 @@ class AuthService {
   }
 
   async refreshToken(token) {
-    // Validate input
     validateTokenRefresh({ token });
 
     try {

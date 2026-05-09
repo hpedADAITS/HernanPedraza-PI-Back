@@ -67,6 +67,8 @@ const UserSchema = new Schema(
     },
     isActive: { type: Boolean, default: true, index: true },
     lastLoginAt: { type: Date },
+    emailRegistered: { type: Boolean, default: false, index: true },
+    emailRegisteredAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
