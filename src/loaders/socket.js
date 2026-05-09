@@ -1,7 +1,7 @@
 const http = require('http');
 const socketIO = require('socket.io');
 const config = require('../config');
-const { initializeSocket } = require('../socket');
+const { initializeSocket, socketAuthMiddleware } = require('../socket');
 const { participantsController } = require('../controllers');
 const { logger } = require('../utils');
 
@@ -24,6 +24,14 @@ const initSocketIO = (app) => {
     });
 
     logger.info('Socket.IO initialized');
+
+    // Auth middleware (opt-out via SOCKET_AUTH_DISABLED=true)
+    if (process.env.SOCKET_AUTH_DISABLED !== 'true') {
+      io.use(socketAuthMiddleware);
+      logger.info('Socket.IO auth middleware enabled');
+    } else {
+      logger.warn('Socket.IO auth middleware DISABLED');
+    }
 
     // Inject Socket.IO into controllers that need it
     participantsController.setIO(io);

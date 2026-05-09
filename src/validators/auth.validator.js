@@ -10,28 +10,12 @@ const { ValidationError } = require('../errors');
  */
 
 function validateEmail(email) {
-  const emailRegex = /^[a-zA-Z0-9._+\-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!email || typeof email !== 'string') {
     throw new ValidationError('Email required');
   }
-
-  if (email.length > 50) {
-    throw new ValidationError('Email address too long');
-  }
-
   if (!emailRegex.test(email)) {
-    throw new ValidationError('Invalid email format');
-  }
-  
-  const localPart = email.split('@')[0];
-  const domainPart = email.split('@')[1];
-  
-  if (localPart.startsWith('.') || localPart.endsWith('.') || localPart.includes('..')) {
-    throw new ValidationError('Invalid email format');
-  }
-  if (domainPart.startsWith('.') || domainPart.endsWith('.') || domainPart.includes('..')) {
-    throw new ValidationError('Invalid email format');
+    throw new ValidationError('Invalid mail format');
   }
 }
 
@@ -43,29 +27,11 @@ function validatePassword(password) {
   if (!password || typeof password !== 'string') {
     throw new ValidationError('Password required');
   }
-
   if (password.length < 8) {
     throw new ValidationError('Password must be AT LEAST 8 characters long');
   }
-
-  if (password.length > 64) {
-    throw new ValidationError('Password must be no more than 64 characters long');
-  }
-  
-  if (!/[A-Z]/.test(password)) {
-    throw new ValidationError('Password must contain AT LEAST one uppercase letter (A-Z)');
-  }
-  
-  if (!/[a-z]/.test(password)) {
-    throw new ValidationError('Password must contain AT LEAST one lowercase letter (a-z)');
-  }
-  
-  if (!/[0-9]/.test(password)) {
-    throw new ValidationError('Password must contain AT LEAST one digit (0-9)');
-  }
-  
-  if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password)) {
-    throw new ValidationError('Password must contain AT LEAST one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)');
+  if (password.length > 128) {
+    throw new ValidationError('Password too long');
   }
 }
 
@@ -79,7 +45,7 @@ function validateDisplayName(displayName) {
   }
   const trimmed = displayName.trim();
   if (trimmed.length < 2) {
-    throw new ValidationError('Display name must be AT LEAST 2 characters');
+    throw new ValidationError('Display name must be at least 2 characters');
   }
   if (trimmed.length > 50) {
     throw new ValidationError('Display name must be less than 50 characters');

@@ -1,4 +1,8 @@
 const { logger } = require('../utils');
+const { requireFields } = require('./middleware');
+
+const isValidId = (v) => typeof v === 'string' && /^[a-f\d]{24}$/i.test(v);
+const isValidVoteValue = (v) => v === 1 || v === -1;
 
 // ============ EVENT PARTICIPATION ============
 
@@ -59,10 +63,23 @@ const handleDisconnect = (socket, io) => {
 // ============ VOTING ============
 
 const handleVotesCast = async (socket, io, data) => {
+  const missing = requireFields(data, [
+    'eventId',
+    'songId',
+    'participantId',
+    'value',
+  ]);
+  if (missing) {
+    socket.emit('error', { message: `Invalid vote data: ${missing}` });
+    return;
+  }
   const { eventId, songId, participantId, value } = data;
-
-  if (!eventId || !songId || !participantId) {
-    socket.emit('error', { message: 'Invalid vote data' });
+  if (!isValidId(eventId) || !isValidId(songId) || !isValidId(participantId)) {
+    socket.emit('error', { message: 'Invalid id format' });
+    return;
+  }
+  if (!isValidVoteValue(value)) {
+    socket.emit('error', { message: 'Vote value must be 1 or -1' });
     return;
   }
 
