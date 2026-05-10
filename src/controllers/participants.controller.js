@@ -7,7 +7,7 @@ const { participantsDtos } = require('../dtos');
 
 let io = null; // Will be injected
 
-// Inject Socket.IO instance
+/* Inject Socket.IO instance */
 const setIO = (ioInstance) => {
   io = ioInstance;
 };

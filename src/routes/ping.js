@@ -11,7 +11,7 @@ router.get('/', (req, res) => {
   });
 });
 
-// Health check endpoint (DB + API status)
+/* Health check endpoint (DB + API status) */
 router.get('/health', (req, res) => {
   const dbConnected = mongoose.connection.readyState === 1; // 1 = connected
   res.status(dbConnected ? 200 : 503).json({

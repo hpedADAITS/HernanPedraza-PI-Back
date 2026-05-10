@@ -10,10 +10,10 @@ let httpServer = null;
 
 const initSocketIO = (app) => {
   try {
-    // Create HTTP server from Express app
+    /* Create HTTP server from Express app */
     httpServer = http.createServer(app);
 
-    // Initialize Socket.IO
+    /* Initialize Socket.IO */
     io = socketIO(httpServer, {
       cors: {
         origin: config.allowedOrigins,
@@ -25,7 +25,7 @@ const initSocketIO = (app) => {
 
     logger.info('Socket.IO initialized');
 
-    // Auth middleware (opt-out via SOCKET_AUTH_DISABLED=true)
+    /* Auth middleware (opt-out via SOCKET_AUTH_DISABLED=true) */
     if (process.env.SOCKET_AUTH_DISABLED !== 'true') {
       io.use(socketAuthMiddleware);
       logger.info('Socket.IO auth middleware enabled');
@@ -33,10 +33,10 @@ const initSocketIO = (app) => {
       logger.warn('Socket.IO auth middleware DISABLED');
     }
 
-    // Inject Socket.IO into controllers that need it
+    /* Inject Socket.IO into controllers that need it */
     participantsController.setIO(io);
 
-    // Handle socket connections
+    /* Handle socket connections */
     io.on('connection', (socket) => {
       logger.info(`Socket connected: ${socket.id}`);
       initializeSocket(socket, io);
@@ -46,7 +46,7 @@ const initSocketIO = (app) => {
       });
     });
 
-    // Return both the io instance and the http server
+    /* Return both the io instance and the http server */
     return { io, httpServer };
   } catch (error) {
     logger.error('Error initializing Socket.IO:', error);

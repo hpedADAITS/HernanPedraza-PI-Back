@@ -10,7 +10,7 @@ class ApiError extends Error {
     this.details = details;
     this.timestamp = new Date().toISOString();
 
-    // Maintains proper stack trace for where our error was thrown (only available on V8)
+    /* Maintains proper stack trace for where our error was thrown (only available on V8) */
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, this.constructor);
     }

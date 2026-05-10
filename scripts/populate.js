@@ -243,7 +243,7 @@ async function populate() {
         });
         voteCount++;
       } catch {
-        // duplicate vote — skip
+        /* duplicate vote — skip */
       }
     }
   }

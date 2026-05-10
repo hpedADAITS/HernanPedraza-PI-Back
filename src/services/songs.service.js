@@ -8,7 +8,7 @@ const { ValidationError, NotFoundError } = require('../errors');
 
 class SongsService {
   async suggestSong(eventId, participantId, title, artist) {
-    // Check if participant is on cooldown
+    /* Check if participant is on cooldown */
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
       throw new NotFoundError('Participant not found');

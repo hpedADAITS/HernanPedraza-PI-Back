@@ -46,7 +46,7 @@ describe('Email Verification Token Flow', () => {
       const decoded = decodeToken(token);
 
       const expirySeconds = decoded.exp - decoded.iat;
-      // Allow 5% margin for execution time
+      /* Allow 5% margin for execution time */
       expect(expirySeconds).toBeGreaterThan(290); // ~5 minutes - 10 seconds
       expect(expirySeconds).toBeLessThan(310); // ~5 minutes + 10 seconds
     });
@@ -99,7 +99,7 @@ describe('Email Verification Token Flow', () => {
       const token = generateToken(payload, '5m');
       const decoded = decodeToken(token);
 
-      // All required fields for backend verification
+      /* All required fields for backend verification */
       expect(decoded.userId).toBeDefined();
       expect(decoded.email).toBeDefined();
       expect(decoded.type).toBeDefined();
@@ -159,7 +159,7 @@ describe('Email Verification Token Flow', () => {
       const token = generateToken(payload, '5m');
       const decoded = decodeToken(token);
 
-      // JWT header should indicate HS256 (typically in the token structure)
+      /* JWT header should indicate HS256 (typically in the token structure) */
       expect(token).toBeTruthy();
       expect(decoded).toBeTruthy();
     });

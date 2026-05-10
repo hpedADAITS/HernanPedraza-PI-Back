@@ -8,7 +8,7 @@ class AuthController {
     try {
       const { email, password, displayName, role } = req.body;
 
-      // Validation will be done in service
+      /* Validation will be done in service */
       const result = await authService.register(
         email,
         password,
@@ -30,7 +30,7 @@ class AuthController {
     try {
       const { email, password } = req.body;
 
-      // Basic validation
+      /* Basic validation */
       if (!email || !password) {
         throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
       }
@@ -51,7 +51,7 @@ class AuthController {
     try {
       const { token } = req.body;
 
-      // Validation will be done in service
+      /* Validation will be done in service */
       const result = await authService.refreshToken(token);
 
       res.status(httpStatus.OK).json({

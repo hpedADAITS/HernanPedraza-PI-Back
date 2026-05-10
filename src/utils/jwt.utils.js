@@ -4,12 +4,12 @@ const { logger } = require('./logger');
 
 const generateToken = (userPayload, expiresIn = config.jwtExpiry) => {
   try {
-    // Handle both string userId and user object with metadata
+    /* Handle both string userId and user object with metadata */
     let payload;
     if (typeof userPayload === 'string') {
       payload = { userId: userPayload };
     } else if (typeof userPayload === 'object' && userPayload.userId) {
-      // Ensure userId is a string
+      /* Ensure userId is a string */
       payload = {
         userId:
           typeof userPayload.userId === 'string'

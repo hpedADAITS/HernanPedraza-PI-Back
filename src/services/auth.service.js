@@ -17,10 +17,10 @@ const emailService = require('./email.service');
 
 class AuthService {
   async register(email, password, displayName, role = 'ATTENDEE') {
-    // Validate input
+    /* Validate input */
     validateRegistration({ email, password, displayName, role });
 
-    // Check if user exists
+    /* Check if user exists */
     const existingUser = await UserModel.findOne({
       email: email.toLowerCase(),
     });
@@ -28,10 +28,10 @@ class AuthService {
       throw new ValidationError(messages.AUTH.USER_ALREADY_EXISTS);
     }
 
-    // Hash password
+    /* Hash password */
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create user
+    /* Create user */
     const user = new UserModel({
       email,
       passwordHash,
@@ -42,11 +42,11 @@ class AuthService {
     await user.save();
     logger.info(`User registered: ${email}`);
 
-    // Generate token for new user with user metadata
+    /* Generate token for new user with user metadata */
     const token = generateToken({
       userId: user._id,
       email: user.email,
-from       role: user.role,
+      role: user.role,
     });
 
     if (role === 'DJ') {
@@ -67,10 +67,10 @@ from       role: user.role,
   }
 
   async login(email, password) {
-    // Validate input
+    /* Validate input */
     validateLogin({ email, password });
 
-    // Find user with password field
+    /* Find user with password field */
     const user = await UserModel.findOne({
       email: email.toLowerCase(),
     }).select('+passwordHash');
@@ -78,17 +78,17 @@ from       role: user.role,
       throw new UnauthorizedError(messages.AUTH.INVALID_CREDENTIALS);
     }
 
-    // Verify password
+    /* Verify password */
     const isValid = await bcrypt.compare(password, user.passwordHash);
     if (!isValid) {
       throw new UnauthorizedError(messages.AUTH.INVALID_CREDENTIALS);
     }
 
-    // Update last login
+    /* Update last login */
     user.lastLoginAt = new Date();
     await user.save();
 
-    // Generate token with user metadata
+    /* Generate token with user metadata */
     const token = generateToken({
       userId: user._id,
       email: user.email,
@@ -242,7 +242,7 @@ from       role: user.role,
     try {
       const decoded = verifyToken(token);
 
-      // Check token type
+      /* Check token type */
       if (decoded.type !== 'email-verification') {
         throw new UnauthorizedError('Invalid token type');
       }

@@ -8,24 +8,24 @@ const errorMiddleware = (err, req, res, next) => {
   let errorCode = 'INTERNAL_SERVER_ERROR';
   let details = null;
 
-  // Handle custom ApiError instances
+  /* Handle custom ApiError instances */
   if (err instanceof ApiError) {
     statusCode = err.statusCode;
     message = err.message;
     errorCode = err.name;
     details = err.details;
   } else if (err.statusCode && err.message) {
-    // Handle errors with statusCode property
+    /* Handle errors with statusCode property */
     statusCode = err.statusCode;
     message = err.message;
     errorCode = err.code || 'ERROR';
   } else if (err instanceof Error) {
-    // Handle generic JavaScript errors
+    /* Handle generic JavaScript errors */
     message = err.message || 'An unexpected error occurred';
     errorCode = 'ERROR';
   }
 
-  // Log error with context
+  /* Log error with context */
   logger.error(`[${statusCode}] ${errorCode}: ${message}`, {
     path: req.path,
     method: req.method,
@@ -34,7 +34,7 @@ const errorMiddleware = (err, req, res, next) => {
     details,
   });
 
-  // Send error response
+  /* Send error response */
   res.status(statusCode).json({
     success: false,
     error: {

@@ -35,7 +35,7 @@ const handleSocketEvents = (socket, io) => {
     }
   });
 
-  // ============ VOTING ============
+  /* ============ VOTING ============ */
   socket.on('vote_cast', async (data) => {
     try {
       await events.handleVotesCast(socket, io, data);
@@ -54,7 +54,7 @@ const handleSocketEvents = (socket, io) => {
     }
   });
 
-  // ============ SONGS ============
+  /* ============ SONGS ============ */
   socket.on('song_suggested', (data) => {
     try {
       events.handleSongSuggested(socket, io, data);

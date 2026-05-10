@@ -1,5 +1,5 @@
-// Import all MongoDB models from schema.js
-// This file serves as a central export point for all models
+/* Import all MongoDB models from schema.js */
+/* This file serves as a central export point for all models */
 
 const {
   UserModel,
@@ -16,7 +16,7 @@ const {
 } = require('./schema');
 
 module.exports = {
-  // Models
+  /* Models */
   UserModel,
   EventModel,
   EventMemberModel,
@@ -25,10 +25,10 @@ module.exports = {
   VoteModel,
   EventActionLogModel,
 
-  // Database functions
+  /* Database functions */
   connectMongo,
 
-  // Utility functions
+  /* Utility functions */
   hasEventPermission,
   defaultPermissionsForRole,
   ALL_EVENT_PERMISSIONS,

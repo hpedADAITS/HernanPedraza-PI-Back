@@ -40,7 +40,7 @@ class EmailService {
       const email = user.email;
       const idempotencyKey = `welcome-dj/${email}/${Date.now()}`;
 
-      // Generate email verification token (5m expiry)
+      /* Generate email verification token (5m expiry) */
       const verificationToken = generateToken(
         {
           userId: user._id.toString(),
@@ -84,7 +84,7 @@ class EmailService {
     }
   }
 
-   // Get welcome email HTML template
+   /* Get welcome email HTML template */
 
   getWelcomeEmailTemplate(displayName, verificationToken) {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';

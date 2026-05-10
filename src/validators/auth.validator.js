@@ -63,7 +63,7 @@ function validateRegistration(data) {
   validatePassword(password);
   validateDisplayName(displayName);
 
-  // Validate role if provided
+  /* Validate role if provided */
   if (data.role && !['ATTENDEE', 'DJ', 'ADMIN'].includes(data.role)) {
     throw new ValidationError(
       'Invalid role. It must be either ATTENDEE, DJ, or ADMIN',

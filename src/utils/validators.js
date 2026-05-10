@@ -58,7 +58,7 @@ const validators = {
 
   eventCode: (code) => {
     if (!code || typeof code !== 'string') return false;
-    // Event codes are typically 6-8 alphanumeric characters
+    /* Event codes are typically 6-8 alphanumeric characters */
     return alphanumericRegex.test(code) && code.length >= 6 && code.length <= 8;
   },
 };

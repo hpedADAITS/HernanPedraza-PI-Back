@@ -33,7 +33,7 @@ const validationMiddleware = (schema) => {
         });
       }
 
-      // Reemplazar datos de solicitud con datos validados
+      /* Reemplazar datos de solicitud con datos validados */
       req.body = value.body;
       req.params = value.params;
       req.query = value.query;

@@ -85,8 +85,8 @@ describe('JWT Utils', () => {
     });
 
     test('should throw error for expired token', (done) => {
-      // This test would require mocking time or using an already expired token
-      // For now, we create a minimal example
+      /* This test would require mocking time or using an already expired token */
+      /* For now, we create a minimal example */
       const expiredToken = generateToken(testUserId, '0s');
 
       setTimeout(() => {
@@ -132,7 +132,7 @@ describe('JWT Utils', () => {
 
     test('should not need valid secret to decode', () => {
       const token = generateToken(testUserId);
-      // decodeToken doesn't verify, so it should work even if secret changes
+      /* decodeToken doesn't verify, so it should work even if secret changes */
       const decoded = decodeToken(token);
       expect(decoded.userId).toBe(testUserId);
     });

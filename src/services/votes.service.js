@@ -4,27 +4,27 @@ const { ValidationError, NotFoundError } = require('../errors');
 
 class VotesService {
   async castVote(songId, participantId, value) {
-    // Validate vote value
+    /* Validate vote value */
     if (![1, -1].includes(value)) {
       throw new ValidationError('Vote value must be 1 or -1');
     }
 
-    // Check if song exists
+    /* Check if song exists */
     const song = await SongModel.findById(songId);
     if (!song) {
       throw new NotFoundError('Song not found');
     }
 
-    // Check if participant already voted
+    /* Check if participant already voted */
     let existingVote = await VoteModel.findOne({ songId, participantId });
 
     if (existingVote) {
-      // Update existing vote
+      /* Update existing vote */
       const oldValue = existingVote.value;
       existingVote.value = value;
       await existingVote.save();
 
-      // Update song vote score
+      /* Update song vote score */
       song.voteScore = song.voteScore - oldValue + value;
       await song.save();
 
@@ -32,7 +32,7 @@ class VotesService {
       return this._formatVote(existingVote);
     }
 
-    // Create new vote
+    /* Create new vote */
     const vote = new VoteModel({
       songId,
       participantId,
@@ -41,7 +41,7 @@ class VotesService {
 
     await vote.save();
 
-    // Update song vote score
+    /* Update song vote score */
     song.voteScore += value;
     song.voteCount += 1;
     await song.save();
@@ -57,7 +57,7 @@ class VotesService {
       throw new NotFoundError('Vote not found');
     }
 
-    // Update song vote score
+    /* Update song vote score */
     const song = await SongModel.findById(songId);
     if (song) {
       song.voteScore -= vote.value;

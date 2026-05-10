@@ -4,7 +4,7 @@ const { requireFields } = require('./middleware');
 const isValidId = (v) => typeof v === 'string' && /^[a-f\d]{24}$/i.test(v);
 const isValidVoteValue = (v) => v === 1 || v === -1;
 
-// ============ EVENT PARTICIPATION ============
+/* ============ EVENT PARTICIPATION ============ */
 
 const handleJoinEvent = (socket, io, data) => {
   console.log('Received data:', data);
@@ -60,7 +60,7 @@ const handleDisconnect = (socket, io) => {
   logger.info(`Socket ${socket.id} disconnected`);
 };
 
-// ============ VOTING ============
+/* ============ VOTING ============ */
 
 const handleVotesCast = async (socket, io, data) => {
   const missing = requireFields(data, [
@@ -115,7 +115,7 @@ const handleVoteRemoved = (socket, io, data) => {
   });
 };
 
-// ============ SONGS ============
+/* ============ SONGS ============ */
 
 const handleSongSuggested = (socket, io, data) => {
   const { eventId, songId, title, artist, participantId } = data;
@@ -158,7 +158,7 @@ const handleSongApproved = async (socket, io, data) => {
   logger.info(`Song approved: ${songId}`);
   console.log('Fetching song details for:', songId);
 
-  // Get song details to send with the event
+  /* Get song details to send with the event */
   const { SongModel } = require('../models/schema');
   const song = await SongModel.findById(songId).select('title artist');
   console.log('Song found:', song);

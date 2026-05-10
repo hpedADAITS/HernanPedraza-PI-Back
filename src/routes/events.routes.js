@@ -4,10 +4,10 @@ const { authenticate } = require('../middleware');
 
 const router = Router();
 
-// All event routes require authentication
+/* All event routes require authentication */
 router.use(authenticate);
 
-// Event CRUD
+/* Event CRUD */
 router.post('/', eventsController.createEvent.bind(eventsController));
 router.get('/', eventsController.listActiveEvents.bind(eventsController));
 router.get(
@@ -17,7 +17,7 @@ router.get(
 router.get('/:eventId', eventsController.getEvent.bind(eventsController));
 router.put('/:eventId', eventsController.updateEvent.bind(eventsController));
 
-// Event state management
+/* Event state management */
 router.post(
   '/:eventId/start',
   eventsController.startEvent.bind(eventsController),
@@ -32,7 +32,7 @@ router.post(
   eventsController.regenerateAccessCode.bind(eventsController),
 );
 
-// Participants
+/* Participants */
 router.get(
   '/:eventId/participants',
   eventsController.getParticipants.bind(eventsController),

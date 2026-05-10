@@ -1,15 +1,15 @@
-// test/setup.js
+/* test/setup.js */
 /**
  * Global test setup
  * Configures environment and initializes test utilities
  */
 
-// Set test environment
+/* Set test environment */
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-secret-key-for-testing-only';
 process.env.JWT_EXPIRY = '1h';
 
-// Suppress logs during tests
+/* Suppress logs during tests */
 global.console = {
   ...console,
   log: jest.fn(),
@@ -19,7 +19,7 @@ global.console = {
   error: jest.fn(),
 };
 
-// Global test utilities
+/* Global test utilities */
 global.testUtils = {
   /**
    * Create a mock user object

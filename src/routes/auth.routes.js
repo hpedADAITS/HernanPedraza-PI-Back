@@ -4,12 +4,12 @@ const { authenticate } = require('../middleware');
 
 const router = Router();
 
-// Public routes
+/* Public routes */
 router.post('/register', authController.register.bind(authController));
 router.post('/login', authController.login.bind(authController));
 router.post('/refresh', authController.refreshToken.bind(authController));
 
-// Protected routes
+/* Protected routes */
 router.get(
   '/me',
   authenticate,
@@ -34,7 +34,7 @@ router.post(
   authController.verifyEmail.bind(authController),
 );
 
-// Verify email via token (public endpoint, for email link access)
+/* Verify email via token (public endpoint, for email link access) */
 router.get(
   '/verify-email/:token',
   authController.verifyEmailToken.bind(authController),

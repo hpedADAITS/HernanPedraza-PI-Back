@@ -12,7 +12,7 @@ class EventsController {
 
       eventsValidator.validateCreateEvent(dto);
 
-      // Check if user's email is registered (for DJ users)
+      /* Check if user's email is registered (for DJ users) */
       const user = await authService.getCurrentUser(req.user.userId);
       if (user.role === 'DJ' && !user.emailRegistered) {
         throw new ValidationError(

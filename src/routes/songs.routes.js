@@ -4,10 +4,10 @@ const { authenticate } = require('../middleware');
 
 const router = Router();
 
-// All song routes require authentication
+/* All song routes require authentication */
 router.use(authenticate);
 
-// Song management
+/* Song management */
 router.post(
   '/:eventId/suggest',
   songsController.suggestSong.bind(songsController),
@@ -18,7 +18,7 @@ router.get(
   songsController.getPendingSongs.bind(songsController),
 );
 
-// DJ operations
+/* DJ operations */
 router.post(
   '/:eventId/:songId/approve',
   songsController.approveSong.bind(songsController),
@@ -32,7 +32,7 @@ router.post(
   songsController.skipSong.bind(songsController),
 );
 
-// Queue info
+/* Queue info */
 router.get(
   '/:songId/position',
   songsController.getSongPosition.bind(songsController),

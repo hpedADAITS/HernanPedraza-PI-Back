@@ -4,7 +4,7 @@ const { ValidationError, NotFoundError } = require('../errors');
 
 class ParticipantsService {
   async joinEvent(eventId, nickname) {
-    // Check if participant already exists
+    /* Check if participant already exists */
     const existing = await ParticipantModel.findOne({
       eventId,
       nicknameLower: nickname.toLowerCase().trim(),
@@ -81,12 +81,12 @@ class ParticipantsService {
       throw new NotFoundError('Participant not found');
     }
 
-    // Extract userId properly - handle string, ObjectId, or object with userId property
+    /* Extract userId properly - handle string, ObjectId, or object with userId property */
     let userIdStr;
     if (typeof actorUserId === 'string') {
       userIdStr = actorUserId;
     } else if (actorUserId && typeof actorUserId === 'object') {
-      // If it's an object, try to extract userId property
+      /* If it's an object, try to extract userId property */
       userIdStr = actorUserId.userId?.toString() || actorUserId._id?.toString();
     }
 
@@ -112,7 +112,7 @@ class ParticipantsService {
       `Participant ${participantId} on cooldown until ${cooldownUntil}`,
     );
 
-    // Return both formatted participant and event info for socket broadcast
+    /* Return both formatted participant and event info for socket broadcast */
     return {
       participant: this._formatParticipant(participant),
       eventId: participant.eventId,
@@ -126,12 +126,12 @@ class ParticipantsService {
       throw new NotFoundError('Participant not found');
     }
 
-    // Extract userId properly - handle string, ObjectId, or object with userId property
+    /* Extract userId properly - handle string, ObjectId, or object with userId property */
     let userIdStr;
     if (typeof actorUserId === 'string') {
       userIdStr = actorUserId;
     } else if (actorUserId && typeof actorUserId === 'object') {
-      // If it's an object, try to extract userId property
+      /* If it's an object, try to extract userId property */
       userIdStr = actorUserId.userId?.toString() || actorUserId._id?.toString();
     }
 
@@ -156,7 +156,7 @@ class ParticipantsService {
 
     logger.info(`Participant ${participantId} kicked: ${reason}`);
 
-    // Return both formatted participant and event info for socket broadcast
+    /* Return both formatted participant and event info for socket broadcast */
     return {
       participant: this._formatParticipant(participant),
       eventId: participant.eventId,

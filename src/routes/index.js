@@ -8,10 +8,10 @@ const votesRoutes = require('./votes.routes');
 
 const router = Router();
 
-// Health check
+/* Health check */
 router.use('/ping', ping);
 
-// API Routes
+/* API Routes */
 router.use('/auth', authRoutes);
 router.use('/events', eventsRoutes);
 router.use('/songs', songsRoutes);

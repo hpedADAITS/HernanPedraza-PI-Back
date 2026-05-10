@@ -6,13 +6,13 @@ const { initSocketIO } = require('./loaders/socket');
 
 const { port } = config;
 
-// Inicializar loaders (base de datos, socket.io, etc)
+/* Inicializar loaders (base de datos, socket.io, etc) */
 initLoaders()
   .then(() => {
-    // Initialize Socket.IO with Express app
+    /* Initialize Socket.IO with Express app */
     const { httpServer } = initSocketIO(app);
 
-    // Listen on HTTP server (which wraps Express)
+    /* Listen on HTTP server (which wraps Express) */
     httpServer.listen(port, '0.0.0.0', (err) => {
       if (err) {
         logger.error(err);

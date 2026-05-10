@@ -214,7 +214,7 @@ const swaggerDefinition = {
       },
     },
 
-    // ── Auth ──
+    /* ── Auth ── */
     '/auth/register': {
       post: {
         tags: ['Auth'],
@@ -369,7 +369,7 @@ const swaggerDefinition = {
       },
     },
 
-    // ── Events ──
+    /* ── Events ── */
     '/events': {
       post: {
         tags: ['Events'],
@@ -709,7 +709,7 @@ const swaggerDefinition = {
       },
     },
 
-    // ── Songs ──
+    /* ── Songs ── */
     '/songs/{eventId}/suggest': {
       post: {
         tags: ['Songs'],
@@ -983,7 +983,7 @@ const swaggerDefinition = {
       },
     },
 
-    // ── Participants ──
+    /* ── Participants ── */
     '/participants/{eventId}/join': {
       post: {
         tags: ['Participants'],
@@ -1232,7 +1232,7 @@ const swaggerDefinition = {
       },
     },
 
-    // ── Votes ──
+    /* ── Votes ── */
     '/votes': {
       post: {
         tags: ['Votes'],

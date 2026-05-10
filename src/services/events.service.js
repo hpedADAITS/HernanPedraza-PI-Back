@@ -16,9 +16,9 @@ const {
 
 class EventsService {
   async createEvent(ownerId, name, description, startsAt, eventId = null) {
-    // Use provided eventId or generate a random one
+    /* Use provided eventId or generate a random one */
     const finalEventId = eventId || generateEventCode(8);
-    // Generate random accessCode (separate from eventId, regenerable)
+    /* Generate random accessCode (separate from eventId, regenerable) */
     const accessCode = generateEventCode(6);
 
     const event = new EventModel({
@@ -40,7 +40,7 @@ class EventsService {
 
     await event.save();
 
-    // Create owner as EventMember with DJ role (full permissions)
+    /* Create owner as EventMember with DJ role (full permissions) */
     const eventMember = new EventMemberModel({
       eventId: event._id,
       userId: ownerId,
@@ -93,12 +93,12 @@ class EventsService {
       throw new NotFoundError('Event not found');
     }
 
-    // Check ownership
+    /* Check ownership */
     if (event.ownerId.toString() !== ownerId.toString()) {
       throw new UnauthorizedError('Unauthorized');
     }
 
-    // Allow updating: name, description, settings
+    /* Allow updating: name, description, settings */
     if (updates.name) event.name = updates.name;
     if (updates.description) event.description = updates.description;
     if (updates.settings)
@@ -186,12 +186,12 @@ class EventsService {
       throw new NotFoundError('Event not found');
     }
 
-    // Check ownership
+    /* Check ownership */
     if (event.ownerId.toString() !== userId.toString()) {
       throw new UnauthorizedError('Unauthorized');
     }
 
-    // Generate new access code
+    /* Generate new access code */
     const newAccessCode = generateEventCode(6);
     event.accessCode = newAccessCode;
     await event.save();
@@ -201,7 +201,7 @@ class EventsService {
   }
 
   async addEventMember(eventId, userId, role, actorUserId) {
-    // Check if already a member
+    /* Check if already a member */
     const existing = await EventMemberModel.findOne({ eventId, userId });
     if (existing) {
       throw new ValidationError('User is already an event member');
