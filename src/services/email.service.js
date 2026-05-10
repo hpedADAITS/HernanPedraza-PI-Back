@@ -16,7 +16,7 @@ class EmailService {
    * Send welcome email to newly registered DJ
    * @param {Object} user - User object from database
    * @param {string} displayName - DJ's display name
-   * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
+   * @returns {Promise<{success: boolean, messageId?: string, token?: string, error?: string}>}
    */
   async sendWelcomeEmail(user, displayName) {
     const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
@@ -53,6 +53,15 @@ class EmailService {
       user.emailVerificationAttempts += 1;
       user.emailVerificationLastSentAt = new Date();
       await user.save();
+
+      /* Debug mode: bypass email sending */
+      if (process.env.DEBUG_EMAIL === 'true') {
+        logger.info(`[DEBUG] Email verification token for ${email}: ${verificationToken}`);
+        return {
+          success: true,
+          token: verificationToken,
+        };
+      }
 
       const { data, error } = await this.resend.emails.send({
         from: this.fromEmail,
