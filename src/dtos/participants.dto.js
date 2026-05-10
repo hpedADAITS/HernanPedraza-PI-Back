@@ -2,6 +2,8 @@ function toJoinEventDTO(body) {
   return {
     nickname:
       typeof body.nickname === 'string' ? body.nickname.trim() : body.nickname,
+    profilePicture:
+      typeof body.profilePicture === 'string' ? body.profilePicture : null,
   };
 }
 

@@ -189,6 +189,7 @@ const ParticipantSchema = new Schema(
 
     nickname: { type: String, required: true, trim: true },
     nicknameLower: { type: String, required: true, trim: true, index: true },
+    profilePicture: { type: String, default: null },
 
     socketId: { type: String, index: true },
 

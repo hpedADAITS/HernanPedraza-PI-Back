@@ -1,7 +1,7 @@
 const { ValidationError } = require('../errors');
 
 function validateJoinEvent(data) {
-  const { nickname } = data;
+  const { nickname, profilePicture } = data;
   if (!nickname || typeof nickname !== 'string') {
     throw new ValidationError('Nickname is required');
   }
@@ -11,6 +11,9 @@ function validateJoinEvent(data) {
   }
   if (trimmed.length > 30) {
     throw new ValidationError('Nickname must be less than 30 characters');
+  }
+  if (profilePicture !== null && typeof profilePicture !== 'string') {
+    throw new ValidationError('Profile picture must be a valid string');
   }
 }
 

@@ -3,7 +3,7 @@ const { logger } = require('../utils');
 const { ValidationError, NotFoundError } = require('../errors');
 
 class ParticipantsService {
-  async joinEvent(eventId, nickname) {
+  async joinEvent(eventId, nickname, profilePicture = null) {
     /* Check if participant already exists */
     const existing = await ParticipantModel.findOne({
       eventId,
@@ -19,6 +19,7 @@ class ParticipantsService {
       eventId,
       nickname,
       nicknameLower: nickname.toLowerCase().trim(),
+      profilePicture,
       joinedAt: new Date(),
       lastSeenAt: new Date(),
     });
@@ -203,6 +204,7 @@ class ParticipantsService {
       _id: participant._id.toString(),
       eventId: participant.eventId,
       nickname: participant.nickname,
+      profilePicture: participant.profilePicture,
       socketId: participant.socketId,
       joinedAt: participant.joinedAt,
       lastSeenAt: participant.lastSeenAt,

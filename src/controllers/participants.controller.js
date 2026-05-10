@@ -22,6 +22,7 @@ class ParticipantsController {
       const participant = await participantsService.joinEvent(
         eventId,
         dto.nickname,
+        dto.profilePicture,
       );
 
       res.status(httpStatus.CREATED).json({
