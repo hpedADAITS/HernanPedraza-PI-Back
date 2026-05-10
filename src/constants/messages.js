@@ -3,6 +3,8 @@ module.exports = {
     INVALID_CREDENTIALS: 'Invalid email or password',
     USER_NOT_FOUND: 'User not found',
     USER_ALREADY_EXISTS: 'User with this email already exists',
+    EMAIL_VERIFICATION_COOLDOWN: 'Please wait before requesting a new verification email',
+    EMAIL_VERIFICATION_LIMIT: 'Too many verification attempts. Please try again later',
     INVALID_TOKEN: 'Invalid or expired token',
     UNAUTHORIZED: 'Unauthorized access',
     PASSWORD_RESET_SENT: 'Password reset email sent',

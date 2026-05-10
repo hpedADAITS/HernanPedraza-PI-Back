@@ -28,4 +28,16 @@ router.patch(
   authController.updateProfilePicture.bind(authController),
 );
 
+router.post(
+  '/verify-email',
+  authenticate,
+  authController.verifyEmail.bind(authController),
+);
+
+// Verify email via token (public endpoint, for email link access)
+router.get(
+  '/verify-email/:token',
+  authController.verifyEmailToken.bind(authController),
+);
+
 module.exports = router;

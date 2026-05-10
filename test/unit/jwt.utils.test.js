@@ -33,6 +33,21 @@ describe('JWT Utils', () => {
       expect(decoded.role).toBe(testRole);
     });
 
+    test('should preserve custom type field in payload', () => {
+      const payload = {
+        userId: testUserId,
+        email: testEmail,
+        type: 'email-verification',
+      };
+      const token = generateToken(payload);
+      expect(token).toBeDefined();
+
+      const decoded = decodeToken(token);
+      expect(decoded.type).toBe('email-verification');
+      expect(decoded.userId).toBe(testUserId);
+      expect(decoded.email).toBe(testEmail);
+    });
+
     test('should generate token with custom expiry', () => {
       const customExpiry = '1h';
       const token = generateToken(testUserId, customExpiry);

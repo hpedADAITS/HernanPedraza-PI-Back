@@ -17,6 +17,7 @@ const generateToken = (userPayload, expiresIn = config.jwtExpiry) => {
             : userPayload.userId.toString(),
         ...(userPayload.email && { email: userPayload.email }),
         ...(userPayload.role && { role: userPayload.role }),
+        ...(userPayload.type && { type: userPayload.type }),
       };
     } else {
       throw new Error('Invalid payload for token generation');

@@ -13,6 +13,7 @@ const {
   validateLogin,
   validateTokenRefresh,
 } = require('../validators/auth.validator');
+const emailService = require('./email.service');
 
 class AuthService {
   async register(email, password, displayName, role = 'ATTENDEE') {
@@ -45,11 +46,11 @@ class AuthService {
     const token = generateToken({
       userId: user._id,
       email: user.email,
-      role: user.role,
+from       role: user.role,
     });
 
     if (role === 'DJ') {
-      emailService.sendWelcomeEmail(user, displayName).catch((err) => {
+      await emailService.sendWelcomeEmail(user, displayName).catch((err) => {
         logger.error(`Failed to send welcome email to ${email}:`, err);
       });
     }
@@ -207,6 +208,73 @@ class AuthService {
       role: user.role,
     };
   }
+
+  async verifyEmail(userId) {
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
+    }
+
+    if (user.emailRegistered) {
+      throw new ValidationError('Email already verified');
+    }
+
+    if (user.role !== 'DJ') {
+      throw new ValidationError('Only DJ accounts require email verification');
+    }
+
+    try {
+      await emailService.sendWelcomeEmail(user, user.displayName);
+      logger.info(`Verification email resent to: ${user.email}`);
+      return { success: true };
+    } catch (error) {
+      if (error.message.includes('cooldown')) {
+        throw new ValidationError(messages.AUTH.EMAIL_VERIFICATION_COOLDOWN);
+      }
+      if (error.message.includes('Too many')) {
+        throw new ValidationError(messages.AUTH.EMAIL_VERIFICATION_LIMIT);
+      }
+      throw error;
+    }
+  }
+
+  async verifyEmailToken(token) {
+    try {
+      const decoded = verifyToken(token);
+
+      // Check token type
+      if (decoded.type !== 'email-verification') {
+        throw new UnauthorizedError('Invalid token type');
+      }
+
+      const user = await UserModel.findById(decoded.userId);
+      if (!user) {
+        throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
+      }
+
+      user.emailRegistered = true;
+      user.emailRegisteredAt = new Date();
+      await user.save();
+      logger.info(`Email verified via token for user: ${user.email}`);
+
+      return {
+        id: user._id,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+        emailRegistered: user.emailRegistered,
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundError ||
+        error instanceof UnauthorizedError
+      ) {
+        throw error;
+      }
+      throw new UnauthorizedError('Invalid or expired verification link');
+    }
+  }
+
 }
 
 module.exports = new AuthService();

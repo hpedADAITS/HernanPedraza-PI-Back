@@ -1,5 +1,6 @@
 const { Resend } = require('resend');
 const { logger } = require('../utils');
+const { generateToken, verifyToken } = require('../utils/jwt.utils');
 
 class EmailService {
   constructor() {
@@ -18,15 +19,46 @@ class EmailService {
    * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
    */
   async sendWelcomeEmail(user, displayName) {
+    const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+    const MAX_ATTEMPTS = 5;
+    const ATTEMPT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+    if (user.emailVerificationLastSentAt) {
+      const timeSinceLastAttempt = Date.now() - user.emailVerificationLastSentAt.getTime();
+      if (timeSinceLastAttempt < COOLDOWN_MS) {
+        throw new Error(
+          `Email verification cooldown active. Wait ${Math.ceil((COOLDOWN_MS - timeSinceLastAttempt) / 1000)}s`
+        );
+      }
+    }
+
+    const dayAgo = new Date(Date.now() - ATTEMPT_WINDOW_MS);
+    if (user.emailVerificationLastSentAt > dayAgo && user.emailVerificationAttempts >= MAX_ATTEMPTS) {
+      throw new Error('Too many verification attempts. Try again in 24 hours');
+    }
     try {
       const email = user.email;
       const idempotencyKey = `welcome-dj/${email}/${Date.now()}`;
+
+      // Generate email verification token (5m expiry)
+      const verificationToken = generateToken(
+        {
+          userId: user._id.toString(),
+          email: user.email,
+          type: 'email-verification',
+        },
+        '5m',
+      );
+
+      user.emailVerificationAttempts += 1;
+      user.emailVerificationLastSentAt = new Date();
+      await user.save();
 
       const { data, error } = await this.resend.emails.send({
         from: this.fromEmail,
         to: [email],
         subject: 'Welcome to SyncRekuest! 🎵',
-        html: this.getWelcomeEmailTemplate(displayName),
+        html: this.getWelcomeEmailTemplate(displayName, verificationToken),
         idempotencyKey: idempotencyKey.substring(0, 256),
       });
 
@@ -37,11 +69,6 @@ class EmailService {
           error: error.message,
         };
       }
-
-      // Mark email as registered in database
-      user.emailRegistered = true;
-      user.emailRegisteredAt = new Date();
-      await user.save();
 
       logger.info(`Welcome email sent to ${email} (messageId: ${data.id})`);
       return {
@@ -57,13 +84,11 @@ class EmailService {
     }
   }
 
-  /**
-   * Get welcome email HTML template
-   * @param {string} displayName - DJ's display name
-   * @returns {string} HTML email template
-   */
-  getWelcomeEmailTemplate(displayName) {
-    const dashboardUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+   // Get welcome email HTML template
+
+  getWelcomeEmailTemplate(displayName, verificationToken) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const verifyUrl = `${frontendUrl}/verify-email?token=${verificationToken}`;
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -110,7 +135,7 @@ class EmailService {
                   </tr>
                 </table>
                 
-                <a href="${dashboardUrl}" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; letter-spacing: 0.5px;">Go to Dashboard</a>
+                <a href="${verifyUrl}" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; letter-spacing: 0.5px;">Verify Email & Continue</a>
               </td>
             </tr>
             

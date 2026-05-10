@@ -113,6 +113,37 @@ class AuthController {
       next(error);
     }
   }
+
+  async verifyEmail(req, res, next) {
+    try {
+      const result = await authService.verifyEmail(req.user.userId);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        message: 'Verification email sent. Check your inbox.',
+        data: result,
+      });
+    } catch (error) {
+      logger.error('Verify email error:', error);
+      next(error);
+    }
+  }
+
+  async verifyEmailToken(req, res, next) {
+    try {
+      const { token } = req.params;
+      const user = await authService.verifyEmailToken(token);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { user },
+      });
+    } catch (error) {
+      logger.error('Verify email token error:', error);
+      next(error);
+    }
+  }
+
 }
 
 module.exports = new AuthController();

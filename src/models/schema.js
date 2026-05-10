@@ -69,6 +69,8 @@ const UserSchema = new Schema(
     lastLoginAt: { type: Date },
     emailRegistered: { type: Boolean, default: false, index: true },
     emailRegisteredAt: { type: Date, default: null },
+    emailVerificationAttempts: { type: Number, default: 0 },
+    emailVerificationLastSentAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
