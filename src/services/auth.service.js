@@ -50,14 +50,21 @@ class AuthService {
       type: 'default',
     });
 
+    let emailVerificationToken;
     if (role === 'DJ') {
-      await emailService.sendWelcomeEmail(user, displayName).catch((err) => {
+      try {
+        const emailResult = await emailService.sendWelcomeEmail(user, displayName);
+        if (emailResult?.token) {
+          emailVerificationToken = emailResult.token;
+        }
+      } catch (err) {
         logger.error(`Failed to send welcome email to ${email}:`, err);
-      });
+      }
     }
 
     return {
       token,
+      ...(emailVerificationToken && { emailVerificationToken }),
       user: {
         id: user._id,
         email: user.email,
@@ -231,7 +238,10 @@ class AuthService {
     try {
       const emailResult = await emailService.sendWelcomeEmail(user, user.displayName);
       logger.info(`Verification email resent to: ${user.email}`);
-      return { success: true, token: emailResult.token };
+      return {
+        success: true,
+        ...(emailResult?.token && { emailVerificationToken: emailResult.token }),
+      };
     } catch (error) {
       if (error.message.includes('cooldown')) {
         throw new ValidationError(messages.AUTH.EMAIL_VERIFICATION_COOLDOWN);
@@ -252,13 +262,40 @@ class AuthService {
         throw new UnauthorizedError('Invalid token type');
       }
 
+      if (!decoded.verificationTokenId) {
+        throw new UnauthorizedError('Invalid verification token');
+      }
+
       const user = await UserModel.findById(decoded.userId);
       if (!user) {
         throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
       }
 
+      if (user.role !== 'DJ') {
+        throw new ValidationError('Only DJ accounts require email verification');
+      }
+
+      if (!user.emailVerificationTokenId) {
+        throw new UnauthorizedError('Verification token already used or replaced');
+      }
+
+      if (decoded.verificationTokenId !== user.emailVerificationTokenId) {
+        throw new UnauthorizedError('Verification token already used or replaced');
+      }
+
+      if (user.emailRegistered) {
+        return {
+          id: user._id,
+          email: user.email,
+          displayName: user.displayName,
+          role: user.role,
+          emailRegistered: user.emailRegistered,
+        };
+      }
+
       user.emailRegistered = true;
       user.emailRegisteredAt = new Date();
+      user.emailVerificationTokenId = null;
       await user.save();
       logger.info(`Email verified via token for user: ${user.email}`);
 
@@ -272,7 +309,8 @@ class AuthService {
     } catch (error) {
       if (
         error instanceof NotFoundError ||
-        error instanceof UnauthorizedError
+        error instanceof UnauthorizedError ||
+        error instanceof ValidationError
       ) {
         throw error;
       }

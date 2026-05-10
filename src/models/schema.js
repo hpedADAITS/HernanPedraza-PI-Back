@@ -71,6 +71,7 @@ const UserSchema = new Schema(
     emailRegisteredAt: { type: Date, default: null },
     emailVerificationAttempts: { type: Number, default: 0 },
     emailVerificationLastSentAt: { type: Date, default: null },
+    emailVerificationTokenId: { type: String, default: null, index: true },
   },
   { timestamps: true },
 );

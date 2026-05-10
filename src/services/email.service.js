@@ -1,6 +1,7 @@
 const { Resend } = require('resend');
+const crypto = require('crypto');
 const { logger } = require('../utils');
-const { generateToken, verifyToken } = require('../utils/jwt.utils');
+const { generateToken } = require('../utils/jwt.utils');
 
 class EmailService {
   constructor() {
@@ -36,61 +37,54 @@ class EmailService {
     if (user.emailVerificationLastSentAt > dayAgo && user.emailVerificationAttempts >= MAX_ATTEMPTS && COOLDOWN_MS > 0) {
       throw new Error('Too many verification attempts. Try again in 24 hours');
     }
-    try {
-      const email = user.email;
-      const idempotencyKey = `welcome-dj/${email}/${Date.now()}`;
+    const email = user.email;
+    const idempotencyKey = `welcome-dj/${email}/${Date.now()}`;
 
-      /* Generate email verification token (5m expiry) */
-      const verificationToken = generateToken(
-        {
-          userId: user._id.toString(),
-          email: user.email,
-          type: 'email-verification',
-        },
-        '5m',
-      );
+    const verificationTokenId = crypto.randomUUID();
 
-      user.emailVerificationAttempts += 1;
-      user.emailVerificationLastSentAt = new Date();
-      await user.save();
+    /* Generate one-time email verification token (5m expiry) */
+    const verificationToken = generateToken(
+      {
+        userId: user._id.toString(),
+        email: user.email,
+        type: 'email-verification',
+        verificationTokenId,
+      },
+      '5m',
+    );
 
-      /* Debug mode: bypass email sending */
-      if (process.env.DEBUG_EMAIL === 'true') {
-        logger.info(`[DEBUG] Email verification token for ${email}: ${verificationToken}`);
-        return {
-          success: true,
-          token: verificationToken,
-        };
-      }
+    user.emailVerificationAttempts += 1;
+    user.emailVerificationLastSentAt = new Date();
+    user.emailVerificationTokenId = verificationTokenId;
+    await user.save();
 
-      const { data, error } = await this.resend.emails.send({
-        from: this.fromEmail,
-        to: [email],
-        subject: 'Welcome to SyncRekuest! 🎵',
-        html: this.getWelcomeEmailTemplate(displayName, verificationToken),
-        idempotencyKey: idempotencyKey.substring(0, 256),
-      });
-
-      if (error) {
-        logger.error('Failed to send welcome email:', error);
-        return {
-          success: false,
-          error: error.message,
-        };
-      }
-
-      logger.info(`Welcome email sent to ${email} (messageId: ${data.id})`);
+    /* Debug mode: bypass email sending */
+    if (process.env.DEBUG_EMAIL === 'true') {
+      logger.info(`[DEBUG] Email verification token for ${email}: ${verificationToken}`);
       return {
         success: true,
-        messageId: data.id,
-      };
-    } catch (err) {
-      logger.error('Error sending welcome email:', err);
-      return {
-        success: false,
-        error: err.message,
+        token: verificationToken,
       };
     }
+
+    const { data, error } = await this.resend.emails.send({
+      from: this.fromEmail,
+      to: [email],
+      subject: 'Welcome to SyncRekuest! 🎵',
+      html: this.getWelcomeEmailTemplate(displayName, verificationToken),
+      idempotencyKey: idempotencyKey.substring(0, 256),
+    });
+
+    if (error) {
+      logger.error('Failed to send welcome email:', error);
+      throw new Error(error.message || 'Failed to send welcome email');
+    }
+
+    logger.info(`Welcome email sent to ${email} (messageId: ${data.id})`);
+    return {
+      success: true,
+      messageId: data.id,
+    };
   }
 
    /* Get welcome email HTML template */
