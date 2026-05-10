@@ -19,11 +19,11 @@ class EmailService {
    * @returns {Promise<{success: boolean, messageId?: string, token?: string, error?: string}>}
    */
   async sendWelcomeEmail(user, displayName) {
-    const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+    const COOLDOWN_MS = process.env.DEBUG_EMAIL === 'true' ? 0 : 5 * 60 * 1000; // Skip cooldown in DEBUG
     const MAX_ATTEMPTS = 5;
     const ATTEMPT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-    if (user.emailVerificationLastSentAt) {
+    if (user.emailVerificationLastSentAt && COOLDOWN_MS > 0) {
       const timeSinceLastAttempt = Date.now() - user.emailVerificationLastSentAt.getTime();
       if (timeSinceLastAttempt < COOLDOWN_MS) {
         throw new Error(
@@ -33,7 +33,7 @@ class EmailService {
     }
 
     const dayAgo = new Date(Date.now() - ATTEMPT_WINDOW_MS);
-    if (user.emailVerificationLastSentAt > dayAgo && user.emailVerificationAttempts >= MAX_ATTEMPTS) {
+    if (user.emailVerificationLastSentAt > dayAgo && user.emailVerificationAttempts >= MAX_ATTEMPTS && COOLDOWN_MS > 0) {
       throw new Error('Too many verification attempts. Try again in 24 hours');
     }
     try {

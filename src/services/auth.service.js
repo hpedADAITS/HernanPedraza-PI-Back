@@ -229,9 +229,9 @@ class AuthService {
     }
 
     try {
-      await emailService.sendWelcomeEmail(user, user.displayName);
+      const emailResult = await emailService.sendWelcomeEmail(user, user.displayName);
       logger.info(`Verification email resent to: ${user.email}`);
-      return { success: true };
+      return { success: true, token: emailResult.token };
     } catch (error) {
       if (error.message.includes('cooldown')) {
         throw new ValidationError(messages.AUTH.EMAIL_VERIFICATION_COOLDOWN);
