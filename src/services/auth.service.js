@@ -47,6 +47,7 @@ class AuthService {
       userId: user._id,
       email: user.email,
       role: user.role,
+      type: 'default',
     });
 
     if (role === 'DJ') {
@@ -93,6 +94,7 @@ class AuthService {
       userId: user._id,
       email: user.email,
       role: user.role,
+      type: 'default',
     });
 
     logger.info(`User logged in: ${email}`);
@@ -123,6 +125,7 @@ class AuthService {
         userId: user._id,
         email: user.email,
         role: user.role,
+        type: 'default',
       });
 
       return { token: newToken };
@@ -147,6 +150,8 @@ class AuthService {
       profilePicture: user.profilePicture,
       role: user.role,
       lastLoginAt: user.lastLoginAt,
+      emailRegistered: user.emailRegistered,
+      emailRegisteredAt: user.emailRegisteredAt,
     };
   }
 
