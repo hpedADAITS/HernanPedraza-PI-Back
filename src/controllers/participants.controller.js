@@ -20,6 +20,25 @@ class ParticipantsController {
     io.to(`event:${eventId}`).emit(eventName, payload);
   }
 
+  async validateNickname(req, res, next) {
+    try {
+      const data = participantsSchema.parseJoinEvent({
+        nickname: req.body.nickname,
+        profilePicture: null,
+      });
+
+      await participantsService.ensureNicknameIsNotAccessCode(data.nickname);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { valid: true },
+      });
+    } catch (error) {
+      logger.error('Validate nickname error:', error);
+      next(error);
+    }
+  }
+
   async joinEvent(req, res, next) {
     try {
       const { eventId } = req.params;

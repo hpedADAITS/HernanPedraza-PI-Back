@@ -22,9 +22,6 @@ class ParticipantsSchema {
     if (data.nickname.length > 30) {
       throw new ValidationError('Nickname must be less than 30 characters');
     }
-    if (/^[A-Za-z0-9]{4,20}$/.test(data.nickname)) {
-      throw new ValidationError('Nickname cannot be a valid access code');
-    }
     if (data.profilePicture !== null && typeof data.profilePicture !== 'string') {
       throw new ValidationError('Profile picture must be a valid string');
     }

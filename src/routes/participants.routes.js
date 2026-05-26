@@ -4,6 +4,12 @@ const { authenticate } = require('../middleware');
 
 const router = Router();
 
+/* Public nickname validation for attendees before they have an auth token */
+router.post(
+  '/nickname/validate',
+  participantsController.validateNickname.bind(participantsController),
+);
+
 /* All participant routes require authentication */
 router.use(authenticate);
 

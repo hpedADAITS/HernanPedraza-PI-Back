@@ -113,6 +113,31 @@ describe('Event, participant, song and vote integration flow', () => {
         expect(res.body.data.event.ownerId.profilePicture).toBe('dj-avatar-1');
       });
 
+    await request(app)
+      .post('/api/v1/participants/nickname/validate')
+      .send({ nickname: 'ABC123' })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.valid).toBe(true);
+      });
+
+    await request(app)
+      .post('/api/v1/participants/nickname/validate')
+      .send({ nickname: event.accessCode.toLowerCase() })
+      .expect(400)
+      .expect((res) => {
+        expect(res.body.error.message).toBe('Nickname cannot be a valid access code');
+      });
+
+    await request(app)
+      .post(`/api/v1/participants/${event.id}/join`)
+      .set(authHeader(attendeeToken))
+      .send({ nickname: event.accessCode.toLowerCase() })
+      .expect(400)
+      .expect((res) => {
+        expect(res.body.error.message).toBe('Nickname cannot be a valid access code');
+      });
+
     const joinRes = await request(app)
       .post(`/api/v1/participants/${event.id}/join`)
       .set(authHeader(attendeeToken))

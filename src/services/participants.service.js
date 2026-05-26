@@ -1,10 +1,24 @@
 const bcrypt = require('bcryptjs');
-const { ParticipantModel, EventMemberModel } = require('../models/schema');
+const {
+  EventModel,
+  ParticipantModel,
+  EventMemberModel,
+} = require('../models/schema');
 const { logger } = require('../utils');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../errors');
 const cooldownCache = require('../utils/cooldown-cache');
 
 class ParticipantsService {
+  async ensureNicknameIsNotAccessCode(nickname) {
+    const trimmed = nickname.trim();
+    if (
+      /^[A-Za-z0-9]{4,20}$/.test(trimmed) &&
+      (await EventModel.exists({ accessCode: trimmed.toUpperCase() }))
+    ) {
+      throw new ValidationError('Nickname cannot be a valid access code');
+    }
+  }
+
   async joinEvent(
     eventId,
     nickname,
@@ -13,7 +27,10 @@ class ParticipantsService {
     userId,
     options = {},
   ) {
-    const nicknameLower = nickname.toLowerCase().trim();
+    const nicknameTrimmed = nickname.trim();
+    const nicknameLower = nicknameTrimmed.toLowerCase();
+    await this.ensureNicknameIsNotAccessCode(nicknameTrimmed);
+
     const existing = await ParticipantModel.findOne({
       eventId,
       nicknameLower,
