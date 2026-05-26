@@ -37,6 +37,10 @@ class ParticipantsService {
     }).select('+passwordHash');
 
     if (existing) {
+      if (existing.isBanned) {
+        throw new ForbiddenError('Participant has been banned from this event');
+      }
+
       if (existing.passwordHash) {
         if (!password) {
           throw new ValidationError('This nickname is protected. Enter its password to join.');
@@ -283,14 +287,19 @@ class ParticipantsService {
     return participant;
   }
 
-  async banParticipant(participantId, reason, actorUserId) {
+  async banParticipant(participantId, reason, actorUser) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
       throw new NotFoundError('Participant not found');
     }
 
+    const userIdStr = await this._assertParticipantAdminPermission(
+      participant,
+      actorUser,
+    );
+
     participant.bannedAt = new Date();
-    participant.bannedBy = actorUserId;
+    participant.bannedBy = userIdStr;
     participant.banReason = reason;
     participant.isBanned = true;
     participant.leftAt = new Date();
@@ -298,12 +307,17 @@ class ParticipantsService {
 
     logger.info(`Participant ${participantId} banned: ${reason}`, {
       eventId: participant.eventId,
-      userId: actorUserId,
+      userId: userIdStr,
       participantId,
       action: 'PARTICIPANT_BAN',
       reason,
     });
-    return this._formatParticipant(participant);
+
+    return {
+      participant: this._formatParticipant(participant),
+      eventId: participant.eventId,
+      action: 'participant_banned',
+    };
   }
 
   async setPremium(participantId, isPremium) {
@@ -362,6 +376,14 @@ class ParticipantsService {
     }
 
     if (role === 'ADMIN') {
+      return userId;
+    }
+
+    const event = await EventModel.findById(participant.eventId)
+      .select({ ownerId: 1 })
+      .lean();
+
+    if (event?.ownerId?.toString() === userId) {
       return userId;
     }
 

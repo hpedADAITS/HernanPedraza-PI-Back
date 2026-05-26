@@ -267,6 +267,81 @@ describe('Event, participant, song and vote integration flow', () => {
     expect(storedSong.voteCount).toBe(0);
   });
 
+  test('auto-rejects a queued song at eight downvotes', async () => {
+    const dj = await createConfirmedDj();
+    const attendee = await register(ATTENDEE_USER).expect(201);
+    const attendeeToken = attendee.body.data.token;
+
+    const event = await EventModel.create({
+      name: 'Downvote Threshold',
+      ownerId: dj.userId,
+      eventId: 'QUEUE8A',
+      accessCode: 'QUEUE8',
+      state: 'LIVE',
+      startsAt: new Date(),
+    });
+
+    const voters = await ParticipantModel.insertMany(
+      Array.from({ length: 8 }, (_, index) => ({
+        eventId: event._id,
+        nickname: `Voter ${index + 1}`,
+        nicknameLower: `voter ${index + 1}`,
+        joinedAt: new Date(),
+        lastSeenAt: new Date(),
+      })),
+    );
+
+    const suggestion = await request(app)
+      .post(`/api/v1/songs/${event._id}/suggest`)
+      .set(authHeader(attendeeToken))
+      .send({
+        participantId: voters[0]._id,
+        title: 'Too Many Nos',
+        artist: 'Threshold Test',
+        totalDuration: 194,
+      })
+      .expect(201);
+
+    const song = suggestion.body.data.song;
+    expect(song).toMatchObject({
+      status: 'PENDING',
+      totalDuration: 194,
+      duration: 194,
+    });
+
+    await request(app)
+      .post(`/api/v1/songs/${event._id}/${song.id}/approve`)
+      .set(authHeader(dj.token))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.song.status).toBe('APPROVED');
+      });
+
+    for (const voter of voters) {
+      await request(app)
+        .post('/api/v1/votes')
+        .set(authHeader(attendeeToken))
+        .send({ songId: song.id, participantId: voter._id, value: -1 })
+        .expect(201);
+    }
+
+    const rejected = await SongModel.findById(song.id);
+    expect(rejected).toMatchObject({
+      status: 'REJECTED',
+      voteScore: -8,
+      removalReason: 'Rejected by downvotes',
+    });
+    expect(rejected.autoRejectedAt).toBeInstanceOf(Date);
+
+    await request(app)
+      .get(`/api/v1/songs/${event._id}/queue`)
+      .set(authHeader(dj.token))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.queue).toEqual([]);
+      });
+  });
+
   test('requires authentication for queue-changing endpoints', async () => {
     await request(app).post('/api/v1/events').send({}).expect(401);
     await request(app).post('/api/v1/votes').send({}).expect(401);
@@ -462,5 +537,50 @@ describe('Event, participant, song and vote integration flow', () => {
       .set(authHeader(secondAttendee.body.data.token))
       .send({ durationMs: 300000, reason: 'Nope' })
       .expect(403);
+  });
+
+  test('event owner can kick and cooldown even when membership row is missing', async () => {
+    const dj = await createConfirmedDj();
+    const attendee = await register(ATTENDEE_USER).expect(201);
+    const attendeeToken = attendee.body.data.token;
+
+    const eventRes = await request(app)
+      .post('/api/v1/events')
+      .set(authHeader(dj.token))
+      .send({
+        name: 'Legacy Owner Permissions',
+        description: 'Owner fallback for moderation',
+        startsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      })
+      .expect(201);
+
+    const event = eventRes.body.data.event;
+
+    await EventMemberModel.deleteMany({
+      eventId: event.id,
+      userId: dj.userId,
+    });
+
+    const joinRes = await request(app)
+      .post(`/api/v1/participants/${event.id}/join`)
+      .set(authHeader(attendeeToken))
+      .send({ nickname: 'Ada' })
+      .expect(201);
+
+    const participant = joinRes.body.data.participant;
+
+    await request(app)
+      .post(`/api/v1/participants/${participant._id}/cooldown`)
+      .set(authHeader(dj.token))
+      .send({ durationMs: 300000, reason: 'Owner cooldown' })
+      .expect(200);
+
+    cooldownCache.clearAll();
+
+    await request(app)
+      .post(`/api/v1/participants/${participant._id}/kick`)
+      .set(authHeader(dj.token))
+      .send({ reason: 'Owner kick' })
+      .expect(200);
   });
 });

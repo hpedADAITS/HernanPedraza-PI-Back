@@ -6,6 +6,15 @@ const { songsService, votesService, participantsService } = require('../services
 const isValidId = (v) => typeof v === 'string' && /^[a-f\d]{24}$/i.test(v);
 const isValidVoteValue = (v) => v === 1 || v === -1;
 
+const emitQueueUpdated = async (io, eventId) => {
+  const snapshot = await songsService.getQueueSnapshotForEvent(eventId);
+  io.to(`event:${eventId}`).emit('queue_updated', {
+    eventId,
+    ...snapshot,
+    timestamp: new Date().toISOString(),
+  });
+};
+
 /* ============ EVENT PARTICIPATION ============ */
 
 const handleJoinEvent = async (socket, io, data) => {
@@ -98,8 +107,8 @@ const handleVotesCast = async (socket, io, data) => {
 
   logger.info(`Vote cast: song ${songId}, value ${value}`);
 
-  const { SongModel } = require('../models/schema');
-  const song = await SongModel.findById(songId).select('voteScore voteCount');
+  const result = await votesService.castVote(songId, participantId, value);
+  const song = result.song;
 
   io.to(`event:${eventId}`).emit('votes_updated', {
     songId,
@@ -107,8 +116,20 @@ const handleVotesCast = async (socket, io, data) => {
     value,
     voteScore: song ? song.voteScore : null,
     voteCount: song ? song.voteCount : null,
+    status: song ? song.status : null,
     timestamp: new Date().toISOString(),
   });
+  if (result.autoRejected) {
+    io.to(`event:${eventId}`).emit('song_rejected', {
+      songId,
+      title: song.title,
+      artist: song.artist,
+      status: song.status,
+      reason: song.removalReason || 'Rejected by downvotes',
+      timestamp: new Date().toISOString(),
+    });
+  }
+  await emitQueueUpdated(io, eventId);
 };
 
 const handleVoteRemoved = (socket, io, data) => {
@@ -188,8 +209,10 @@ const handleSongApproved = async (socket, io, data) => {
       songId,
       title: song.title,
       artist: song.artist,
+      status: song.status,
       timestamp: new Date().toISOString(),
     });
+    await emitQueueUpdated(io, eventId);
   } catch (error) {
     logger.error('Error in song_approved:', error);
     socket.emit('error', {
@@ -239,6 +262,7 @@ const handleSongRejected = async (socket, io, data) => {
       reason,
       timestamp: new Date().toISOString(),
     });
+    await emitQueueUpdated(io, eventId);
   } catch (error) {
     logger.error('Error in song_rejected:', error);
     socket.emit('error', {
@@ -290,6 +314,7 @@ const handleSongSkipped = async (socket, io, data) => {
       reason,
       timestamp: new Date().toISOString(),
     });
+    await emitQueueUpdated(io, eventId);
   } catch (error) {
     logger.error('Error in song_skipped:', error);
     socket.emit('error', {
@@ -309,6 +334,7 @@ const handleQueueUpdated = (socket, io, data) => {
   logger.info(`Queue updated for event ${eventId}`);
 
   io.to(`event:${eventId}`).emit('queue_updated', {
+    eventId,
     queue,
     timestamp: new Date().toISOString(),
   });
@@ -383,7 +409,7 @@ const handleParticipantKicked = async (socket, io, data) => {
 };
 
 const handleSongNowPlaying = async (socket, io, data) => {
-  const { eventId, songId, title, artist } = data;
+  const { eventId, songId, title, artist, totalDuration, duration } = data;
 
   if (!eventId || !songId || !title || !artist) {
     logger.error(`Invalid song data for now_playing`, data);
@@ -405,6 +431,8 @@ const handleSongNowPlaying = async (socket, io, data) => {
       songId,
       title,
       artist,
+      totalDuration: totalDuration ?? duration,
+      duration: totalDuration ?? duration,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -426,7 +454,7 @@ const handleSongNowPlaying = async (socket, io, data) => {
  */
 const handleSuggestSong = async (socket, io, data, callback) => {
   try {
-    const { eventId, participantId, title, artist } = data;
+    const { eventId, participantId, title, artist, totalDuration, duration } = data;
 
     // Validation
     if (!eventId || !participantId || !title || !artist) {
@@ -438,7 +466,13 @@ const handleSuggestSong = async (socket, io, data, callback) => {
     }
 
     // Call service (same as REST would)
-    const song = await songsService.suggestSong(eventId, participantId, title, artist);
+    const song = await songsService.suggestSong(
+      eventId,
+      participantId,
+      title,
+      artist,
+      totalDuration ?? duration,
+    );
 
     // Broadcast to room
     io.to(`event:${eventId}`).emit('song_suggested', {
@@ -446,6 +480,9 @@ const handleSuggestSong = async (socket, io, data, callback) => {
       title: song.title,
       artist: song.artist,
       requestedBy: song.requestedBy,
+      status: song.status,
+      totalDuration: song.totalDuration,
+      duration: song.duration,
       timestamp: new Date().toISOString(),
     });
 
@@ -481,8 +518,11 @@ const handleApproveSong = async (socket, io, data, callback) => {
       title: song.title,
       artist: song.artist,
       status: song.status,
+      totalDuration: song.totalDuration,
+      duration: song.duration,
       timestamp: new Date().toISOString(),
     });
+    await emitQueueUpdated(io, eventId);
 
     logger.info('Song approved via Socket.IO', { songId, eventId });
     callback({ success: true, data: song, error: null });
@@ -511,10 +551,13 @@ const handleRejectSong = async (socket, io, data, callback) => {
 
     io.to(`event:${eventId}`).emit('song_rejected', {
       songId: song._id,
+      title: song.title,
+      artist: song.artist,
       status: song.status,
       reason,
       timestamp: new Date().toISOString(),
     });
+    await emitQueueUpdated(io, eventId);
 
     logger.info('Song rejected via Socket.IO', { songId, eventId, reason });
     callback({ success: true, data: song, error: null });
@@ -543,10 +586,13 @@ const handleSkipSong = async (socket, io, data, callback) => {
 
     io.to(`event:${eventId}`).emit('song_skipped', {
       songId: song._id,
+      title: song.title,
+      artist: song.artist,
       status: song.status,
       reason,
       timestamp: new Date().toISOString(),
     });
+    await emitQueueUpdated(io, eventId);
 
     logger.info('Song skipped via Socket.IO', { songId, eventId, reason });
     callback({ success: true, data: song, error: null });
@@ -578,8 +624,12 @@ const handleSendNow = async (socket, io, data, callback) => {
       title: song.title,
       artist: song.artist,
       status: song.status,
+      totalDuration: song.totalDuration || 0,
+      duration: song.duration || 0,
+      playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
       timestamp: new Date().toISOString(),
     });
+    await emitQueueUpdated(io, eventId);
 
     logger.info('Song sent now via Socket.IO', { songId, eventId });
     callback({ success: true, data: song, error: null });
@@ -608,16 +658,30 @@ const handleCastVote = async (socket, io, data, callback) => {
       throw new Error('Vote value must be 1 or -1');
     }
 
-    const vote = await votesService.castVote(songId, participantId, value);
+    const result = await votesService.castVote(songId, participantId, value);
+    const vote = result.vote;
+    const song = result.song;
 
-    io.to(`event:${eventId}`).emit('vote_cast', {
+    io.to(`event:${eventId}`).emit('votes_updated', {
       songId,
       participantId,
       value,
-      voteScore: vote.song?.voteScore,
-      voteCount: vote.song?.voteCount,
+      voteScore: song?.voteScore,
+      voteCount: song?.voteCount,
+      status: song?.status,
       timestamp: new Date().toISOString(),
     });
+    if (result.autoRejected) {
+      io.to(`event:${eventId}`).emit('song_rejected', {
+        songId,
+        title: song.title,
+        artist: song.artist,
+        status: song.status,
+        reason: song.removalReason || 'Rejected by downvotes',
+        timestamp: new Date().toISOString(),
+      });
+    }
+    await emitQueueUpdated(io, eventId);
 
     logger.info('Vote cast via Socket.IO', { songId, participantId, value });
     callback({ success: true, data: vote, error: null });

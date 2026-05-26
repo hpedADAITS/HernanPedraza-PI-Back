@@ -3,6 +3,9 @@ const { logger } = require('../utils');
 const { ValidationError, NotFoundError } = require('../errors');
 const participantsService = require('./participants.service');
 
+const AUTO_REJECT_SCORE = -8;
+const AUTO_REJECT_REASON = 'Rejected by downvotes';
+
 class VotesService {
   async castVote(songId, participantId, value) {
     /* Validate vote value */
@@ -33,10 +36,17 @@ class VotesService {
 
       /* Update song vote score */
       song.voteScore = song.voteScore - oldValue + value;
+      await this._applyAutoReject(song);
       await song.save();
 
       logger.info(`Vote updated for song ${songId}: ${oldValue} -> ${value}`);
-      return this._formatVote(existingVote);
+      const formattedVote = this._formatVote(existingVote);
+      return {
+        ...formattedVote,
+        vote: formattedVote,
+        song: this._formatSongVoteState(song),
+        autoRejected: song.status === 'REJECTED' && song.autoRejectedAt,
+      };
     }
 
     /* Create new vote */
@@ -51,10 +61,17 @@ class VotesService {
     /* Update song vote score */
     song.voteScore += value;
     song.voteCount += 1;
+    await this._applyAutoReject(song);
     await song.save();
 
     logger.info(`Vote cast for song ${songId}: ${value}`);
-    return this._formatVote(vote);
+    const formattedVote = this._formatVote(vote);
+    return {
+      ...formattedVote,
+      vote: formattedVote,
+      song: this._formatSongVoteState(song),
+      autoRejected: song.status === 'REJECTED' && song.autoRejectedAt,
+    };
   }
 
   async removeVote(songId, participantId) {
@@ -131,6 +148,33 @@ class VotesService {
       participantId: vote.participantId,
       value: vote.value,
       createdAt: vote.createdAt,
+    };
+  }
+
+  async _applyAutoReject(song) {
+    if (
+      song.voteScore <= AUTO_REJECT_SCORE &&
+      ['PENDING', 'APPROVED'].includes(song.status)
+    ) {
+      song.status = 'REJECTED';
+      song.autoRejectedAt = new Date();
+      song.removedAt = song.autoRejectedAt;
+      song.removalReason = AUTO_REJECT_REASON;
+    }
+  }
+
+  _formatSongVoteState(song) {
+    return {
+      _id: song._id,
+      id: song._id,
+      eventId: song.eventId,
+      title: song.title,
+      artist: song.artist,
+      status: song.status,
+      voteScore: song.voteScore,
+      voteCount: song.voteCount,
+      autoRejectedAt: song.autoRejectedAt,
+      removalReason: song.removalReason,
     };
   }
 }

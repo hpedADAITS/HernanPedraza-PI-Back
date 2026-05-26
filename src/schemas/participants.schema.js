@@ -70,6 +70,24 @@ class ParticipantsSchema {
     return data;
   }
 
+  parseBanParticipant(body) {
+    const data = {
+      reason: typeof body.reason === 'string' ? body.reason.trim() : body.reason,
+    };
+
+    if (!data.reason || typeof data.reason !== 'string') {
+      throw new ValidationError('Ban reason is required');
+    }
+    if (data.reason.length < 1) {
+      throw new ValidationError('Ban reason cannot be empty');
+    }
+    if (data.reason.length > 200) {
+      throw new ValidationError('Ban reason must be less than 200 characters');
+    }
+
+    return data;
+  }
+
   parseCooldown(body) {
     // Transform
     const data = {

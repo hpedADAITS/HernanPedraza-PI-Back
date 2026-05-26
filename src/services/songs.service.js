@@ -8,7 +8,7 @@ const { validateTransition } = require('../utils/song-state-machine');
 const participantsService = require('./participants.service');
 
 class SongsService {
-  async suggestSong(eventId, participantId, title, artist) {
+  async suggestSong(eventId, participantId, title, artist, totalDuration) {
     await participantsService.ensureParticipantCanInteract(
       participantId,
       eventId,
@@ -22,6 +22,7 @@ class SongsService {
       requestedBy: participantId,
       status: 'PENDING',
       sortKey: `${Date.now()}_${Math.random()}`,
+      totalDuration,
     });
 
     await song.save();
@@ -38,7 +39,15 @@ class SongsService {
       .populate('requestedBy', 'nickname profilePicture')
       .sort({ pinned: -1, voteScore: -1, sortKey: 1 });
 
-    return songs.map((s) => this._formatSong(s));
+    return this._withQueuePositions(songs);
+  }
+
+  async getQueueSnapshotForEvent(eventId) {
+    const queue = await this.getQueueForEvent(eventId);
+    return {
+      queue,
+      nowPlaying: this._buildNowPlaying(queue),
+    };
   }
 
   async getPendingSongsForEvent(eventId) {
@@ -225,21 +234,13 @@ class SongsService {
       throw new NotFoundError('Song not found');
     }
 
-    const position = await SongModel.countDocuments({
-      eventId: song.eventId,
-      status: { $in: ['APPROVED', 'PLAYING'] },
-      $or: [
-        { pinned: true, sortKey: { $lt: song.sortKey } },
-        { pinned: false, voteScore: { $gt: song.voteScore } },
-        {
-          pinned: false,
-          voteScore: song.voteScore,
-          sortKey: { $lt: song.sortKey },
-        },
-      ],
-    });
+    const queue = await this.getQueueForEvent(song.eventId);
+    const queuedSong = queue.find((item) => item._id.toString() === songId.toString());
 
-    return { position: position + 1, song: this._formatSong(song) };
+    return {
+      position: queuedSong?.queuePosition ?? null,
+      song: queuedSong || this._formatSong(song),
+    };
   }
 
   async getSongStats(songId) {
@@ -255,7 +256,55 @@ class SongsService {
     };
   }
 
+  _withQueuePositions(songs) {
+    let queuedPosition = 0;
+    return songs
+      .slice()
+      .sort((a, b) => {
+        if (a.status === 'PLAYING' && b.status !== 'PLAYING') return -1;
+        if (b.status === 'PLAYING' && a.status !== 'PLAYING') return 1;
+        if (Number(b.pinned) !== Number(a.pinned)) {
+          return Number(b.pinned) - Number(a.pinned);
+        }
+        if ((b.voteScore || 0) !== (a.voteScore || 0)) {
+          return (b.voteScore || 0) - (a.voteScore || 0);
+        }
+        return String(a.sortKey).localeCompare(String(b.sortKey));
+      })
+      .map((song) => {
+        const formatted = this._formatSong(song);
+        formatted.queuePosition =
+          song.status === 'PLAYING' ? 0 : ++queuedPosition;
+        return formatted;
+      });
+  }
+
+  _buildNowPlaying(queue) {
+    const playing = queue.find((song) => song.status === 'PLAYING');
+    if (!playing) return null;
+
+    const startedAt = playing.playingStartedAt || playing.startedPlayingAt;
+    const elapsedTime = startedAt
+      ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+      : 0;
+    const totalDuration = playing.totalDuration || playing.duration || 0;
+
+    return {
+      songId: playing._id || playing.id,
+      title: playing.title,
+      artist: playing.artist,
+      totalDuration,
+      duration: totalDuration,
+      playingStartedAt: startedAt,
+      startedPlayingAt: startedAt,
+      elapsedTime,
+      remainingTime: totalDuration ? Math.max(0, totalDuration - elapsedTime) : null,
+    };
+  }
+
   _formatSong(song) {
+    const totalDuration = song.totalDuration ?? song.duration;
+
     return {
       _id: song._id,
       id: song._id,
@@ -267,6 +316,8 @@ class SongsService {
       voteScore: song.voteScore,
       voteCount: song.voteCount,
       queuePosition: song.queuePosition,
+      totalDuration,
+      duration: totalDuration,
       pinned: song.pinned,
       startedPlayingAt: song.startedPlayingAt,
       playingStartedAt: song.startedPlayingAt,

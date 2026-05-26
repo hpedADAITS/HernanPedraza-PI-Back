@@ -11,27 +11,6 @@ function getSongId(song) {
   return song?._id || song?.id;
 }
 
-function buildNowPlaying(queue) {
-  const playing = queue.find((song) => song.status === 'PLAYING');
-  if (!playing) return null;
-
-  const startedAt = playing.playingStartedAt || playing.startedPlayingAt;
-  const elapsedTime = startedAt
-    ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
-    : 0;
-  const duration = playing.duration || 0;
-
-  return {
-    songId: getSongId(playing),
-    title: playing.title,
-    artist: playing.artist,
-    duration,
-    playingStartedAt: startedAt,
-    elapsedTime,
-    remainingTime: duration ? Math.max(0, duration - elapsedTime) : 0,
-  };
-}
-
 class SongsController {
   setIO(socketIO) {
     io = socketIO;
@@ -53,11 +32,12 @@ class SongsController {
   async emitQueueUpdated(eventId) {
     if (!io || !eventId) return;
 
-    const queue = await songsService.getQueueForEvent(eventId);
+    const snapshot = songsService.getQueueSnapshotForEvent
+      ? await songsService.getQueueSnapshotForEvent(eventId)
+      : { queue: await songsService.getQueueForEvent(eventId), nowPlaying: null };
     io.to(roomForEvent(eventId)).emit('queue_updated', {
       eventId,
-      queue,
-      nowPlaying: buildNowPlaying(queue),
+      ...snapshot,
       timestamp: new Date().toISOString(),
     });
   }
@@ -72,6 +52,7 @@ class SongsController {
         data.participantId,
         data.title,
         data.artist,
+        data.totalDuration,
       );
       let participant = null;
       try {
@@ -88,6 +69,8 @@ class SongsController {
         nickname: participant?.nickname,
         requestedBy: participant || song.requestedBy,
         status: song.status,
+        totalDuration: song.totalDuration,
+        duration: song.duration,
       });
 
       res.status(httpStatus.CREATED).json({
@@ -150,6 +133,8 @@ class SongsController {
         status: song.status,
         voteScore: song.voteScore,
         voteCount: song.voteCount,
+        totalDuration: song.totalDuration,
+        duration: song.duration,
       });
       await this.emitQueueUpdated(eventId);
 
@@ -240,6 +225,7 @@ class SongsController {
         title: song.title,
         artist: song.artist,
         status: song.status,
+        totalDuration: song.totalDuration || 0,
         duration: song.duration || 0,
         playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
       });

@@ -7,6 +7,7 @@ class SongsSchema {
       participantId: body.participantId,
       title: typeof body.title === 'string' ? body.title.trim() : body.title,
       artist: typeof body.artist === 'string' ? body.artist.trim() : body.artist,
+      totalDuration: body.totalDuration ?? body.duration,
     };
 
     // Validate
@@ -31,8 +32,20 @@ class SongsSchema {
     if (data.artist.length > 200) {
       throw new ValidationError('Artist name must be less than 200 characters');
     }
+    if (
+      data.totalDuration !== undefined &&
+      (!Number.isFinite(Number(data.totalDuration)) || Number(data.totalDuration) < 0)
+    ) {
+      throw new ValidationError('Song duration must be a positive number');
+    }
 
-    return data;
+    return {
+      ...data,
+      totalDuration:
+        data.totalDuration === undefined
+          ? undefined
+          : Math.floor(Number(data.totalDuration)),
+    };
   }
 }
 

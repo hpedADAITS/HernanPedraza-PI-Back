@@ -7,27 +7,6 @@ let io = null;
 
 const roomForEvent = (eventId) => `event:${eventId}`;
 
-function buildNowPlaying(queue) {
-  const playing = queue.find((song) => song.status === 'PLAYING');
-  if (!playing) return null;
-
-  const startedAt = playing.playingStartedAt || playing.startedPlayingAt;
-  const elapsedTime = startedAt
-    ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
-    : 0;
-  const duration = playing.duration || 0;
-
-  return {
-    songId: playing._id || playing.id,
-    title: playing.title,
-    artist: playing.artist,
-    duration,
-    playingStartedAt: startedAt,
-    elapsedTime,
-    remainingTime: duration ? Math.max(0, duration - elapsedTime) : 0,
-  };
-}
-
 class VotesController {
   setIO(socketIO) {
     io = socketIO;
@@ -49,11 +28,12 @@ class VotesController {
   async emitQueueUpdated(eventId) {
     if (!io || !eventId) return;
 
-    const queue = await songsService.getQueueForEvent(eventId);
+    const snapshot = songsService.getQueueSnapshotForEvent
+      ? await songsService.getQueueSnapshotForEvent(eventId)
+      : { queue: await songsService.getQueueForEvent(eventId), nowPlaying: null };
     io.to(roomForEvent(eventId)).emit('queue_updated', {
       eventId,
-      queue,
-      nowPlaying: buildNowPlaying(queue),
+      ...snapshot,
       timestamp: new Date().toISOString(),
     });
   }
@@ -62,13 +42,14 @@ class VotesController {
     try {
       const data = votesSchema.parseCastVote(req.body);
 
-      const vote = await votesService.castVote(
+      const result = await votesService.castVote(
         data.songId,
         data.participantId,
         data.value,
       );
 
-      const song = await songsService.getSongStats(data.songId);
+      const vote = result.vote || result;
+      const song = result.song || (await songsService.getSongStats(data.songId));
       const eventId = song.eventId?.toString();
 
       this.emitVoteEvent(eventId, 'votes_updated', {
@@ -77,7 +58,17 @@ class VotesController {
         value: data.value,
         voteScore: song.voteScore,
         voteCount: song.voteCount,
+        status: song.status,
       });
+      if (result.autoRejected) {
+        this.emitVoteEvent(eventId, 'song_rejected', {
+          songId: data.songId,
+          title: song.title,
+          artist: song.artist,
+          status: song.status,
+          reason: song.removalReason || 'Rejected by downvotes',
+        });
+      }
       await this.emitQueueUpdated(eventId);
 
       res.status(httpStatus.CREATED).json({
