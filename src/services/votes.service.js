@@ -1,6 +1,7 @@
 const { VoteModel, SongModel } = require('../models/schema');
 const { logger } = require('../utils');
 const { ValidationError, NotFoundError } = require('../errors');
+const participantsService = require('./participants.service');
 
 class VotesService {
   async castVote(songId, participantId, value) {
@@ -14,6 +15,12 @@ class VotesService {
     if (!song) {
       throw new NotFoundError('Song not found');
     }
+
+    await participantsService.ensureParticipantCanInteract(
+      participantId,
+      song.eventId,
+      { checkCooldown: true },
+    );
 
     /* Check if participant already voted */
     let existingVote = await VoteModel.findOne({ songId, participantId });
@@ -51,6 +58,17 @@ class VotesService {
   }
 
   async removeVote(songId, participantId) {
+    const song = await SongModel.findById(songId);
+    if (!song) {
+      throw new NotFoundError('Song not found');
+    }
+
+    await participantsService.ensureParticipantCanInteract(
+      participantId,
+      song.eventId,
+      { checkCooldown: true },
+    );
+
     const vote = await VoteModel.findOneAndDelete({ songId, participantId });
 
     if (!vote) {
@@ -58,7 +76,6 @@ class VotesService {
     }
 
     /* Update song vote score */
-    const song = await SongModel.findById(songId);
     if (song) {
       song.voteScore -= vote.value;
       song.voteCount -= 1;

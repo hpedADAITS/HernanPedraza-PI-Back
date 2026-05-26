@@ -23,6 +23,7 @@ describe('JWT Utils', () => {
         userId: testUserId,
         email: testEmail,
         role: testRole,
+        tokenVersion: 7,
       };
       const token = generateToken(payload);
       expect(token).toBeDefined();
@@ -31,6 +32,7 @@ describe('JWT Utils', () => {
       expect(decoded.userId).toBe(testUserId);
       expect(decoded.email).toBe(testEmail);
       expect(decoded.role).toBe(testRole);
+      expect(decoded.tokenVersion).toBe(7);
     });
 
     test('should preserve custom type field in payload', () => {

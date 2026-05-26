@@ -22,8 +22,10 @@ const registerUser = (overrides = {}) =>
 const loginUser = (creds) =>
   request(app).post('/api/v1/auth/login').send(creds);
 
-const refresh = (token) =>
-  request(app).post('/api/v1/auth/refresh').send({ token });
+const logout = (token) =>
+  request(app)
+    .post('/api/v1/auth/logout')
+    .set('Authorization', `Bearer ${token}`);
 
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
@@ -49,6 +51,7 @@ describe('Auth Flows Integration', () => {
       expect(res.body.data.user).toMatchObject({
         email: VALID_USER.email.toLowerCase(),
         displayName: VALID_USER.displayName,
+        profilePicture: null,
         role: VALID_USER.role,
       });
 
@@ -92,6 +95,7 @@ describe('Auth Flows Integration', () => {
       expect(decoded.email).toBe(VALID_USER.email.toLowerCase());
       expect(decoded.role).toBe(VALID_USER.role);
       expect(decoded.userId).toEqual(expect.any(String));
+      expect(decoded.tokenVersion).toBe(0);
     });
   });
 
@@ -109,6 +113,7 @@ describe('Auth Flows Integration', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.token).toEqual(expect.any(String));
       expect(res.body.data.user.email).toBe(VALID_USER.email.toLowerCase());
+      expect(res.body.data.user).toHaveProperty('profilePicture', null);
     });
 
     test('login is case-insensitive on email', async () => {
@@ -130,6 +135,36 @@ describe('Auth Flows Integration', () => {
 
       const after = await UserModel.findOne({ email: VALID_USER.email });
       expect(after.lastLoginAt).toBeInstanceOf(Date);
+    });
+
+    test('invalidates older tokens after successful login', async () => {
+      const registered = await UserModel.findOne({ email: VALID_USER.email });
+      const olderToken = jwt.sign(
+        {
+          userId: registered._id.toString(),
+          email: registered.email,
+          role: registered.role,
+          type: 'default',
+          tokenVersion: registered.authTokenVersion,
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '1h' },
+      );
+
+      const login = await loginUser({
+        email: VALID_USER.email,
+        password: VALID_USER.password,
+      }).expect(200);
+
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${olderToken}`)
+        .expect(401);
+
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${login.body.data.token}`)
+        .expect(200);
     });
 
     test('rejects wrong password with 401', async () => {
@@ -155,49 +190,10 @@ describe('Auth Flows Integration', () => {
   });
 
   describe('POST /api/v1/auth/refresh', () => {
-    let token;
-
-    beforeEach(async () => {
-      const res = await registerUser();
-      token = res.body.data.token;
-    });
-
-    test('issues a new token from a valid token', async () => {
-      const res = await refresh(token).expect(200);
-      expect(res.body.data.token).toEqual(expect.any(String));
-      const decoded = jwt.verify(res.body.data.token, process.env.JWT_SECRET);
-      expect(decoded.email).toBe(VALID_USER.email.toLowerCase());
-    });
-
-    test('rejects missing token with 400', async () => {
-      const res = await refresh(undefined);
-      expect(res.status).toBe(400);
-    });
-
-    test('rejects malformed token with 401', async () => {
-      const res = await refresh('not.a.real.token');
-      expect(res.status).toBe(401);
-    });
-
-    test('rejects token signed with different secret', async () => {
-      const bad = jwt.sign({ userId: 'x' }, 'other-secret');
-      const res = await refresh(bad);
-      expect(res.status).toBe(401);
-    });
-
-    test('rejects expired token with 401', async () => {
-      const expired = jwt.sign(
-        { userId: new mongoose.Types.ObjectId().toString() },
-        process.env.JWT_SECRET,
-        { expiresIn: '-1s' },
-      );
-      const res = await refresh(expired);
-      expect(res.status).toBe(401);
-    });
-
-    test('returns 404 when user no longer exists', async () => {
-      await UserModel.deleteMany({});
-      const res = await refresh(token);
+    test('is not available because users must login for a new token', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ token: 'anything' });
       expect(res.status).toBe(404);
     });
   });
@@ -231,9 +227,51 @@ describe('Auth Flows Integration', () => {
         .set('Authorization', 'Bearer garbage');
       expect(res.status).toBe(401);
     });
+
+    test('rejects default tokens without a matching token version', async () => {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const legacyToken = jwt.sign(
+        {
+          userId: decoded.userId,
+          email: decoded.email,
+          role: decoded.role,
+          type: 'default',
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '1h' },
+      );
+
+      const res = await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${legacyToken}`);
+      expect(res.status).toBe(401);
+    });
   });
 
-  describe('Full register -> login -> refresh -> me chain', () => {
+  describe('POST /api/v1/auth/logout', () => {
+    let token;
+
+    beforeEach(async () => {
+      const res = await registerUser();
+      token = res.body.data.token;
+    });
+
+    test('invalidates the current token', async () => {
+      await logout(token).expect(200);
+
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(401);
+    });
+
+    test('rejects missing Authorization header with 401', async () => {
+      const res = await request(app).post('/api/v1/auth/logout');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('Full register -> login -> me chain', () => {
     test('completes happy path end-to-end', async () => {
       const reg = await registerUser().expect(201);
       expect(reg.body.data.token).toBeTruthy();
@@ -244,13 +282,9 @@ describe('Auth Flows Integration', () => {
       }).expect(200);
       const loginToken = login.body.data.token;
 
-      const refreshed = await refresh(loginToken).expect(200);
-      const newToken = refreshed.body.data.token;
-      expect(newToken).toEqual(expect.any(String));
-
       const me = await request(app)
         .get('/api/v1/auth/me')
-        .set('Authorization', `Bearer ${newToken}`)
+        .set('Authorization', `Bearer ${loginToken}`)
         .expect(200);
       expect(me.body.data.user.email).toBe(VALID_USER.email.toLowerCase());
     });

@@ -1,22 +1,19 @@
 const {
   SongModel,
-  EventActionLogModel,
-  ParticipantModel,
+  EventModel,
 } = require('../models/schema');
 const { logger } = require('../utils');
-const { ValidationError, NotFoundError } = require('../errors');
+const { NotFoundError } = require('../errors');
+const { validateTransition } = require('../utils/song-state-machine');
+const participantsService = require('./participants.service');
 
 class SongsService {
   async suggestSong(eventId, participantId, title, artist) {
-    /* Check if participant is on cooldown */
-    const participant = await ParticipantModel.findById(participantId);
-    if (!participant) {
-      throw new NotFoundError('Participant not found');
-    }
-
-    if (participant.cooldownUntil && participant.cooldownUntil > new Date()) {
-      throw new ValidationError('Participant is on cooldown');
-    }
+    await participantsService.ensureParticipantCanInteract(
+      participantId,
+      eventId,
+      { checkCooldown: true },
+    );
 
     const song = new SongModel({
       eventId,
@@ -38,7 +35,7 @@ class SongsService {
       eventId,
       status: { $in: ['APPROVED', 'PLAYING'] },
     })
-      .populate('requestedBy', 'nickname')
+      .populate('requestedBy', 'nickname profilePicture')
       .sort({ pinned: -1, voteScore: -1, sortKey: 1 });
 
     return songs.map((s) => this._formatSong(s));
@@ -49,7 +46,7 @@ class SongsService {
       eventId,
       status: 'PENDING',
     })
-      .populate('requestedBy', 'nickname')
+      .populate('requestedBy', 'nickname profilePicture')
       .sort({ createdAt: 1 });
 
     return songs.map((s) => this._formatSong(s));
@@ -65,17 +62,18 @@ class SongsService {
       throw new NotFoundError('Song not in this event');
     }
 
+    /* Validate state transition using state machine */
+    validateTransition(song.status, 'APPROVED', 'DJ');
+
     song.status = 'APPROVED';
     await song.save();
 
-    await EventActionLogModel.create({
+    logger.info(`Song approved: ${song._id}`, {
       eventId,
-      actorUserId: userId,
-      type: 'SONG_APPROVE',
-      songId,
+      userId,
+      songId: song._id,
+      action: 'SONG_APPROVE',
     });
-
-    logger.info(`Song approved: ${song._id}`);
     return this._formatSong(song);
   }
 
@@ -89,18 +87,59 @@ class SongsService {
       throw new NotFoundError('Song not in this event');
     }
 
+    /* Validate state transition using state machine */
+    validateTransition(song.status, 'REJECTED', 'DJ');
+
     song.status = 'REJECTED';
     await song.save();
 
-    await EventActionLogModel.create({
+    logger.info(`Song rejected: ${song._id}`, {
       eventId,
-      actorUserId: userId,
-      type: 'SONG_REJECT',
-      songId,
-      meta: { reason },
+      userId,
+      songId: song._id,
+      action: 'SONG_REJECT',
+      reason,
+    });
+    return this._formatSong(song);
+  }
+
+  async sendNow(songId, eventId, userId) {
+    const song = await SongModel.findById(songId);
+    if (!song) {
+      throw new NotFoundError('Song not found');
+    }
+
+    if (song.eventId.toString() !== eventId.toString()) {
+      throw new NotFoundError('Song not in this event');
+    }
+
+    /* Validate state transition using state machine */
+    validateTransition(song.status, 'PLAYING', 'DJ');
+
+    await SongModel.updateMany(
+      {
+        eventId: song.eventId,
+        status: 'PLAYING',
+        _id: { $ne: song._id },
+      },
+      { status: 'PLAYED' },
+    );
+
+    song.status = 'PLAYING';
+    song.startedPlayingAt = new Date();
+    await song.save();
+
+    await EventModel.findByIdAndUpdate(eventId, {
+      currentSongId: song._id,
     });
 
-    logger.info(`Song rejected: ${song._id}`);
+    logger.info(`Send now / playing: ${song._id}`, {
+      eventId,
+      userId,
+      songId: song._id,
+      action: 'SONG_STATUS_CHANGE',
+      newStatus: 'PLAYING',
+    });
     return this._formatSong(song);
   }
 
@@ -110,25 +149,29 @@ class SongsService {
       throw new NotFoundError('Song not found');
     }
 
+    /* Validate state transition using state machine */
+    validateTransition(song.status, 'SKIPPED', 'DJ');
+
     song.status = 'SKIPPED';
     song.skippedAt = new Date();
     song.skippedBy = userId;
     song.skippedReason = reason;
     await song.save();
 
-    await EventActionLogModel.create({
+    logger.info(`Song skipped: ${song._id}`, {
       eventId,
-      actorUserId: userId,
-      type: 'SONG_SKIP',
-      songId,
-      meta: { reason },
+      userId,
+      songId: song._id,
+      action: 'SONG_SKIP',
+      reason,
     });
-
-    logger.info(`Song skipped: ${song._id}`);
     return this._formatSong(song);
   }
 
   async playNextSong(eventId, userId) {
+    /* Validate state transition before update */
+    validateTransition('APPROVED', 'PLAYING', 'DJ');
+
     const nextSong = await SongModel.findOneAndUpdate(
       {
         eventId,
@@ -142,15 +185,13 @@ class SongsService {
     );
 
     if (nextSong) {
-      await EventActionLogModel.create({
+      logger.info(`Playing song: ${nextSong._id}`, {
         eventId,
-        actorUserId: userId,
-        type: 'SONG_STATUS_CHANGE',
+        userId,
         songId: nextSong._id,
-        meta: { newStatus: 'PLAYING' },
+        action: 'SONG_STATUS_CHANGE',
+        newStatus: 'PLAYING',
       });
-
-      logger.info(`Playing song: ${nextSong._id}`);
     }
 
     return nextSong ? this._formatSong(nextSong) : null;
@@ -162,18 +203,19 @@ class SongsService {
       throw new NotFoundError('Song not found');
     }
 
+    /* Validate state transition using state machine */
+    validateTransition(song.status, 'PLAYED', 'DJ');
+
     song.status = 'PLAYED';
     await song.save();
 
-    await EventActionLogModel.create({
+    logger.info(`Song marked as played: ${song._id}`, {
       eventId,
-      actorUserId: userId,
-      type: 'SONG_STATUS_CHANGE',
-      songId,
-      meta: { newStatus: 'PLAYED' },
+      userId,
+      songId: song._id,
+      action: 'SONG_STATUS_CHANGE',
+      newStatus: 'PLAYED',
     });
-
-    logger.info(`Song marked as played: ${song._id}`);
     return this._formatSong(song);
   }
 
@@ -224,8 +266,10 @@ class SongsService {
       status: song.status,
       voteScore: song.voteScore,
       voteCount: song.voteCount,
+      queuePosition: song.queuePosition,
       pinned: song.pinned,
       startedPlayingAt: song.startedPlayingAt,
+      playingStartedAt: song.startedPlayingAt,
       skippedAt: song.skippedAt,
       createdAt: song.createdAt,
     };

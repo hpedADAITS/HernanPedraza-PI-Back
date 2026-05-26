@@ -1,23 +1,94 @@
-const { songsService } = require('../services');
+const { participantsService, songsService } = require('../services');
 const { logger } = require('../utils');
 const { httpStatus } = require('../constants');
-const { songsValidator } = require('../validators');
-const { songsDtos } = require('../dtos');
+const { songsSchema } = require('../schemas');
+
+let io = null;
+
+const roomForEvent = (eventId) => `event:${eventId}`;
+
+function getSongId(song) {
+  return song?._id || song?.id;
+}
+
+function buildNowPlaying(queue) {
+  const playing = queue.find((song) => song.status === 'PLAYING');
+  if (!playing) return null;
+
+  const startedAt = playing.playingStartedAt || playing.startedPlayingAt;
+  const elapsedTime = startedAt
+    ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+    : 0;
+  const duration = playing.duration || 0;
+
+  return {
+    songId: getSongId(playing),
+    title: playing.title,
+    artist: playing.artist,
+    duration,
+    playingStartedAt: startedAt,
+    elapsedTime,
+    remainingTime: duration ? Math.max(0, duration - elapsedTime) : 0,
+  };
+}
 
 class SongsController {
+  setIO(socketIO) {
+    io = socketIO;
+  }
+
+  getIO() {
+    return io;
+  }
+
+  emitSongEvent(eventId, eventName, payload) {
+    if (!io || !eventId) return;
+    io.to(roomForEvent(eventId)).emit(eventName, {
+      eventId,
+      ...payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  async emitQueueUpdated(eventId) {
+    if (!io || !eventId) return;
+
+    const queue = await songsService.getQueueForEvent(eventId);
+    io.to(roomForEvent(eventId)).emit('queue_updated', {
+      eventId,
+      queue,
+      nowPlaying: buildNowPlaying(queue),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   async suggestSong(req, res, next) {
     try {
       const { eventId } = req.params;
-      const dto = songsDtos.toSuggestSongDTO(req.body);
-
-      songsValidator.validateSuggestSong(dto);
+      const data = songsSchema.parseSuggestSong(req.body);
 
       const song = await songsService.suggestSong(
         eventId,
-        dto.participantId,
-        dto.title,
-        dto.artist,
+        data.participantId,
+        data.title,
+        data.artist,
       );
+      let participant = null;
+      try {
+        participant = await participantsService.getParticipant(data.participantId);
+      } catch {
+        participant = null;
+      }
+
+      this.emitSongEvent(eventId, 'song_suggested', {
+        songId: getSongId(song),
+        title: song.title,
+        artist: song.artist,
+        participantId: data.participantId,
+        nickname: participant?.nickname,
+        requestedBy: participant || song.requestedBy,
+        status: song.status,
+      });
 
       res.status(httpStatus.CREATED).json({
         success: true,
@@ -71,6 +142,17 @@ class SongsController {
         req.user.userId,
       );
 
+      this.emitSongEvent(eventId, 'song_approved', {
+        songId: getSongId(song),
+        title: song.title,
+        artist: song.artist,
+        requestedBy: song.requestedBy,
+        status: song.status,
+        voteScore: song.voteScore,
+        voteCount: song.voteCount,
+      });
+      await this.emitQueueUpdated(eventId);
+
       res.status(httpStatus.OK).json({
         success: true,
         data: { song },
@@ -92,6 +174,15 @@ class SongsController {
         reason,
         req.user.userId,
       );
+
+      this.emitSongEvent(eventId, 'song_rejected', {
+        songId: getSongId(song),
+        title: song.title,
+        artist: song.artist,
+        status: song.status,
+        reason,
+      });
+      await this.emitQueueUpdated(eventId);
 
       res.status(httpStatus.OK).json({
         success: true,
@@ -115,12 +206,51 @@ class SongsController {
         req.user.userId,
       );
 
+      this.emitSongEvent(eventId, 'song_skipped', {
+        songId: getSongId(song),
+        title: song.title,
+        artist: song.artist,
+        status: song.status,
+        reason,
+      });
+      await this.emitQueueUpdated(eventId);
+
       res.status(httpStatus.OK).json({
         success: true,
         data: { song },
       });
     } catch (error) {
       logger.error('Skip song error:', error);
+      next(error);
+    }
+  }
+
+  async sendNow(req, res, next) {
+    try {
+      const { eventId, songId } = req.params;
+
+      const song = await songsService.sendNow(
+        songId,
+        eventId,
+        req.user.userId,
+      );
+
+      this.emitSongEvent(eventId, 'song_now_playing', {
+        songId: getSongId(song),
+        title: song.title,
+        artist: song.artist,
+        status: song.status,
+        duration: song.duration || 0,
+        playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
+      });
+      await this.emitQueueUpdated(eventId);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { song },
+      });
+    } catch (error) {
+      logger.error('Send now song error:', error);
       next(error);
     }
   }

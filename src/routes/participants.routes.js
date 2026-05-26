@@ -16,6 +16,10 @@ router.post(
   '/:participantId/leave',
   participantsController.leaveEvent.bind(participantsController),
 );
+router.post(
+  '/:participantId/password',
+  participantsController.setPassword.bind(participantsController),
+);
 
 /* Get participants */
 router.get(

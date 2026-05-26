@@ -18,6 +18,9 @@ const generateToken = (userPayload, expiresIn = config.jwtExpiry) => {
         ...(userPayload.email && { email: userPayload.email }),
         ...(userPayload.role && { role: userPayload.role }),
         ...(userPayload.type && { type: userPayload.type }),
+        ...(Number.isInteger(userPayload.tokenVersion) && {
+          tokenVersion: userPayload.tokenVersion,
+        }),
         ...(userPayload.verificationTokenId && { verificationTokenId: userPayload.verificationTokenId }),
       };
     } else {

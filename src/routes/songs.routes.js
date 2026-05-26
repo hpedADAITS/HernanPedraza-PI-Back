@@ -31,6 +31,10 @@ router.post(
   '/:eventId/:songId/skip',
   songsController.skipSong.bind(songsController),
 );
+router.post(
+  '/:eventId/:songId/send-now',
+  songsController.sendNow.bind(songsController),
+);
 
 /* Queue info */
 router.get(

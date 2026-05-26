@@ -2,27 +2,46 @@ const { participantsService } = require('../services');
 const { logger } = require('../utils');
 const { httpStatus, messages } = require('../constants');
 const { UnauthorizedError } = require('../errors');
-const { participantsValidator } = require('../validators');
-const { participantsDtos } = require('../dtos');
+const { participantsSchema } = require('../schemas');
 
-let io = null; // Will be injected
-
-/* Inject Socket.IO instance */
-const setIO = (ioInstance) => {
-  io = ioInstance;
-};
+let io = null;
 
 class ParticipantsController {
+  setIO(socketIO) {
+    io = socketIO;
+  }
+
+  getIO() {
+    return io;
+  }
+
+  emitParticipantEvent(eventId, eventName, payload) {
+    if (!io || !eventId) return;
+    io.to(`event:${eventId}`).emit(eventName, payload);
+  }
+
   async joinEvent(req, res, next) {
     try {
       const { eventId } = req.params;
-      const dto = participantsDtos.toJoinEventDTO(req.body);
-      participantsValidator.validateJoinEvent(dto);
+      const data = participantsSchema.parseJoinEvent(req.body);
 
       const participant = await participantsService.joinEvent(
         eventId,
-        dto.nickname,
-        dto.profilePicture,
+        data.nickname,
+        data.profilePicture,
+        data.password,
+        req.user.userId,
+        {
+          onDuplicateActive: (existingParticipant) => {
+            if (!io) return;
+            io.to(`event:${eventId}`).emit('attendee_password_prompt_requested', {
+              participantId: existingParticipant._id,
+              nickname: existingParticipant.nickname,
+              reason: 'duplicate-login',
+              requestedAt: new Date().toISOString(),
+            });
+          },
+        },
       );
 
       res.status(httpStatus.CREATED).json({
@@ -47,6 +66,27 @@ class ParticipantsController {
       });
     } catch (error) {
       logger.error('Leave event error:', error);
+      next(error);
+    }
+  }
+
+  async setPassword(req, res, next) {
+    try {
+      const { participantId } = req.params;
+      const data = participantsSchema.parseSetPassword(req.body);
+
+      const participant = await participantsService.setParticipantPassword(
+        participantId,
+        data.password,
+        req.user,
+      );
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { participant },
+      });
+    } catch (error) {
+      logger.error('Set participant password error:', error);
       next(error);
     }
   }
@@ -88,13 +128,17 @@ class ParticipantsController {
   async setPremium(req, res, next) {
     try {
       const { participantId } = req.params;
-      const dto = participantsDtos.toSetPremiumDTO(req.body);
-      participantsValidator.validateSetPremium(dto);
+      const data = participantsSchema.parseSetPremium(req.body);
 
       const participant = await participantsService.setPremium(
         participantId,
-        dto.isPremium,
+        data.isPremium,
       );
+
+      this.emitParticipantEvent(participant.eventId, 'participant_premium_updated', {
+        participantId: participant._id,
+        isPremium: participant.isPremium,
+      });
 
       res.status(httpStatus.OK).json({
         success: true,
@@ -109,32 +153,27 @@ class ParticipantsController {
   async setCooldown(req, res, next) {
     try {
       const { participantId } = req.params;
-      const dto = participantsDtos.toCooldownDTO(req.body);
-      participantsValidator.validateCooldown(dto);
+      const data = participantsSchema.parseCooldown(req.body);
 
-      const actorUserId =
-        typeof req.user.userId === 'string'
-          ? req.user.userId
-          : req.user.userId?.toString();
-
-      if (!actorUserId) {
+      if (!req.user?.userId) {
         throw new UnauthorizedError(messages.AUTH.UNAUTHORIZED);
       }
 
       const result = await participantsService.setParticipantCooldown(
         participantId,
-        dto.durationMs,
-        dto.reason,
-        actorUserId,
+        data.durationMs,
+        data.reason,
+        req.user,
       );
 
-      if (io) {
-        io.to(`event_${result.eventId}`).emit('participant_cooldown', {
-          participantId,
-          cooldownUntil: result.participant.cooldownUntil,
-          reason: dto.reason,
-        });
-      }
+      this.emitParticipantEvent(result.eventId, 'participant_cooldown', {
+        participantId: result.participant._id,
+        reason: data.reason,
+        cooldownUntil:
+          result.participant.cooldownUntil instanceof Date
+            ? result.participant.cooldownUntil.toISOString()
+            : result.participant.cooldownUntil,
+      });
 
       res.status(httpStatus.OK).json({
         success: true,
@@ -149,31 +188,26 @@ class ParticipantsController {
   async kickParticipant(req, res, next) {
     try {
       const { participantId } = req.params;
-      const dto = participantsDtos.toKickDTO(req.body);
-      participantsValidator.validateKickParticipant(dto);
+      const data = participantsSchema.parseKickParticipant(req.body);
 
-      const actorUserId =
-        typeof req.user.userId === 'string'
-          ? req.user.userId
-          : req.user.userId?.toString();
-
-      if (!actorUserId) {
+      if (!req.user?.userId) {
         throw new UnauthorizedError(messages.AUTH.UNAUTHORIZED);
       }
 
       const result = await participantsService.kickParticipant(
         participantId,
-        dto.reason,
-        actorUserId,
+        data.reason,
+        req.user,
       );
 
-      if (io) {
-        io.to(`event_${result.eventId}`).emit('participant_kicked', {
-          participantId,
-          kickedAt: result.participant.kickedAt,
-          reason: dto.reason,
-        });
-      }
+      this.emitParticipantEvent(result.eventId, 'participant_kicked', {
+        participantId: result.participant._id,
+        reason: data.reason,
+        kickedAt:
+          result.participant.leftAt instanceof Date
+            ? result.participant.leftAt.toISOString()
+            : result.participant.leftAt,
+      });
 
       res.status(httpStatus.OK).json({
         success: true,
@@ -187,4 +221,3 @@ class ParticipantsController {
 }
 
 module.exports = new ParticipantsController();
-module.exports.setIO = setIO;

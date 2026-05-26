@@ -4,7 +4,6 @@ const {
   ParticipantModel,
   SongModel,
   defaultPermissionsForRole,
-  EventActionLogModel,
 } = require('../models/schema');
 const { generateEventCode } = require('../utils/code-generator');
 const { logger } = require('../utils');
@@ -59,7 +58,7 @@ class EventsService {
   async getEvent(eventId) {
     const event = await EventModel.findById(eventId).populate(
       'ownerId',
-      'email displayName',
+      'email displayName profilePicture',
     );
     if (!event) {
       throw new NotFoundError('Event not found');
@@ -70,7 +69,7 @@ class EventsService {
   async getEventByAccessCode(accessCode) {
     const event = await EventModel.findOne({
       accessCode: accessCode.toUpperCase(),
-    }).populate('ownerId', 'email displayName');
+    }).populate('ownerId', 'displayName profilePicture');
     if (!event) {
       throw new NotFoundError('Event not found');
     }
@@ -79,7 +78,7 @@ class EventsService {
 
   async listActiveEvents(limit = 50, skip = 0) {
     const events = await EventModel.find({ state: 'LIVE' })
-      .populate('ownerId', 'email displayName')
+      .populate('ownerId', 'email displayName profilePicture')
       .limit(limit)
       .skip(skip)
       .sort({ startsAt: -1 });
@@ -119,13 +118,11 @@ class EventsService {
     event.state = 'LIVE';
     await event.save();
 
-    await EventActionLogModel.create({
+    logger.info(`Event started: ${eventId}`, {
       eventId,
-      actorUserId: userId,
-      type: 'EVENT_START',
+      userId,
+      action: 'EVENT_START',
     });
-
-    logger.info(`Event started: ${eventId}`);
     return this._formatEvent(event);
   }
 
@@ -139,13 +136,11 @@ class EventsService {
     event.endedAt = new Date();
     await event.save();
 
-    await EventActionLogModel.create({
+    logger.info(`Event ended: ${eventId}`, {
       eventId,
-      actorUserId: userId,
-      type: 'EVENT_END',
+      userId,
+      action: 'EVENT_END',
     });
-
-    logger.info(`Event ended: ${eventId}`);
     return this._formatEvent(event);
   }
 
@@ -160,14 +155,12 @@ class EventsService {
     event.cancelledReason = reason;
     await event.save();
 
-    await EventActionLogModel.create({
+    logger.info(`Event cancelled: ${eventId}`, {
       eventId,
-      actorUserId: userId,
-      type: 'EVENT_CANCEL',
-      meta: { reason },
+      userId,
+      action: 'EVENT_CANCEL',
+      reason,
     });
-
-    logger.info(`Event cancelled: ${eventId}`);
     return this._formatEvent(event);
   }
 
@@ -200,6 +193,36 @@ class EventsService {
     return this._formatEvent(event);
   }
 
+  async getPhoneMicrophoneLink(eventId, userId, frontendUrl) {
+    const event = await EventModel.findById(eventId);
+    if (!event) {
+      throw new NotFoundError('Event not found');
+    }
+
+    if (event.ownerId.toString() !== userId.toString()) {
+      throw new UnauthorizedError('Unauthorized');
+    }
+
+    const baseUrl = (frontendUrl || '').replace(/\/$/, '');
+    return `${baseUrl}/dj/microphone/${event._id}`;
+  }
+
+  async connectPhoneMicrophone(eventId, deviceName = 'Phone microphone') {
+    const event = await EventModel.findById(eventId);
+    if (!event) {
+      throw new NotFoundError('Event not found');
+    }
+
+    const microphone = {
+      eventId: event._id.toString(),
+      deviceName,
+      connectedAt: new Date().toISOString(),
+    };
+
+    logger.info(`Phone microphone connected for event ${eventId}`);
+    return microphone;
+  }
+
   async addEventMember(eventId, userId, role, actorUserId) {
     /* Check if already a member */
     const existing = await EventMemberModel.findOne({ eventId, userId });
@@ -225,7 +248,7 @@ class EventsService {
       id: event._id,
       name: event.name,
       description: event.description,
-      ownerId: event.ownerId._id || event.ownerId,
+      ownerId: typeof event.ownerId === 'object' ? event.ownerId : { _id: event.ownerId },
       eventId: event.eventId,
       accessCode: event.accessCode,
       qrCodeUrl: event.qrCodeUrl,

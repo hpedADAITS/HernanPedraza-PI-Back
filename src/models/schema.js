@@ -72,6 +72,7 @@ const UserSchema = new Schema(
     emailVerificationAttempts: { type: Number, default: 0 },
     emailVerificationLastSentAt: { type: Date, default: null },
     emailVerificationTokenId: { type: String, default: null, index: true },
+    authTokenVersion: { type: Number, default: 0 },
   },
   { timestamps: true },
 );
@@ -191,6 +192,9 @@ const ParticipantSchema = new Schema(
     nickname: { type: String, required: true, trim: true },
     nicknameLower: { type: String, required: true, trim: true, index: true },
     profilePicture: { type: String, default: null },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    passwordHash: { type: String, select: false },
+    passwordSetAt: { type: Date },
 
     socketId: { type: String, index: true },
 

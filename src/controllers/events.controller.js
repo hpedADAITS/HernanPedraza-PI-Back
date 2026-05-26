@@ -1,16 +1,35 @@
 const { eventsService, authService } = require('../services');
 const { logger } = require('../utils');
 const { httpStatus } = require('../constants');
-const { eventsValidator } = require('../validators');
-const { eventsDtos } = require('../dtos');
+const { eventsSchema } = require('../schemas');
 const { ValidationError } = require('../errors');
+const config = require('../config');
+
+let io = null;
+
+const roomForEvent = (eventId) => `event:${eventId}`;
 
 class EventsController {
+  setIO(socketIO) {
+    io = socketIO;
+  }
+
+  getIO() {
+    return io;
+  }
+
+  emitEventUpdate(eventId, eventName, payload) {
+    if (!io || !eventId) return;
+    io.to(roomForEvent(eventId)).emit(eventName, {
+      eventId,
+      ...payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   async createEvent(req, res, next) {
     try {
-      const dto = eventsDtos.toCreateEventDTO(req.body);
-
-      eventsValidator.validateCreateEvent(dto);
+      const data = eventsSchema.parseCreateEvent(req.body);
 
       /* Check if user's email is registered (for DJ users) */
       const user = await authService.getCurrentUser(req.user.userId);
@@ -22,10 +41,9 @@ class EventsController {
 
       const event = await eventsService.createEvent(
         req.user.userId,
-        dto.name,
-        dto.description,
-        dto.startsAt,
-        dto.eventId,
+        data.name,
+        data.description,
+        data.startsAt,
       );
 
       res.status(httpStatus.CREATED).json({
@@ -92,15 +110,15 @@ class EventsController {
   async updateEvent(req, res, next) {
     try {
       const { eventId } = req.params;
-      const dto = eventsDtos.toUpdateEventDTO(req.body);
-
-      eventsValidator.validateUpdateEvent(dto);
+      const data = eventsSchema.parseUpdateEvent(req.body);
 
       const event = await eventsService.updateEvent(
         eventId,
         req.user.userId,
-        dto,
+        data,
       );
+
+      this.emitEventUpdate(eventId, 'event_updated', { event });
 
       res.status(httpStatus.OK).json({
         success: true,
@@ -118,6 +136,8 @@ class EventsController {
 
       const event = await eventsService.startEvent(eventId, req.user.userId);
 
+      this.emitEventUpdate(eventId, 'event_updated', { event });
+
       res.status(httpStatus.OK).json({
         success: true,
         data: { event },
@@ -133,6 +153,12 @@ class EventsController {
       const { eventId } = req.params;
 
       const event = await eventsService.endEvent(eventId, req.user.userId);
+
+      this.emitEventUpdate(eventId, 'event_updated', { event });
+      this.emitEventUpdate(eventId, 'event_ended', {
+        event,
+        cancelled: false,
+      });
 
       res.status(httpStatus.OK).json({
         success: true,
@@ -154,6 +180,13 @@ class EventsController {
         req.user.userId,
         reason,
       );
+
+      this.emitEventUpdate(eventId, 'event_updated', { event });
+      this.emitEventUpdate(eventId, 'event_ended', {
+        event,
+        cancelled: true,
+        reason,
+      });
 
       res.status(httpStatus.OK).json({
         success: true,
@@ -191,12 +224,65 @@ class EventsController {
         req.user.userId,
       );
 
+      this.emitEventUpdate(eventId, 'event_updated', { event });
+      this.emitEventUpdate(eventId, 'access_code_updated', {
+        event,
+        accessCode: event.accessCode,
+      });
+
       res.status(httpStatus.OK).json({
         success: true,
         data: { event },
       });
     } catch (error) {
       logger.error('Regenerate access code error:', error);
+      next(error);
+    }
+  }
+
+  async getPhoneMicrophoneLink(req, res, next) {
+    try {
+      const { eventId } = req.params;
+
+      const link = await eventsService.getPhoneMicrophoneLink(
+        eventId,
+        req.user.userId,
+        req.get('origin') || config.frontendUrl,
+      );
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { link },
+      });
+    } catch (error) {
+      logger.error('Get phone microphone link error:', error);
+      next(error);
+    }
+  }
+
+  async connectPhoneMicrophone(req, res, next) {
+    try {
+      const { eventId } = req.params;
+      const deviceName =
+        typeof req.body?.deviceName === 'string' && req.body.deviceName.trim()
+          ? req.body.deviceName.trim()
+          : 'Phone microphone';
+
+      const microphone = await eventsService.connectPhoneMicrophone(
+        eventId,
+        deviceName,
+      );
+
+      this.emitEventUpdate(eventId, 'phone_microphone_connected', {
+        microphone,
+      });
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { microphone },
+      });
+    } catch (error) {
+      logger.error('Connect phone microphone error:', error);
       next(error);
     }
   }

@@ -299,27 +299,14 @@ const swaggerDefinition = {
         },
       },
     },
-    '/auth/refresh': {
+    '/auth/logout': {
       post: {
         tags: ['Auth'],
-        summary: 'Refresh JWT token',
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['token'],
-                properties: {
-                  token: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
+        summary: 'Logout and invalidate the current auth token',
+        security: [{ BearerAuth: [] }],
         responses: {
           200: {
-            description: 'Token refreshed',
+            description: 'Logged out',
             content: {
               'application/json': {
                 schema: {
@@ -328,7 +315,7 @@ const swaggerDefinition = {
                     success: { type: 'boolean' },
                     data: {
                       type: 'object',
-                      properties: { token: { type: 'string' } },
+                      properties: { success: { type: 'boolean' } },
                     },
                   },
                 },

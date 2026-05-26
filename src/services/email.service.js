@@ -91,7 +91,7 @@ class EmailService {
 
   getWelcomeEmailTemplate(displayName, verificationToken) {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const verifyUrl = `${frontendUrl}/verify-email/${verificationToken}`;
+    const verifyUrl = `${frontendUrl}/?verifyEmailToken=${encodeURIComponent(verificationToken)}`;
     return `<!DOCTYPE html>
 <html lang="en">
 <head>

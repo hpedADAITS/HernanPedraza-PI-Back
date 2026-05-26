@@ -1,7 +1,7 @@
-const { verifyToken } = require('../utils/jwt.utils');
+const { authService } = require('../services');
 const { logger } = require('../utils');
 
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -27,21 +27,8 @@ const authMiddleware = (req, res, next) => {
       });
     }
 
-    const decoded = verifyToken(token);
-    
-    /* Check token-type for additional security */
-    if (decoded.type && decoded.type !== 'default') {
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: 'UnauthorizedError',
-          message: 'Invalid token type',
-        },
-        statusCode: 401,
-        timestamp: new Date().toISOString(),
-      });
-    }
-    
+    const { decoded } = await authService.validateDefaultToken(token);
+
     req.user = decoded;
     req.token = token;
 

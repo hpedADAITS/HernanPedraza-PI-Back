@@ -8,6 +8,19 @@ const votesRoutes = require('./votes.routes');
 
 const router = Router();
 
+router.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'SyncRekuest API',
+    version: 'v1',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+router.head('/', (req, res) => {
+  res.status(200).end();
+});
+
 /* Health check */
 router.use('/ping', ping);
 

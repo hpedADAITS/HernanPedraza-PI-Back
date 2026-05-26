@@ -1,7 +1,7 @@
-const { verifyToken } = require('../utils/jwt.utils');
+const { authService } = require('../services');
 const { logger } = require('../utils');
 
-const socketAuthMiddleware = (socket, next) => {
+const socketAuthMiddleware = async (socket, next) => {
   try {
     const token =
       socket.handshake.auth?.token ||
@@ -11,7 +11,7 @@ const socketAuthMiddleware = (socket, next) => {
       return next(new Error('UNAUTHORIZED: missing token'));
     }
 
-    const decoded = verifyToken(token);
+    const { decoded } = await authService.validateDefaultToken(token);
     socket.user = decoded;
     socket.token = token;
     next();

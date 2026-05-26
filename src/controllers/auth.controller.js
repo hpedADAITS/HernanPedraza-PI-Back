@@ -47,19 +47,16 @@ class AuthController {
     }
   }
 
-  async refreshToken(req, res, next) {
+  async logout(req, res, next) {
     try {
-      const { token } = req.body;
-
-      /* Validation will be done in service */
-      const result = await authService.refreshToken(token);
+      const result = await authService.logout(req.user.userId);
 
       res.status(httpStatus.OK).json({
         success: true,
         data: result,
       });
     } catch (error) {
-      logger.error('Refresh token error:', error);
+      logger.error('Logout error:', error);
       next(error);
     }
   }

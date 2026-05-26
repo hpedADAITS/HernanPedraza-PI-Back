@@ -23,7 +23,8 @@ initLoaders()
     });
   })
   .catch((err) => {
-    logger.error('Error al inicializar la aplicación:', err);
+    logger.error('Error al inicializar la aplicación:', err.message || err.toString());
+    console.error('Full error:', err); // Debug: print full error stack
     process.exit(1);
   });
 

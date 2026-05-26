@@ -2,7 +2,12 @@ const http = require('http');
 const socketIO = require('socket.io');
 const config = require('../config');
 const { initializeSocket, socketAuthMiddleware } = require('../socket');
-const { participantsController } = require('../controllers');
+const {
+  eventsController,
+  participantsController,
+  songsController,
+  votesController,
+} = require('../controllers');
 const { logger } = require('../utils');
 
 let io = null;
@@ -34,7 +39,10 @@ const initSocketIO = (app) => {
     }
 
     /* Inject Socket.IO into controllers that need it */
+    eventsController.setIO(io);
     participantsController.setIO(io);
+    songsController.setIO(io);
+    votesController.setIO(io);
 
     /* Handle socket connections */
     io.on('connection', (socket) => {

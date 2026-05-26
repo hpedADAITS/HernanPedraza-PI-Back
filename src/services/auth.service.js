@@ -11,11 +11,43 @@ const { messages } = require('../constants');
 const {
   validateRegistration,
   validateLogin,
-  validateTokenRefresh,
 } = require('../validators/auth.validator');
 const emailService = require('./email.service');
 
 class AuthService {
+  buildAuthToken(user) {
+    return generateToken({
+      userId: user._id,
+      email: user.email,
+      role: user.role,
+      type: 'default',
+      tokenVersion: user.authTokenVersion || 0,
+    });
+  }
+
+  async validateDefaultToken(token) {
+    const decoded = verifyToken(token);
+
+    if (decoded.type && decoded.type !== 'default') {
+      throw new UnauthorizedError('Invalid token type');
+    }
+
+    if (!Number.isInteger(decoded.tokenVersion)) {
+      throw new UnauthorizedError(messages.AUTH.INVALID_TOKEN);
+    }
+
+    const user = await UserModel.findById(decoded.userId);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedError(messages.AUTH.INVALID_TOKEN);
+    }
+
+    if ((user.authTokenVersion || 0) !== decoded.tokenVersion) {
+      throw new UnauthorizedError(messages.AUTH.INVALID_TOKEN);
+    }
+
+    return { decoded, user };
+  }
+
   async register(email, password, displayName, role = 'ATTENDEE') {
     /* Validate input */
     validateRegistration({ email, password, displayName, role });
@@ -43,12 +75,7 @@ class AuthService {
     logger.info(`User registered: ${email}`);
 
     /* Generate token for new user with user metadata */
-    const token = generateToken({
-      userId: user._id,
-      email: user.email,
-      role: user.role,
-      type: 'default',
-    });
+    const token = this.buildAuthToken(user);
 
     let emailVerificationToken;
     if (role === 'DJ') {
@@ -69,6 +96,7 @@ class AuthService {
         id: user._id,
         email: user.email,
         displayName: user.displayName,
+        profilePicture: user.profilePicture,
         role: user.role,
       },
     };
@@ -92,17 +120,13 @@ class AuthService {
       throw new UnauthorizedError(messages.AUTH.INVALID_CREDENTIALS);
     }
 
-    /* Update last login */
+    /* Update last login and invalidate older auth tokens */
     user.lastLoginAt = new Date();
+    user.authTokenVersion = (user.authTokenVersion || 0) + 1;
     await user.save();
 
     /* Generate token with user metadata */
-    const token = generateToken({
-      userId: user._id,
-      email: user.email,
-      role: user.role,
-      type: 'default',
-    });
+    const token = this.buildAuthToken(user);
 
     logger.info(`User logged in: ${email}`);
 
@@ -112,36 +136,23 @@ class AuthService {
         id: user._id,
         email: user.email,
         displayName: user.displayName,
+        profilePicture: user.profilePicture,
         role: user.role,
       },
     };
   }
 
-  async refreshToken(token) {
-    validateTokenRefresh({ token });
-
-    try {
-      const decoded = verifyToken(token);
-      const user = await UserModel.findById(decoded.userId);
-
-      if (!user) {
-        throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
-      }
-
-      const newToken = generateToken({
-        userId: user._id,
-        email: user.email,
-        role: user.role,
-        type: 'default',
-      });
-
-      return { token: newToken };
-    } catch (error) {
-      if (error instanceof NotFoundError) {
-        throw error;
-      }
-      throw new UnauthorizedError(messages.AUTH.INVALID_TOKEN);
+  async logout(userId) {
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
     }
+
+    user.authTokenVersion = (user.authTokenVersion || 0) + 1;
+    await user.save();
+    logger.info(`User logged out: ${user.email}`);
+
+    return { success: true };
   }
 
   async getCurrentUser(userId) {
