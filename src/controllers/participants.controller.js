@@ -237,6 +237,40 @@ class ParticipantsController {
       next(error);
     }
   }
+
+  async banParticipant(req, res, next) {
+    try {
+      const { participantId } = req.params;
+      const data = participantsSchema.parseBanParticipant(req.body);
+
+      if (!req.user?.userId) {
+        throw new UnauthorizedError(messages.AUTH.UNAUTHORIZED);
+      }
+
+      const result = await participantsService.banParticipant(
+        participantId,
+        data.reason,
+        req.user,
+      );
+
+      this.emitParticipantEvent(result.eventId, 'participant_banned', {
+        participantId: result.participant._id,
+        reason: data.reason,
+        bannedAt:
+          result.participant.leftAt instanceof Date
+            ? result.participant.leftAt.toISOString()
+            : result.participant.leftAt,
+      });
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { participant: result.participant },
+      });
+    } catch (error) {
+      logger.error('Ban participant error:', error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new ParticipantsController();

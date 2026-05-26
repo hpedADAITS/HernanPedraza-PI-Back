@@ -119,6 +119,15 @@ const handleSocketEvents = (socket, io) => {
     }
   });
 
+  socket.on('participant_banned', (data) => {
+    try {
+      events.handleParticipantBanned(socket, io, data);
+    } catch (error) {
+      logger.error('Error in participant_banned:', error);
+      socket.emit('error', { message: 'Error banning participant' });
+    }
+  });
+
   /* ============ SONG NOW PLAYING ============ */
   socket.on('song_now_playing', (data) => {
     try {

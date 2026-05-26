@@ -50,5 +50,9 @@ router.post(
   '/:participantId/kick',
   participantsController.kickParticipant.bind(participantsController),
 );
+router.post(
+  '/:participantId/ban',
+  participantsController.banParticipant.bind(participantsController),
+);
 
 module.exports = router;

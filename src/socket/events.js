@@ -408,6 +408,38 @@ const handleParticipantKicked = async (socket, io, data) => {
   }
 };
 
+const handleParticipantBanned = async (socket, io, data) => {
+  const { eventId, participantId, reason } = data;
+
+  if (!eventId || !participantId) {
+    logger.error(`Invalid participant data - eventId: ${eventId}, participantId: ${participantId}`);
+    socket.emit('error', {
+      message: 'Invalid participant data',
+    });
+    return;
+  }
+
+  try {
+    logger.info(`Participant banned: ${participantId}`, {
+      eventId,
+      participantId,
+      action: 'PARTICIPANT_BANNED',
+      reason,
+    });
+
+    io.to(`event:${eventId}`).emit('participant_banned', {
+      participantId,
+      reason,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error('Error in participant_banned:', error);
+    socket.emit('error', {
+      message: error.message || 'Error banning participant',
+    });
+  }
+};
+
 const handleSongNowPlaying = async (socket, io, data) => {
   const { eventId, songId, title, artist, totalDuration, duration } = data;
 
@@ -801,6 +833,42 @@ const handleKickParticipant = async (socket, io, data, callback) => {
   }
 };
 
+const handleBanParticipant = async (socket, io, data, callback) => {
+  try {
+    const { eventId, participantId, reason, userId } = data;
+
+    if (!eventId || !participantId || !userId) {
+      throw new Error('Missing required fields: eventId, participantId, userId');
+    }
+
+    if (!isValidId(eventId) || !isValidId(participantId) || !isValidId(userId)) {
+      throw new Error('Invalid ID format');
+    }
+
+    const result = await participantsService.banParticipant(
+      participantId,
+      reason || 'No reason provided',
+      userId,
+    );
+
+    io.to(`event:${eventId}`).emit('participant_banned', {
+      participantId,
+      reason: reason || 'No reason provided',
+      bannedAt:
+        result.participant.leftAt instanceof Date
+          ? result.participant.leftAt.toISOString()
+          : result.participant.leftAt,
+      timestamp: new Date().toISOString(),
+    });
+
+    logger.info('Participant banned via Socket.IO', { participantId, eventId });
+    callback({ success: true, data: result.participant, error: null });
+  } catch (error) {
+    logger.error('Error banning participant via Socket.IO:', error);
+    callback({ success: false, data: null, error: error.message });
+  }
+};
+
 /**
  * Handle set_premium event - PRIMARY entry point
  */
@@ -850,6 +918,7 @@ module.exports = {
   handleQueueUpdated,
   handleParticipantCooldown,
   handleParticipantKicked,
+  handleParticipantBanned,
   handleSongNowPlaying,
   // Socket.IO Primary State Changes
   handleSuggestSong,
@@ -861,5 +930,6 @@ module.exports = {
   handleRemoveVote,
   handleSetCooldown,
   handleKickParticipant,
+  handleBanParticipant,
   handleSetPremium,
 };
