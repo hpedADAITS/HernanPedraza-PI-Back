@@ -5,6 +5,7 @@ const eventsRoutes = require('./events.routes');
 const songsRoutes = require('./songs.routes');
 const participantsRoutes = require('./participants.routes');
 const votesRoutes = require('./votes.routes');
+const debugRoutes = require('./debug.routes');
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use('/events', eventsRoutes);
 router.use('/songs', songsRoutes);
 router.use('/participants', participantsRoutes);
 router.use('/votes', votesRoutes);
+router.use('/debug', debugRoutes);
 
 module.exports = router;
