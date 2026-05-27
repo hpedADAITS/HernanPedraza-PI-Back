@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = require('../../src/app');
 const { participantsController } = require('../../src/controllers');
+const { verifyToken } = require('../../src/utils/jwt.utils');
 const cooldownCache = require('../../src/utils/cooldown-cache');
 const {
   EventMemberModel,
@@ -72,6 +73,83 @@ beforeEach(async () => {
 });
 
 describe('Event, participant, song and vote integration flow', () => {
+  test('generates phone microphone links with a reachable frontend origin', async () => {
+    const dj = await createConfirmedDj();
+    const eventRes = await request(app)
+      .post('/api/v1/events')
+      .set(authHeader(dj.token))
+      .send({
+        name: 'Phone Mic Night',
+        description: 'Remote microphone check',
+        startsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      })
+      .expect(201);
+    const event = eventRes.body.data.event;
+
+    const linkRes = await request(app)
+      .get(
+        `/api/v1/events/${event.id}/phone-microphone-link?frontendOrigin=${encodeURIComponent(
+          'https://192.168.1.154:5173',
+        )}`,
+      )
+      .set(authHeader(dj.token))
+      .set('Origin', 'https://localhost:5173')
+      .expect(200);
+    const url = new URL(linkRes.body.data.link);
+
+    expect(url.origin).toBe('https://192.168.1.154:5173');
+    expect(url.pathname).toBe(`/dj/microphone/${event.id}`);
+    expect(url.href).not.toContain('localhost');
+
+    const token = url.searchParams.get('token');
+    const decoded = verifyToken(token);
+    expect(decoded).toMatchObject({
+      userId: dj.userId,
+      role: 'DJ',
+      type: 'phone-microphone',
+      eventId: event.id,
+    });
+    expect(decoded.exp - decoded.iat).toBe(15 * 60);
+
+    await request(app)
+      .post(`/api/v1/events/${event.id}/phone-microphone/connect?token=${encodeURIComponent(token)}`)
+      .send({ deviceName: 'Android microphone' })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.microphone).toMatchObject({
+          eventId: event.id,
+          deviceName: 'Android microphone',
+          connectedAt: expect.any(String),
+        });
+      });
+  });
+
+  test('does not use a localhost origin when the request host is reachable', async () => {
+    const dj = await createConfirmedDj();
+    const eventRes = await request(app)
+      .post('/api/v1/events')
+      .set(authHeader(dj.token))
+      .send({
+        name: 'LAN Phone Mic Night',
+        description: 'Remote microphone check',
+        startsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      })
+      .expect(201);
+    const event = eventRes.body.data.event;
+
+    const linkRes = await request(app)
+      .get(`/api/v1/events/${event.id}/phone-microphone-link`)
+      .set(authHeader(dj.token))
+      .set('Host', '192.168.1.154:5173')
+      .set('Origin', 'https://localhost:5173')
+      .expect(200);
+    const url = new URL(linkRes.body.data.link);
+
+    expect(url.origin).toBe('http://192.168.1.154:5173');
+    expect(url.pathname).toBe(`/dj/microphone/${event.id}`);
+    expect(url.href).not.toContain('localhost');
+  });
+
   test('runs the main live-event queue flow end-to-end', async () => {
     const dj = await createConfirmedDj();
     const attendee = await register(ATTENDEE_USER).expect(201);

@@ -22,10 +22,10 @@ for arg in "$@"; do
     esac
 done
 
-# Kill any process using port 5000 (backend) and 3000 (frontend)
+# Kill any process using port 5000 (backend) and 5173 (frontend)
 echo "Cleaning up ports..."
 lsof -ti :5000 | xargs -r kill -9 2>/dev/null || true
-lsof -ti :3000 | xargs -r kill -9 2>/dev/null || true
+lsof -ti :5173 | xargs -r kill -9 2>/dev/null || true
 sleep 1
 
 echo "Installing dependencies (with npm cache)..."
@@ -79,7 +79,7 @@ FRONT_PID=$!
 echo "Frontend started (PID: $FRONT_PID)"
 
 echo "Both services running. Press Ctrl+C to stop all."
-echo "Frontend: http://localhost:3000"
+echo "Frontend: http://localhost:5173"
 echo "Backend:  http://localhost:5000/api/v1"
 
 # Handle cleanup on exit

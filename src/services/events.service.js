@@ -7,6 +7,7 @@ const {
 } = require('../models/schema');
 const { generateEventCode } = require('../utils/code-generator');
 const { logger } = require('../utils');
+const { generateToken, verifyToken } = require('../utils/jwt.utils');
 const {
   NotFoundError,
   UnauthorizedError,
@@ -203,14 +204,43 @@ class EventsService {
       throw new UnauthorizedError('Unauthorized');
     }
 
+    const token = generateToken(
+      {
+        userId,
+        email: `phone-microphone:${event._id}`,
+        role: 'DJ',
+        type: 'phone-microphone',
+        eventId: event._id.toString(),
+      },
+      '15m',
+    );
     const baseUrl = (frontendUrl || '').replace(/\/$/, '');
-    return `${baseUrl}/dj/microphone/${event._id}`;
+    return `${baseUrl}/dj/microphone/${event._id}?token=${encodeURIComponent(token)}`;
   }
 
-  async connectPhoneMicrophone(eventId, deviceName = 'Phone microphone') {
+  async connectPhoneMicrophone(eventId, deviceName = 'Phone microphone', token) {
     const event = await EventModel.findById(eventId);
     if (!event) {
       throw new NotFoundError('Event not found');
+    }
+
+    if (!token) {
+      throw new UnauthorizedError('Phone microphone token is required');
+    }
+
+    let decoded;
+    try {
+      decoded = verifyToken(token);
+    } catch {
+      throw new UnauthorizedError('Invalid phone microphone token');
+    }
+
+    if (
+      decoded.type !== 'phone-microphone' ||
+      decoded.eventId !== event._id.toString() ||
+      decoded.userId !== event.ownerId.toString()
+    ) {
+      throw new UnauthorizedError('Invalid phone microphone token');
     }
 
     const microphone = {

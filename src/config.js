@@ -16,7 +16,7 @@ module.exports = {
   /* CORS */
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   allowedOrigins: (
-    process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000'
+    process.env.ALLOWED_ORIGINS || 'http://localhost:5173'
   ).split(','),
 
   /* Socket.IO */

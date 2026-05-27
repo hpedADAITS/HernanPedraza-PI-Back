@@ -7,6 +7,21 @@ const config = require('../config');
 
 let io = null;
 
+function isLocalhostUrl(url) {
+  return /\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(url || '');
+}
+
+function getSafeFrontendOrigin(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : '';
+  } catch {
+    return '';
+  }
+}
+
 const roomForEvent = (eventId) => `event:${eventId}`;
 
 class EventsController {
@@ -243,11 +258,23 @@ class EventsController {
   async getPhoneMicrophoneLink(req, res, next) {
     try {
       const { eventId } = req.params;
+      const requestedOrigin = getSafeFrontendOrigin(req.query?.frontendOrigin);
+      const origin = getSafeFrontendOrigin(req.get('origin'));
+      const host = req.get('host');
+      const requestBase = getSafeFrontendOrigin(host ? `${req.protocol}://${host}` : '');
+      const frontendBase =
+        requestedOrigin && !isLocalhostUrl(requestedOrigin)
+          ? requestedOrigin
+          : origin && !isLocalhostUrl(origin)
+          ? origin
+          : requestBase && !isLocalhostUrl(requestBase)
+          ? requestBase
+          : config.frontendUrl;
 
       const link = await eventsService.getPhoneMicrophoneLink(
         eventId,
         req.user.userId,
-        req.get('origin') || config.frontendUrl,
+        frontendBase,
       );
 
       res.status(httpStatus.OK).json({
@@ -271,6 +298,7 @@ class EventsController {
       const microphone = await eventsService.connectPhoneMicrophone(
         eventId,
         deviceName,
+        req.body?.token || req.query?.token || req.get('authorization')?.replace(/^Bearer\s+/i, ''),
       );
 
       this.emitEventUpdate(eventId, 'phone_microphone_connected', {
