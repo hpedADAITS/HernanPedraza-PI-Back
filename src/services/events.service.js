@@ -3,6 +3,7 @@ const {
   EventMemberModel,
   ParticipantModel,
   SongModel,
+  UserModel,
   defaultPermissionsForRole,
 } = require('../models/schema');
 const { generateEventCode } = require('../utils/code-generator');
@@ -12,10 +13,12 @@ const {
   NotFoundError,
   UnauthorizedError,
   ValidationError,
+  ForbiddenError,
 } = require('../errors');
 
 class EventsService {
-  async createEvent(ownerId, name, description, startsAt, eventId = null) {
+  async createEvent(actorUser, name, description, startsAt, eventId = null) {
+    const ownerId = await this._assertCanCreateEvent(actorUser);
     /* Use provided eventId or generate a random one */
     const finalEventId = eventId || generateEventCode(8);
     /* Generate random accessCode (separate from eventId, regenerable) */
@@ -54,6 +57,38 @@ class EventsService {
     logger.info(`Event created: ${event._id} by ${ownerId}`);
 
     return this._formatEvent(event);
+  }
+
+  async _assertCanCreateEvent(actorUser) {
+    const userId =
+      typeof actorUser === 'string'
+        ? actorUser
+        : actorUser?.userId?.toString() ||
+          actorUser?._id?.toString() ||
+          actorUser?.id?.toString();
+
+    if (!userId) {
+      throw new ForbiddenError('Only DJs and admins can create events');
+    }
+
+    const user = await UserModel.findById(userId)
+      .select('role emailRegistered')
+      .lean();
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    if (user.role !== 'DJ' && user.role !== 'ADMIN') {
+      throw new ForbiddenError('Only DJs and admins can create events');
+    }
+
+    if (user.role === 'DJ' && !user.emailRegistered) {
+      throw new ValidationError(
+        'Please confirm your email before creating an event. Check your inbox for the welcome email.'
+      );
+    }
+
+    return user._id;
   }
 
   async getEvent(eventId) {
@@ -166,7 +201,13 @@ class EventsService {
   }
 
   async getEventParticipants(eventId) {
-    const participants = await ParticipantModel.find({ eventId, leftAt: null });
+    const event = await EventModel.findById(eventId).select('ownerId').lean();
+    const query = { eventId, leftAt: null };
+    if (event?.ownerId) {
+      query.userId = { $ne: event.ownerId };
+    }
+
+    const participants = await ParticipantModel.find(query);
     return participants;
   }
 

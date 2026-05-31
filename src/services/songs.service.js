@@ -10,10 +10,11 @@ const participantsService = require('./participants.service');
 
 class SongsService {
   async suggestSong(eventId, participantId, title, artist, totalDuration, actorUser) {
-    await participantsService.ensureParticipantCanInteract(
+    await participantsService.assertParticipantSession(
       participantId,
       eventId,
-      { checkCooldown: true, actorUser },
+      actorUser,
+      { checkCooldown: true },
     );
 
     const song = new SongModel({

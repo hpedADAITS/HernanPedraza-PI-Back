@@ -150,6 +150,97 @@ describe('Event, participant, song and vote integration flow', () => {
     expect(url.href).not.toContain('localhost');
   });
 
+  test('rejects event creation by attendee accounts', async () => {
+    const attendee = await register(ATTENDEE_USER).expect(201);
+
+    await request(app)
+      .post('/api/v1/events')
+      .set(authHeader(attendee.body.data.token))
+      .send({
+        name: 'Attendee Event',
+        description: 'Should not be created',
+        startsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      })
+      .expect(403)
+      .expect((res) => {
+        expect(res.body.error.message).toBe('Only DJs and admins can create events');
+      });
+  });
+
+  test('rejects participant password setup by a different attendee session', async () => {
+    const dj = await createConfirmedDj();
+    const attendee = await register(ATTENDEE_USER).expect(201);
+    const otherAttendee = await register({
+      ...ATTENDEE_USER,
+      email: 'other.password@example.com',
+      displayName: 'Other Password',
+    }).expect(201);
+
+    const eventRes = await request(app)
+      .post('/api/v1/events')
+      .set(authHeader(dj.token))
+      .send({
+        name: 'Password Ownership',
+        description: 'Session ownership check',
+        startsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      })
+      .expect(201);
+
+    const joinRes = await request(app)
+      .post(`/api/v1/participants/${eventRes.body.data.event.id}/join`)
+      .set(authHeader(attendee.body.data.token))
+      .send({ nickname: 'Ada' })
+      .expect(201);
+
+    await request(app)
+      .post(`/api/v1/participants/${joinRes.body.data.participant._id}/password`)
+      .set(authHeader(otherAttendee.body.data.token))
+      .send({ password: 'StrongPass123!' })
+      .expect(403)
+      .expect((res) => {
+        expect(res.body.error.message).toBe('You cannot act as this attendee');
+      });
+  });
+
+  test('rejects song suggestions for participants owned by another attendee', async () => {
+    const dj = await createConfirmedDj();
+    const attendee = await register(ATTENDEE_USER).expect(201);
+    const otherAttendee = await register({
+      ...ATTENDEE_USER,
+      email: 'other.song@example.com',
+      displayName: 'Other Song',
+    }).expect(201);
+
+    const eventRes = await request(app)
+      .post('/api/v1/events')
+      .set(authHeader(dj.token))
+      .send({
+        name: 'Song Ownership',
+        description: 'Session ownership check',
+        startsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      })
+      .expect(201);
+
+    const joinRes = await request(app)
+      .post(`/api/v1/participants/${eventRes.body.data.event.id}/join`)
+      .set(authHeader(attendee.body.data.token))
+      .send({ nickname: 'Ada' })
+      .expect(201);
+
+    await request(app)
+      .post(`/api/v1/songs/${eventRes.body.data.event.id}/suggest`)
+      .set(authHeader(otherAttendee.body.data.token))
+      .send({
+        participantId: joinRes.body.data.participant._id,
+        title: 'Impersonated Song',
+        artist: 'Bad Actor',
+      })
+      .expect(403)
+      .expect((res) => {
+        expect(res.body.error.message).toBe('You cannot act as this attendee');
+      });
+  });
+
   test('runs the main live-event queue flow end-to-end', async () => {
     const dj = await createConfirmedDj();
     const attendee = await register(ATTENDEE_USER).expect(201);
@@ -362,6 +453,7 @@ describe('Event, participant, song and vote integration flow', () => {
     const voters = await ParticipantModel.insertMany(
       Array.from({ length: 8 }, (_, index) => ({
         eventId: event._id,
+        userId: attendee.body.data.user.id,
         nickname: `Voter ${index + 1}`,
         nicknameLower: `voter ${index + 1}`,
         joinedAt: new Date(),
@@ -488,6 +580,9 @@ describe('Event, participant, song and vote integration flow', () => {
       });
 
     cooldownCache.clearAll();
+    await ParticipantModel.findByIdAndUpdate(participant._id, {
+      $unset: { cooldownUntil: '', cooldownReason: '' },
+    });
 
     const suggestion = await request(app)
       .post(`/api/v1/songs/${event.id}/suggest`)
@@ -517,6 +612,9 @@ describe('Event, participant, song and vote integration flow', () => {
       });
 
     cooldownCache.clearAll();
+    await ParticipantModel.findByIdAndUpdate(participant._id, {
+      $unset: { cooldownUntil: '', cooldownReason: '' },
+    });
 
     await request(app)
       .post(`/api/v1/votes`)

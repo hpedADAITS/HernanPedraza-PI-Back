@@ -24,6 +24,12 @@ const DEBUG_ACCOUNT_TYPES = [
   },
 ];
 
+function assertDebugModeAllowed() {
+  if (process.env.DEBUG_MODE !== 'true' || process.env.NODE_ENV === 'production') {
+    throw new Error('Debug mock account creation is disabled');
+  }
+}
+
 function buildDebugToken(user) {
   return generateToken({
     userId: user._id,
@@ -55,6 +61,8 @@ function buildAttendeeNickname(suffix) {
 
 class DebugService {
   async createMockAccounts() {
+    assertDebugModeAllowed();
+
     const suffix = `${Date.now().toString(36)}-${Math.random()
       .toString(36)
       .slice(2, 8)}`;

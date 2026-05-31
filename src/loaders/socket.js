@@ -30,8 +30,12 @@ const initSocketIO = (app) => {
 
     logger.info('Socket.IO initialized');
 
-    /* Auth middleware (opt-out via SOCKET_AUTH_DISABLED=true) */
-    if (process.env.SOCKET_AUTH_DISABLED !== 'true') {
+    const socketAuthDisabled =
+      process.env.SOCKET_AUTH_DISABLED === 'true' &&
+      process.env.NODE_ENV !== 'production';
+
+    /* Auth middleware (test/local opt-out only) */
+    if (!socketAuthDisabled) {
       io.use(socketAuthMiddleware);
       logger.info('Socket.IO auth middleware enabled');
     } else {

@@ -6,7 +6,6 @@ const {
 } = require('../models/schema');
 const { logger } = require('../utils');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../errors');
-const cooldownCache = require('../utils/cooldown-cache');
 
 class ParticipantsService {
   async ensureNicknameIsNotAccessCode(nickname) {
@@ -107,18 +106,7 @@ class ParticipantsService {
       throw new NotFoundError('Participant not found');
     }
 
-    const userId = user?.userId?.toString();
-    if (!userId) {
-      throw new ForbiddenError('You can only protect your own attendee name');
-    }
-
-    if (!participant.userId) {
-      throw new ForbiddenError('Participant ownership must be proven before setting a password');
-    }
-
-    if (participant.userId.toString() !== userId) {
-      throw new ForbiddenError('You can only protect your own attendee name');
-    }
+    this._assertParticipantSession(participant, user);
 
     participant.passwordHash = await bcrypt.hash(password, 10);
     participant.passwordSetAt = new Date();
@@ -303,6 +291,48 @@ class ParticipantsService {
     return participant;
   }
 
+  async assertParticipantSession(
+    participantId,
+    eventId,
+    actorUser,
+    { checkCooldown = false } = {},
+  ) {
+    const participant = await ParticipantModel.findById(participantId);
+    if (!participant) {
+      throw new NotFoundError('Participant not found');
+    }
+
+    if (
+      eventId &&
+      participant.eventId.toString() !== eventId.toString()
+    ) {
+      throw new ValidationError('Participant is not part of this event');
+    }
+
+    this._assertParticipantSession(participant, actorUser);
+
+    if (
+      checkCooldown &&
+      participant.cooldownUntil &&
+      participant.cooldownUntil.getTime() > Date.now()
+    ) {
+      throw new ValidationError(
+        `Participant is on cooldown. Reason: ${participant.cooldownReason || 'Administrative action'}`,
+      );
+    }
+
+    if (
+      participant.cooldownUntil &&
+      participant.cooldownUntil.getTime() <= Date.now()
+    ) {
+      participant.cooldownUntil = undefined;
+      participant.cooldownReason = undefined;
+      await participant.save();
+    }
+
+    return participant;
+  }
+
   async assertParticipantSocketAccess(participantId, eventId, actorUser) {
     const participant = await this.ensureParticipantCanInteract(
       participantId,
@@ -407,12 +437,35 @@ class ParticipantsService {
     }
   }
 
+  _assertParticipantSession(participant, actorUser) {
+    if (participant.isBanned) {
+      throw new ForbiddenError('Participant has been banned from this event');
+    }
+
+    if (participant.leftAt) {
+      if (participant.kickedAt) {
+        throw new ForbiddenError('Participant was kicked from this event');
+      }
+      throw new ForbiddenError('Participant is no longer active in this event');
+    }
+
+    if (!participant.userId) {
+      throw new ForbiddenError('Participant ownership must be proven before this action');
+    }
+
+    this._assertParticipantOwner(participant, actorUser);
+  }
+
   async _assertParticipantAdminPermission(participant, actorUser) {
     const { userId, role } = this._normalizeActorUser(actorUser);
 
     if (!userId) {
       logger.error('Invalid actor user:', actorUser);
       throw new ValidationError('Invalid actor user ID');
+    }
+
+    if (participant.userId?.toString() === userId) {
+      throw new ForbiddenError('You cannot moderate your own attendee session');
     }
 
     if (role === 'ADMIN') {

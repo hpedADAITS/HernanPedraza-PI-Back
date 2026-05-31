@@ -3,16 +3,23 @@ const { logger } = require('../utils');
 
 const socketAuthMiddleware = async (socket, next) => {
   try {
+    const authorization = socket.handshake.headers?.authorization || '';
     const token =
       socket.handshake.auth?.token ||
-      socket.handshake.headers?.authorization?.split(' ')[1];
+      socket.handshake.query?.token ||
+      (authorization.startsWith('Bearer ') ? authorization.slice(7) : null);
 
     if (!token) {
       return next(new Error('UNAUTHORIZED: missing token'));
     }
 
-    const { decoded } = await authService.validateDefaultToken(token);
-    socket.user = decoded;
+    const { decoded, user } = await authService.validateDefaultToken(token);
+    socket.user = {
+      ...decoded,
+      userId: decoded.userId?.toString(),
+      id: decoded.userId?.toString(),
+      role: user.role,
+    };
     socket.token = token;
     next();
   } catch (err) {

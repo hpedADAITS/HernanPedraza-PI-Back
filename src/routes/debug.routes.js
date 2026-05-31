@@ -4,8 +4,12 @@ const { NotFoundError } = require('../errors');
 
 const router = Router();
 
+function isDebugRouteEnabled() {
+  return process.env.DEBUG_MODE === 'true' && process.env.NODE_ENV !== 'production';
+}
+
 router.use((req, res, next) => {
-  if (process.env.DEBUG_MODE === 'true') {
+  if (isDebugRouteEnabled()) {
     return next();
   }
 

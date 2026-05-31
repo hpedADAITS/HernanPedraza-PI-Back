@@ -2,9 +2,104 @@ const { logger } = require('../utils');
 const { requireFields } = require('./middleware');
 const { validateTransition } = require('../utils/song-state-machine');
 const { songsService, votesService, participantsService } = require('../services');
+const {
+  EventModel,
+  EventMemberModel,
+  ParticipantModel,
+  SongModel,
+} = require('../models/schema');
 
 const isValidId = (v) => typeof v === 'string' && /^[a-f\d]{24}$/i.test(v);
 const isValidVoteValue = (v) => v === 1 || v === -1;
+const isAuthBypassed = () =>
+  process.env.SOCKET_AUTH_DISABLED === 'true' && process.env.NODE_ENV !== 'production';
+const isSocketAuthOptional = (socket) =>
+  isAuthBypassed() || (process.env.NODE_ENV === 'test' && !socket.user);
+
+const socketUserId = (socket) =>
+  socket.user?.userId?.toString() || socket.user?._id?.toString() || socket.user?.id?.toString();
+
+const socketActor = (socket, fallbackUserId) => {
+  if (socket.user) return socket.user;
+  if (isAuthBypassed() && fallbackUserId) return fallbackUserId;
+  return null;
+};
+
+const requireSocketUser = (socket) => {
+  const userId = socketUserId(socket);
+  if (!userId && !isSocketAuthOptional(socket)) {
+    throw new Error('Socket authentication is required');
+  }
+  return userId;
+};
+
+const findAuthorizedParticipant = async (participantId, eventId, userId) => {
+  const participant = await ParticipantModel.findOne({
+    _id: participantId,
+    eventId,
+    leftAt: null,
+    isBanned: { $ne: true },
+  })
+    .select('eventId nickname profilePicture userId')
+    .lean();
+
+  if (!participant) return null;
+  if (!participant.userId || participant.userId.toString() !== userId) return null;
+  return participant;
+};
+
+const isEventMemberOrOwner = async (eventId, socket) => {
+  const userId = socketUserId(socket);
+  if (!userId) return false;
+  if (socket.user?.role === 'ADMIN') return true;
+
+  const event = await EventModel.findById(eventId).select('ownerId').lean();
+  if (!event) {
+    throw new Error('Event not found');
+  }
+
+  if (event.ownerId?.toString() === userId) return true;
+
+  const membership = await EventMemberModel.exists({ eventId, userId });
+  return Boolean(membership);
+};
+
+const assertEventRoomAccess = async (socket, eventId, participantId) => {
+  if (isSocketAuthOptional(socket)) return null;
+
+  if (!isValidId(eventId)) {
+    throw new Error('Invalid event ID');
+  }
+
+  const userId = requireSocketUser(socket);
+  if (await isEventMemberOrOwner(eventId, socket)) return null;
+
+  if (!participantId || !isValidId(participantId)) {
+    throw new Error('Participant access is required');
+  }
+
+  const participant = await findAuthorizedParticipant(participantId, eventId, userId);
+  if (!participant) {
+    throw new Error('You cannot join this event as that participant');
+  }
+  return participant;
+};
+
+const assertJoinedEvent = async (socket, eventId, participantId) => {
+  if (isSocketAuthOptional(socket)) return;
+  if (socket.rooms.has(`event:${eventId}`)) return;
+  await assertEventRoomAccess(socket, eventId, participantId);
+};
+
+const rejectLegacyCommand = (socket, eventName) => {
+  logger.warn(`Rejected client-emitted legacy socket event: ${eventName}`, {
+    socketId: socket.id,
+    userId: socketUserId(socket),
+  });
+  socket.emit('error', {
+    message: `${eventName} is a server broadcast event and cannot be used as a command`,
+  });
+};
 
 const emitQueueUpdated = async (io, eventId) => {
   const snapshot = await songsService.getQueueSnapshotForEvent(eventId);
@@ -18,8 +113,6 @@ const emitQueueUpdated = async (io, eventId) => {
 /* ============ EVENT PARTICIPATION ============ */
 
 const handleJoinEvent = async (socket, io, data) => {
-  console.log('Received data:', data);
-  console.log('Socket ID:', socket.id);
   const { eventId, participantId, nickname } = data;
 
   if (!eventId || !participantId) {
@@ -27,16 +120,20 @@ const handleJoinEvent = async (socket, io, data) => {
     return;
   }
 
+  const authorizedParticipant = await assertEventRoomAccess(
+    socket,
+    eventId,
+    participantId,
+  );
+
   const room = `event:${eventId}`;
   socket.join(room);
   socket.eventId = eventId;
-  socket.participantId = participantId;
+  socket.participantId = authorizedParticipant?._id?.toString() || participantId;
 
   logger.info(`Participant ${participantId} joined event ${eventId}`);
-  console.log(`Socket ${socket.id} joined room ${room}`);
-  console.log('Socket rooms after join:', socket.rooms);
 
-  let profilePicture = data.profilePicture || null;
+  let profilePicture = authorizedParticipant?.profilePicture || data.profilePicture || null;
   if (!profilePicture) {
     try {
       const participant = await participantsService.getParticipant(participantId);
@@ -52,7 +149,6 @@ const handleJoinEvent = async (socket, io, data) => {
     profilePicture,
     joinedAt: new Date().toISOString(),
   });
-  console.log('Broadcast complete');
 };
 
 const handleLeaveEvent = (socket, io, data) => {
@@ -105,9 +201,11 @@ const handleVotesCast = async (socket, io, data) => {
     return;
   }
 
+  await assertJoinedEvent(socket, eventId, participantId);
+
   logger.info(`Vote cast: song ${songId}, value ${value}`);
 
-  const result = await votesService.castVote(songId, participantId, value);
+  const result = await votesService.castVote(songId, participantId, value, socket.user);
   const song = result.song;
 
   io.to(`event:${eventId}`).emit('votes_updated', {
@@ -497,6 +595,8 @@ const handleSuggestSong = async (socket, io, data, callback) => {
       throw new Error('Invalid ID format');
     }
 
+    await assertJoinedEvent(socket, eventId, participantId);
+
     // Call service (same as REST would)
     const song = await songsService.suggestSong(
       eventId,
@@ -504,6 +604,7 @@ const handleSuggestSong = async (socket, io, data, callback) => {
       title,
       artist,
       totalDuration ?? duration,
+      socket.user,
     );
 
     // Broadcast to room
@@ -534,16 +635,19 @@ const handleSuggestSong = async (socket, io, data, callback) => {
 const handleApproveSong = async (socket, io, data, callback) => {
   try {
     const { eventId, songId, userId } = data;
+    const actor = socketActor(socket, userId);
 
-    if (!eventId || !songId || !userId) {
-      throw new Error('Missing required fields: eventId, songId, userId');
+    if (!eventId || !songId || !actor) {
+      throw new Error('Missing required fields: eventId, songId');
     }
 
-    if (!isValidId(eventId) || !isValidId(songId) || !isValidId(userId)) {
+    if (!isValidId(eventId) || !isValidId(songId)) {
       throw new Error('Invalid ID format');
     }
 
-    const song = await songsService.approveSong(songId, eventId, userId);
+    await assertJoinedEvent(socket, eventId);
+
+    const song = await songsService.approveSong(songId, eventId, actor);
 
     io.to(`event:${eventId}`).emit('song_approved', {
       songId: song._id,
@@ -570,16 +674,19 @@ const handleApproveSong = async (socket, io, data, callback) => {
 const handleRejectSong = async (socket, io, data, callback) => {
   try {
     const { eventId, songId, reason, userId } = data;
+    const actor = socketActor(socket, userId);
 
-    if (!eventId || !songId || !userId) {
-      throw new Error('Missing required fields: eventId, songId, userId');
+    if (!eventId || !songId || !actor) {
+      throw new Error('Missing required fields: eventId, songId');
     }
 
-    if (!isValidId(eventId) || !isValidId(songId) || !isValidId(userId)) {
+    if (!isValidId(eventId) || !isValidId(songId)) {
       throw new Error('Invalid ID format');
     }
 
-    const song = await songsService.rejectSong(songId, eventId, reason, userId);
+    await assertJoinedEvent(socket, eventId);
+
+    const song = await songsService.rejectSong(songId, eventId, reason, actor);
 
     io.to(`event:${eventId}`).emit('song_rejected', {
       songId: song._id,
@@ -605,16 +712,19 @@ const handleRejectSong = async (socket, io, data, callback) => {
 const handleSkipSong = async (socket, io, data, callback) => {
   try {
     const { eventId, songId, reason, userId } = data;
+    const actor = socketActor(socket, userId);
 
-    if (!eventId || !songId || !userId) {
-      throw new Error('Missing required fields: eventId, songId, userId');
+    if (!eventId || !songId || !actor) {
+      throw new Error('Missing required fields: eventId, songId');
     }
 
-    if (!isValidId(eventId) || !isValidId(songId) || !isValidId(userId)) {
+    if (!isValidId(eventId) || !isValidId(songId)) {
       throw new Error('Invalid ID format');
     }
 
-    const song = await songsService.skipSong(songId, eventId, reason, userId);
+    await assertJoinedEvent(socket, eventId);
+
+    const song = await songsService.skipSong(songId, eventId, reason, actor);
 
     io.to(`event:${eventId}`).emit('song_skipped', {
       songId: song._id,
@@ -640,16 +750,19 @@ const handleSkipSong = async (socket, io, data, callback) => {
 const handleSendNow = async (socket, io, data, callback) => {
   try {
     const { eventId, songId, userId } = data;
+    const actor = socketActor(socket, userId);
 
-    if (!eventId || !songId || !userId) {
-      throw new Error('Missing required fields: eventId, songId, userId');
+    if (!eventId || !songId || !actor) {
+      throw new Error('Missing required fields: eventId, songId');
     }
 
-    if (!isValidId(eventId) || !isValidId(songId) || !isValidId(userId)) {
+    if (!isValidId(eventId) || !isValidId(songId)) {
       throw new Error('Invalid ID format');
     }
 
-    const song = await songsService.sendNow(songId, eventId, userId);
+    await assertJoinedEvent(socket, eventId);
+
+    const song = await songsService.sendNow(songId, eventId, actor);
 
     io.to(`event:${eventId}`).emit('song_now_playing', {
       songId: song._id,
@@ -690,7 +803,9 @@ const handleCastVote = async (socket, io, data, callback) => {
       throw new Error('Vote value must be 1 or -1');
     }
 
-    const result = await votesService.castVote(songId, participantId, value);
+    await assertJoinedEvent(socket, eventId, participantId);
+
+    const result = await votesService.castVote(songId, participantId, value, socket.user);
     const vote = result.vote;
     const song = result.song;
 
@@ -738,7 +853,9 @@ const handleRemoveVote = async (socket, io, data, callback) => {
       throw new Error('Invalid ID format');
     }
 
-    const vote = await votesService.removeVote(songId, participantId);
+    await assertJoinedEvent(socket, eventId, participantId);
+
+    const vote = await votesService.removeVote(songId, participantId, socket.user);
 
     io.to(`event:${eventId}`).emit('vote_removed', {
       songId,
@@ -760,20 +877,23 @@ const handleRemoveVote = async (socket, io, data, callback) => {
 const handleSetCooldown = async (socket, io, data, callback) => {
   try {
     const { eventId, participantId, durationMs, reason, userId } = data;
+    const actor = socketActor(socket, userId);
 
-    if (!eventId || !participantId || !durationMs || !userId) {
-      throw new Error('Missing required fields: eventId, participantId, durationMs, userId');
+    if (!eventId || !participantId || !durationMs || !actor) {
+      throw new Error('Missing required fields: eventId, participantId, durationMs');
     }
 
-    if (!isValidId(eventId) || !isValidId(participantId) || !isValidId(userId)) {
+    if (!isValidId(eventId) || !isValidId(participantId)) {
       throw new Error('Invalid ID format');
     }
+
+    await assertJoinedEvent(socket, eventId);
 
     const result = await participantsService.setParticipantCooldown(
       participantId,
       durationMs,
       reason || 'Administrative action',
-      userId,
+      actor,
     );
 
     io.to(`event:${eventId}`).emit('participant_cooldown', {
@@ -800,19 +920,22 @@ const handleSetCooldown = async (socket, io, data, callback) => {
 const handleKickParticipant = async (socket, io, data, callback) => {
   try {
     const { eventId, participantId, reason, userId } = data;
+    const actor = socketActor(socket, userId);
 
-    if (!eventId || !participantId || !userId) {
-      throw new Error('Missing required fields: eventId, participantId, userId');
+    if (!eventId || !participantId || !actor) {
+      throw new Error('Missing required fields: eventId, participantId');
     }
 
-    if (!isValidId(eventId) || !isValidId(participantId) || !isValidId(userId)) {
+    if (!isValidId(eventId) || !isValidId(participantId)) {
       throw new Error('Invalid ID format');
     }
+
+    await assertJoinedEvent(socket, eventId);
 
     const result = await participantsService.kickParticipant(
       participantId,
       reason || 'No reason provided',
-      userId,
+      actor,
     );
 
     io.to(`event:${eventId}`).emit('participant_kicked', {
@@ -836,19 +959,22 @@ const handleKickParticipant = async (socket, io, data, callback) => {
 const handleBanParticipant = async (socket, io, data, callback) => {
   try {
     const { eventId, participantId, reason, userId } = data;
+    const actor = socketActor(socket, userId);
 
-    if (!eventId || !participantId || !userId) {
-      throw new Error('Missing required fields: eventId, participantId, userId');
+    if (!eventId || !participantId || !actor) {
+      throw new Error('Missing required fields: eventId, participantId');
     }
 
-    if (!isValidId(eventId) || !isValidId(participantId) || !isValidId(userId)) {
+    if (!isValidId(eventId) || !isValidId(participantId)) {
       throw new Error('Invalid ID format');
     }
+
+    await assertJoinedEvent(socket, eventId);
 
     const result = await participantsService.banParticipant(
       participantId,
       reason || 'No reason provided',
-      userId,
+      actor,
     );
 
     io.to(`event:${eventId}`).emit('participant_banned', {
@@ -874,9 +1000,10 @@ const handleBanParticipant = async (socket, io, data, callback) => {
  */
 const handleSetPremium = async (socket, io, data, callback) => {
   try {
-    const { participantId, isPremium } = data;
+    const { eventId, participantId, isPremium, userId } = data;
+    const actor = socketActor(socket, userId);
 
-    if (!participantId || typeof isPremium !== 'boolean') {
+    if (!participantId || typeof isPremium !== 'boolean' || !actor) {
       throw new Error('Missing required fields: participantId, isPremium');
     }
 
@@ -884,13 +1011,23 @@ const handleSetPremium = async (socket, io, data, callback) => {
       throw new Error('Invalid ID format');
     }
 
-    const participant = await participantsService.setPremium(participantId, isPremium);
-
-    // Get event ID for broadcasting
-    const eventId = participant.eventId?.toString() || '';
-
     if (eventId) {
-      io.to(`event:${eventId}`).emit('participant_premium_updated', {
+      if (!isValidId(eventId)) {
+        throw new Error('Invalid ID format');
+      }
+      await assertJoinedEvent(socket, eventId);
+    }
+
+    const participant = await participantsService.setPremium(
+      participantId,
+      isPremium,
+      actor,
+    );
+
+    const broadcastEventId = participant.eventId?.toString() || '';
+
+    if (broadcastEventId) {
+      io.to(`event:${broadcastEventId}`).emit('participant_premium_updated', {
         participantId,
         isPremium,
         timestamp: new Date().toISOString(),
@@ -932,4 +1069,5 @@ module.exports = {
   handleKickParticipant,
   handleBanParticipant,
   handleSetPremium,
+  rejectLegacyCommand,
 };

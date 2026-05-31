@@ -38,7 +38,7 @@ const handleSocketEvents = (socket, io) => {
   /* ============ VOTING ============ */
   socket.on('vote_cast', async (data) => {
     try {
-      await events.handleVotesCast(socket, io, data);
+      events.rejectLegacyCommand(socket, 'vote_cast');
     } catch (error) {
       logger.error('Error in vote_cast:', error);
       socket.emit('error', { message: 'Error casting vote' });
@@ -47,7 +47,7 @@ const handleSocketEvents = (socket, io) => {
 
   socket.on('vote_removed', (data) => {
     try {
-      events.handleVoteRemoved(socket, io, data);
+      events.rejectLegacyCommand(socket, 'vote_removed');
     } catch (error) {
       logger.error('Error in vote_removed:', error);
       socket.emit('error', { message: 'Error removing vote' });
@@ -57,7 +57,7 @@ const handleSocketEvents = (socket, io) => {
   /* ============ SONGS ============ */
   socket.on('song_suggested', (data) => {
     try {
-      events.handleSongSuggested(socket, io, data);
+      events.rejectLegacyCommand(socket, 'song_suggested');
     } catch (error) {
       logger.error('Error in song_suggested:', error);
       socket.emit('error', { message: 'Error suggesting song' });
@@ -66,7 +66,7 @@ const handleSocketEvents = (socket, io) => {
 
   socket.on('song_approved', async (data) => {
     try {
-      await events.handleSongApproved(socket, io, data);
+      events.rejectLegacyCommand(socket, 'song_approved');
     } catch (error) {
       logger.error('Error in song_approved:', error);
       socket.emit('error', { message: 'Error approving song' });
@@ -75,7 +75,7 @@ const handleSocketEvents = (socket, io) => {
 
   socket.on('song_rejected', (data) => {
     try {
-      events.handleSongRejected(socket, io, data);
+      events.rejectLegacyCommand(socket, 'song_rejected');
     } catch (error) {
       logger.error('Error in song_rejected:', error);
       socket.emit('error', { message: 'Error rejecting song' });
@@ -84,7 +84,7 @@ const handleSocketEvents = (socket, io) => {
 
   socket.on('song_skipped', (data) => {
     try {
-      events.handleSongSkipped(socket, io, data);
+      events.rejectLegacyCommand(socket, 'song_skipped');
     } catch (error) {
       logger.error('Error in song_skipped:', error);
       socket.emit('error', { message: 'Error skipping song' });
@@ -93,7 +93,7 @@ const handleSocketEvents = (socket, io) => {
 
   socket.on('queue_updated', (data) => {
     try {
-      events.handleQueueUpdated(socket, io, data);
+      events.rejectLegacyCommand(socket, 'queue_updated');
     } catch (error) {
       logger.error('Error in queue_updated:', error);
       socket.emit('error', { message: 'Error updating queue' });
@@ -103,7 +103,7 @@ const handleSocketEvents = (socket, io) => {
   /* ============ PARTICIPANTS ============ */
   socket.on('participant_cooldown', (data) => {
     try {
-      events.handleParticipantCooldown(socket, io, data);
+      events.rejectLegacyCommand(socket, 'participant_cooldown');
     } catch (error) {
       logger.error('Error in participant_cooldown:', error);
       socket.emit('error', { message: 'Error setting cooldown' });
@@ -112,7 +112,7 @@ const handleSocketEvents = (socket, io) => {
 
   socket.on('participant_kicked', (data) => {
     try {
-      events.handleParticipantKicked(socket, io, data);
+      events.rejectLegacyCommand(socket, 'participant_kicked');
     } catch (error) {
       logger.error('Error in participant_kicked:', error);
       socket.emit('error', { message: 'Error kicking participant' });
@@ -121,7 +121,7 @@ const handleSocketEvents = (socket, io) => {
 
   socket.on('participant_banned', (data) => {
     try {
-      events.handleParticipantBanned(socket, io, data);
+      events.rejectLegacyCommand(socket, 'participant_banned');
     } catch (error) {
       logger.error('Error in participant_banned:', error);
       socket.emit('error', { message: 'Error banning participant' });
@@ -131,7 +131,7 @@ const handleSocketEvents = (socket, io) => {
   /* ============ SONG NOW PLAYING ============ */
   socket.on('song_now_playing', (data) => {
     try {
-      events.handleSongNowPlaying(socket, io, data);
+      events.rejectLegacyCommand(socket, 'song_now_playing');
     } catch (error) {
       logger.error('Error in song_now_playing:', error);
       socket.emit('error', { message: 'Error setting song as playing' });
@@ -226,6 +226,16 @@ const handleSocketEvents = (socket, io) => {
       events.handleKickParticipant(socket, io, data, callback || (() => {}));
     } catch (error) {
       logger.error('Error in kick_participant:', error);
+      if (callback) callback({ success: false, error: error.message });
+    }
+  });
+
+  /* Ban Participant - PRIMARY entry point */
+  socket.on('ban_participant', (data, callback) => {
+    try {
+      events.handleBanParticipant(socket, io, data, callback || (() => {}));
+    } catch (error) {
+      logger.error('Error in ban_participant:', error);
       if (callback) callback({ success: false, error: error.message });
     }
   });

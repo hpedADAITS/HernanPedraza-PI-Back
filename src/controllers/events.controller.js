@@ -1,8 +1,7 @@
-const { eventsService, authService } = require('../services');
+const { eventsService } = require('../services');
 const { logger } = require('../utils');
 const { httpStatus } = require('../constants');
 const { eventsSchema } = require('../schemas');
-const { ForbiddenError, ValidationError } = require('../errors');
 const config = require('../config');
 
 let io = null;
@@ -46,20 +45,8 @@ class EventsController {
     try {
       const data = eventsSchema.parseCreateEvent(req.body);
 
-      /* Check if user's email is registered (for DJ users) */
-      const user = await authService.getCurrentUser(req.user.userId);
-      if (user.role !== 'DJ' && user.role !== 'ADMIN') {
-        throw new ForbiddenError('Only DJs and admins can create events');
-      }
-
-      if (user.role === 'DJ' && !user.emailRegistered) {
-        throw new ValidationError(
-          'Please confirm your email before creating an event. Check your inbox for the welcome email.'
-        );
-      }
-
       const event = await eventsService.createEvent(
-        req.user.userId,
+        req.user,
         data.name,
         data.description,
         data.startsAt,

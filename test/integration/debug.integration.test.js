@@ -11,9 +11,11 @@ const {
 
 let mongoServer;
 let originalDebugMode;
+let originalNodeEnv;
 
 beforeAll(async () => {
   originalDebugMode = process.env.DEBUG_MODE;
+  originalNodeEnv = process.env.NODE_ENV;
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri());
 });
@@ -23,6 +25,11 @@ afterAll(async () => {
     delete process.env.DEBUG_MODE;
   } else {
     process.env.DEBUG_MODE = originalDebugMode;
+  }
+  if (originalNodeEnv === undefined) {
+    delete process.env.NODE_ENV;
+  } else {
+    process.env.NODE_ENV = originalNodeEnv;
   }
 
   await mongoose.disconnect();
@@ -39,6 +46,17 @@ beforeEach(async () => {
 describe('Debug mock accounts', () => {
   test('is unavailable when DEBUG_MODE is disabled', async () => {
     delete process.env.DEBUG_MODE;
+    process.env.NODE_ENV = 'test';
+
+    const res = await request(app).post('/api/v1/debug/mock-accounts');
+
+    expect(res.status).toBe(404);
+    expect(await UserModel.countDocuments()).toBe(0);
+  });
+
+  test('is unavailable in production even when DEBUG_MODE is enabled', async () => {
+    process.env.DEBUG_MODE = 'true';
+    process.env.NODE_ENV = 'production';
 
     const res = await request(app).post('/api/v1/debug/mock-accounts');
 
@@ -48,6 +66,7 @@ describe('Debug mock accounts', () => {
 
   test('creates verified DJ and attendee accounts in MongoDB', async () => {
     process.env.DEBUG_MODE = 'true';
+    process.env.NODE_ENV = 'test';
 
     const res = await request(app)
       .post('/api/v1/debug/mock-accounts')
