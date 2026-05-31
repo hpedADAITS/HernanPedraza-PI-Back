@@ -152,6 +152,7 @@ class ParticipantsController {
       const participant = await participantsService.setPremium(
         participantId,
         data.isPremium,
+        req.user,
       );
 
       this.emitParticipantEvent(participant.eventId, 'participant_premium_updated', {

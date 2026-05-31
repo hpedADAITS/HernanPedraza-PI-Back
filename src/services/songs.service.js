@@ -1,18 +1,19 @@
 const {
   SongModel,
   EventModel,
+  EventMemberModel,
 } = require('../models/schema');
 const { logger } = require('../utils');
-const { NotFoundError } = require('../errors');
+const { ForbiddenError, NotFoundError } = require('../errors');
 const { validateTransition } = require('../utils/song-state-machine');
 const participantsService = require('./participants.service');
 
 class SongsService {
-  async suggestSong(eventId, participantId, title, artist, totalDuration) {
+  async suggestSong(eventId, participantId, title, artist, totalDuration, actorUser) {
     await participantsService.ensureParticipantCanInteract(
       participantId,
       eventId,
-      { checkCooldown: true },
+      { checkCooldown: true, actorUser },
     );
 
     const song = new SongModel({
@@ -62,6 +63,8 @@ class SongsService {
   }
 
   async approveSong(songId, eventId, userId) {
+    await this._assertSongAdmin(eventId, userId);
+
     const song = await SongModel.findById(songId);
     if (!song) {
       throw new NotFoundError('Song not found');
@@ -87,6 +90,8 @@ class SongsService {
   }
 
   async rejectSong(songId, eventId, reason, userId) {
+    await this._assertSongAdmin(eventId, userId);
+
     const song = await SongModel.findById(songId);
     if (!song) {
       throw new NotFoundError('Song not found');
@@ -113,6 +118,8 @@ class SongsService {
   }
 
   async sendNow(songId, eventId, userId) {
+    await this._assertSongAdmin(eventId, userId);
+
     const song = await SongModel.findById(songId);
     if (!song) {
       throw new NotFoundError('Song not found');
@@ -153,9 +160,15 @@ class SongsService {
   }
 
   async skipSong(songId, eventId, reason, userId) {
+    await this._assertSongAdmin(eventId, userId);
+
     const song = await SongModel.findById(songId);
     if (!song) {
       throw new NotFoundError('Song not found');
+    }
+
+    if (song.eventId.toString() !== eventId.toString()) {
+      throw new NotFoundError('Song not in this event');
     }
 
     /* Validate state transition using state machine */
@@ -178,6 +191,8 @@ class SongsService {
   }
 
   async playNextSong(eventId, userId) {
+    await this._assertSongAdmin(eventId, userId);
+
     /* Validate state transition before update */
     validateTransition('APPROVED', 'PLAYING', 'DJ');
 
@@ -207,9 +222,15 @@ class SongsService {
   }
 
   async markSongAsPlayed(songId, eventId, userId) {
+    await this._assertSongAdmin(eventId, userId);
+
     const song = await SongModel.findById(songId);
     if (!song) {
       throw new NotFoundError('Song not found');
+    }
+
+    if (song.eventId.toString() !== eventId.toString()) {
+      throw new NotFoundError('Song not in this event');
     }
 
     /* Validate state transition using state machine */
@@ -324,6 +345,43 @@ class SongsService {
       skippedAt: song.skippedAt,
       createdAt: song.createdAt,
     };
+  }
+
+  async _assertSongAdmin(eventId, actorUser) {
+    const userId =
+      typeof actorUser === 'string'
+        ? actorUser
+        : actorUser?.userId?.toString() || actorUser?._id?.toString();
+    const role = typeof actorUser === 'object' ? actorUser?.role : null;
+
+    if (!userId) {
+      throw new ForbiddenError('User is required for this song action');
+    }
+
+    if (role === 'ADMIN') {
+      return;
+    }
+
+    const event = await EventModel.findById(eventId).select('ownerId').lean();
+    if (!event) {
+      throw new NotFoundError('Event not found');
+    }
+
+    if (event.ownerId?.toString() === userId.toString()) {
+      return;
+    }
+
+    const member = await EventMemberModel.findOne({ eventId, userId })
+      .select('permissions')
+      .lean();
+    if (
+      Array.isArray(member?.permissions) &&
+      member.permissions.includes('SONG_APPROVE_REJECT')
+    ) {
+      return;
+    }
+
+    throw new ForbiddenError('You do not have permission to manage songs in this event');
   }
 }
 

@@ -46,6 +46,7 @@ class VotesController {
         data.songId,
         data.participantId,
         data.value,
+        req.user,
       );
 
       const vote = result.vote || result;
@@ -85,7 +86,7 @@ class VotesController {
     try {
       const { songId, participantId } = req.params;
 
-      await votesService.removeVote(songId, participantId);
+      await votesService.removeVote(songId, participantId, req.user);
 
       const song = await songsService.getSongStats(songId);
       const eventId = song.eventId?.toString();

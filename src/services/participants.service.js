@@ -108,12 +108,18 @@ class ParticipantsService {
     }
 
     const userId = user?.userId?.toString();
-    const isPrivileged = user?.role === 'DJ' || user?.role === 'ADMIN';
-    if (participant.userId && participant.userId.toString() !== userId && !isPrivileged) {
+    if (!userId) {
       throw new ForbiddenError('You can only protect your own attendee name');
     }
 
-    participant.userId = participant.userId || userId;
+    if (!participant.userId) {
+      throw new ForbiddenError('Participant ownership must be proven before setting a password');
+    }
+
+    if (participant.userId.toString() !== userId) {
+      throw new ForbiddenError('You can only protect your own attendee name');
+    }
+
     participant.passwordHash = await bcrypt.hash(password, 10);
     participant.passwordSetAt = new Date();
     await participant.save();
@@ -144,10 +150,17 @@ class ParticipantsService {
   }
 
   async getEventParticipants(eventId) {
-    const participants = await ParticipantModel.find({
+    const event = await EventModel.findById(eventId).select('ownerId');
+    const query = {
       eventId,
       leftAt: null,
-    }).sort({ joinedAt: 1 });
+    };
+
+    if (event?.ownerId) {
+      query.userId = { $ne: event.ownerId };
+    }
+
+    const participants = await ParticipantModel.find(query).sort({ joinedAt: 1 });
 
     return participants.map((p) => this._formatParticipant(p));
   }
@@ -179,13 +192,9 @@ class ParticipantsService {
       actorUser,
     );
 
-    /* Set cooldown in memory cache instead of DB */
-    cooldownCache.setCooldown(
-      participant.eventId.toString(),
-      participantId.toString(),
-      durationMs,
-      reason
-    );
+    participant.cooldownUntil = new Date(Date.now() + durationMs);
+    participant.cooldownReason = reason;
+    await participant.save();
 
     logger.info(
       `Participant ${participantId} on cooldown for ${durationMs}ms`,
@@ -243,7 +252,7 @@ class ParticipantsService {
   async ensureParticipantCanInteract(
     participantId,
     eventId,
-    { checkCooldown = false } = {},
+    { checkCooldown = false, actorUser = null } = {},
   ) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
@@ -268,23 +277,39 @@ class ParticipantsService {
       throw new ForbiddenError('Participant is no longer active in this event');
     }
 
+    if (actorUser) {
+      this._assertParticipantOwner(participant, actorUser);
+    }
+
     if (
       checkCooldown &&
-      cooldownCache.isOnCooldown(
-        participant.eventId.toString(),
-        participant._id.toString(),
-      )
+      participant.cooldownUntil &&
+      participant.cooldownUntil.getTime() > Date.now()
     ) {
-      const cooldown = cooldownCache.getCooldown(
-        participant.eventId.toString(),
-        participant._id.toString(),
-      );
       throw new ValidationError(
-        `Participant is on cooldown. Reason: ${cooldown.reason}`,
+        `Participant is on cooldown. Reason: ${participant.cooldownReason || 'Administrative action'}`,
       );
     }
 
+    if (
+      participant.cooldownUntil &&
+      participant.cooldownUntil.getTime() <= Date.now()
+    ) {
+      participant.cooldownUntil = undefined;
+      participant.cooldownReason = undefined;
+      await participant.save();
+    }
+
     return participant;
+  }
+
+  async assertParticipantSocketAccess(participantId, eventId, actorUser) {
+    const participant = await this.ensureParticipantCanInteract(
+      participantId,
+      eventId,
+      { actorUser },
+    );
+    return this._formatParticipant(participant);
   }
 
   async banParticipant(participantId, reason, actorUser) {
@@ -320,21 +345,23 @@ class ParticipantsService {
     };
   }
 
-  async setPremium(participantId, isPremium) {
-    const participant = await ParticipantModel.findByIdAndUpdate(
-      participantId,
-      { isPremium },
-      { new: true },
-    );
+  async setPremium(participantId, isPremium, actorUser) {
+    const participant = await ParticipantModel.findById(participantId);
+    if (!participant) {
+      throw new NotFoundError('Participant not found');
+    }
+
+    await this._assertParticipantAdminPermission(participant, actorUser);
+
+    participant.isPremium = isPremium;
+    await participant.save();
     return this._formatParticipant(participant);
   }
 
   _formatParticipant(participant) {
-    /* Check in-memory cooldown cache */
-    const cooldown = cooldownCache.getCooldown(
-      participant.eventId.toString(),
-      participant._id.toString()
-    );
+    const cooldownActive =
+      participant.cooldownUntil &&
+      participant.cooldownUntil.getTime() > Date.now();
 
     return {
       _id: participant._id.toString(),
@@ -345,7 +372,8 @@ class ParticipantsService {
       joinedAt: participant.joinedAt,
       lastSeenAt: participant.lastSeenAt,
       isBanned: participant.isBanned,
-      cooldownUntil: cooldown ? new Date(cooldown.expiresAt) : null,
+      cooldownUntil: cooldownActive ? participant.cooldownUntil : null,
+      cooldownReason: cooldownActive ? participant.cooldownReason : null,
       isPremium: participant.isPremium,
       passwordProtected: Boolean(participant.passwordHash || participant.passwordSetAt),
       leftAt: participant.leftAt,
@@ -365,6 +393,18 @@ class ParticipantsService {
     }
 
     return { userId: null, role: null };
+  }
+
+  _assertParticipantOwner(participant, actorUser) {
+    const { userId } = this._normalizeActorUser(actorUser);
+
+    if (!userId) {
+      throw new ForbiddenError('Participant ownership could not be verified');
+    }
+
+    if (!participant.userId || participant.userId.toString() !== userId) {
+      throw new ForbiddenError('You cannot act as this attendee');
+    }
   }
 
   async _assertParticipantAdminPermission(participant, actorUser) {

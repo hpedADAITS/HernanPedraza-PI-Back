@@ -7,7 +7,7 @@ const AUTO_REJECT_SCORE = -8;
 const AUTO_REJECT_REASON = 'Rejected by downvotes';
 
 class VotesService {
-  async castVote(songId, participantId, value) {
+  async castVote(songId, participantId, value, actorUser) {
     /* Validate vote value */
     if (![1, -1].includes(value)) {
       throw new ValidationError('Vote value must be 1 or -1');
@@ -22,7 +22,7 @@ class VotesService {
     await participantsService.ensureParticipantCanInteract(
       participantId,
       song.eventId,
-      { checkCooldown: true },
+      { checkCooldown: true, actorUser },
     );
 
     /* Check if participant already voted */
@@ -74,7 +74,7 @@ class VotesService {
     };
   }
 
-  async removeVote(songId, participantId) {
+  async removeVote(songId, participantId, actorUser) {
     const song = await SongModel.findById(songId);
     if (!song) {
       throw new NotFoundError('Song not found');
@@ -83,7 +83,7 @@ class VotesService {
     await participantsService.ensureParticipantCanInteract(
       participantId,
       song.eventId,
-      { checkCooldown: true },
+      { checkCooldown: true, actorUser },
     );
 
     const vote = await VoteModel.findOneAndDelete({ songId, participantId });

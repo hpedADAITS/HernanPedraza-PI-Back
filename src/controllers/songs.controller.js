@@ -53,6 +53,7 @@ class SongsController {
         data.title,
         data.artist,
         data.totalDuration,
+        req.user,
       );
       let participant = null;
       try {
