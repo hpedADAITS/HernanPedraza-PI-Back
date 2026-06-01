@@ -113,6 +113,20 @@ class EventsController {
     }
   }
 
+  async getMyActiveEvent(req, res, next) {
+    try {
+      const event = await eventsService.getActiveEventForOwner(req.user.userId);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { event },
+      });
+    } catch (error) {
+      logger.error('Get my active event error:', error);
+      next(error);
+    }
+  }
+
   async updateEvent(req, res, next) {
     try {
       const { eventId } = req.params;

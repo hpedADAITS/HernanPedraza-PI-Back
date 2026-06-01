@@ -1,93 +1,23 @@
 const { logger } = require('../utils');
 const { requireFields } = require('./middleware');
+const { isInEventRoom, joinEventRoom, leaveEventRoom, toEventRoom } = require('./rooms');
+const { ackSuccess, ackError } = require('./ack');
 const { validateTransition } = require('../utils/song-state-machine');
 const { songsService, votesService, participantsService } = require('../services');
+const { SongModel } = require('../models/schema');
 const {
-  EventModel,
-  EventMemberModel,
-  ParticipantModel,
-  SongModel,
-} = require('../models/schema');
+  assertEventRoomAccess,
+  isSocketAuthOptional,
+  socketActor,
+  socketUserId,
+} = require('./auth');
 
 const isValidId = (v) => typeof v === 'string' && /^[a-f\d]{24}$/i.test(v);
 const isValidVoteValue = (v) => v === 1 || v === -1;
-const isAuthBypassed = () =>
-  process.env.SOCKET_AUTH_DISABLED === 'true' && process.env.NODE_ENV !== 'production';
-const isSocketAuthOptional = (socket) =>
-  isAuthBypassed() || (process.env.NODE_ENV === 'test' && !socket.user);
-
-const socketUserId = (socket) =>
-  socket.user?.userId?.toString() || socket.user?._id?.toString() || socket.user?.id?.toString();
-
-const socketActor = (socket, fallbackUserId) => {
-  if (socket.user) return socket.user;
-  if (isAuthBypassed() && fallbackUserId) return fallbackUserId;
-  return null;
-};
-
-const requireSocketUser = (socket) => {
-  const userId = socketUserId(socket);
-  if (!userId && !isSocketAuthOptional(socket)) {
-    throw new Error('Socket authentication is required');
-  }
-  return userId;
-};
-
-const findAuthorizedParticipant = async (participantId, eventId, userId) => {
-  const participant = await ParticipantModel.findOne({
-    _id: participantId,
-    eventId,
-    leftAt: null,
-    isBanned: { $ne: true },
-  })
-    .select('eventId nickname profilePicture userId')
-    .lean();
-
-  if (!participant) return null;
-  if (!participant.userId || participant.userId.toString() !== userId) return null;
-  return participant;
-};
-
-const isEventMemberOrOwner = async (eventId, socket) => {
-  const userId = socketUserId(socket);
-  if (!userId) return false;
-  if (socket.user?.role === 'ADMIN') return true;
-
-  const event = await EventModel.findById(eventId).select('ownerId').lean();
-  if (!event) {
-    throw new Error('Event not found');
-  }
-
-  if (event.ownerId?.toString() === userId) return true;
-
-  const membership = await EventMemberModel.exists({ eventId, userId });
-  return Boolean(membership);
-};
-
-const assertEventRoomAccess = async (socket, eventId, participantId) => {
-  if (isSocketAuthOptional(socket)) return null;
-
-  if (!isValidId(eventId)) {
-    throw new Error('Invalid event ID');
-  }
-
-  const userId = requireSocketUser(socket);
-  if (await isEventMemberOrOwner(eventId, socket)) return null;
-
-  if (!participantId || !isValidId(participantId)) {
-    throw new Error('Participant access is required');
-  }
-
-  const participant = await findAuthorizedParticipant(participantId, eventId, userId);
-  if (!participant) {
-    throw new Error('You cannot join this event as that participant');
-  }
-  return participant;
-};
 
 const assertJoinedEvent = async (socket, eventId, participantId) => {
   if (isSocketAuthOptional(socket)) return;
-  if (socket.rooms.has(`event:${eventId}`)) return;
+  if (isInEventRoom(socket, eventId)) return;
   await assertEventRoomAccess(socket, eventId, participantId);
 };
 
@@ -103,7 +33,7 @@ const rejectLegacyCommand = (socket, eventName) => {
 
 const emitQueueUpdated = async (io, eventId) => {
   const snapshot = await songsService.getQueueSnapshotForEvent(eventId);
-  io.to(`event:${eventId}`).emit('queue_updated', {
+  toEventRoom(io, eventId).emit('queue_updated', {
     eventId,
     ...snapshot,
     timestamp: new Date().toISOString(),
@@ -126,8 +56,7 @@ const handleJoinEvent = async (socket, io, data) => {
     participantId,
   );
 
-  const room = `event:${eventId}`;
-  socket.join(room);
+  joinEventRoom(socket, eventId);
   socket.eventId = eventId;
   socket.participantId = authorizedParticipant?._id?.toString() || participantId;
 
@@ -143,7 +72,7 @@ const handleJoinEvent = async (socket, io, data) => {
     }
   }
 
-  io.to(room).emit('participant_joined', {
+  toEventRoom(io, eventId).emit('participant_joined', {
     participantId,
     nickname,
     profilePicture,
@@ -159,11 +88,11 @@ const handleLeaveEvent = (socket, io, data) => {
     return;
   }
 
-  socket.leave(`event:${eventId}`);
+  leaveEventRoom(socket, eventId);
 
   logger.info(`Participant ${participantId} left event ${eventId}`);
 
-  io.to(`event:${eventId}`).emit('participant_left', {
+  toEventRoom(io, eventId).emit('participant_left', {
     participantId,
     leftAt: new Date().toISOString(),
   });
@@ -171,7 +100,7 @@ const handleLeaveEvent = (socket, io, data) => {
 
 const handleDisconnect = (socket, io) => {
   if (socket.eventId && socket.participantId) {
-    io.to(`event:${socket.eventId}`).emit('participant_disconnected', {
+    toEventRoom(io, socket.eventId).emit('participant_disconnected', {
       participantId: socket.participantId,
     });
   }
@@ -208,7 +137,7 @@ const handleVotesCast = async (socket, io, data) => {
   const result = await votesService.castVote(songId, participantId, value, socket.user);
   const song = result.song;
 
-  io.to(`event:${eventId}`).emit('votes_updated', {
+  toEventRoom(io, eventId).emit('votes_updated', {
     songId,
     participantId,
     value,
@@ -218,7 +147,7 @@ const handleVotesCast = async (socket, io, data) => {
     timestamp: new Date().toISOString(),
   });
   if (result.autoRejected) {
-    io.to(`event:${eventId}`).emit('song_rejected', {
+    toEventRoom(io, eventId).emit('song_rejected', {
       songId,
       title: song.title,
       artist: song.artist,
@@ -240,7 +169,7 @@ const handleVoteRemoved = (socket, io, data) => {
 
   logger.info(`Vote removed: song ${songId}`);
 
-  io.to(`event:${eventId}`).emit('vote_removed', {
+  toEventRoom(io, eventId).emit('vote_removed', {
     songId,
     participantId,
     timestamp: new Date().toISOString(),
@@ -259,7 +188,7 @@ const handleSongSuggested = (socket, io, data) => {
 
   logger.info(`Song suggested: ${title} by ${artist}`);
 
-  io.to(`event:${eventId}`).emit('song_suggested', {
+  toEventRoom(io, eventId).emit('song_suggested', {
     songId,
     title,
     artist,
@@ -303,7 +232,7 @@ const handleSongApproved = async (socket, io, data) => {
     });
 
     /* Broadcast to event room */
-    io.to(`event:${eventId}`).emit('song_approved', {
+    toEventRoom(io, eventId).emit('song_approved', {
       songId,
       title: song.title,
       artist: song.artist,
@@ -355,7 +284,7 @@ const handleSongRejected = async (socket, io, data) => {
     });
 
     /* Broadcast to event room */
-    io.to(`event:${eventId}`).emit('song_rejected', {
+    toEventRoom(io, eventId).emit('song_rejected', {
       songId,
       reason,
       timestamp: new Date().toISOString(),
@@ -407,7 +336,7 @@ const handleSongSkipped = async (socket, io, data) => {
     });
 
     /* Broadcast to event room */
-    io.to(`event:${eventId}`).emit('song_skipped', {
+    toEventRoom(io, eventId).emit('song_skipped', {
       songId,
       reason,
       timestamp: new Date().toISOString(),
@@ -431,7 +360,7 @@ const handleQueueUpdated = (socket, io, data) => {
 
   logger.info(`Queue updated for event ${eventId}`);
 
-  io.to(`event:${eventId}`).emit('queue_updated', {
+  toEventRoom(io, eventId).emit('queue_updated', {
     eventId,
     queue,
     timestamp: new Date().toISOString(),
@@ -460,7 +389,7 @@ const handleParticipantCooldown = async (socket, io, data) => {
     });
 
     /* Broadcast to event room */
-    io.to(`event:${eventId}`).emit('participant_cooldown', {
+    toEventRoom(io, eventId).emit('participant_cooldown', {
       participantId,
       reason,
       timestamp: new Date().toISOString(),
@@ -493,7 +422,7 @@ const handleParticipantKicked = async (socket, io, data) => {
     });
 
     /* Broadcast to event room */
-    io.to(`event:${eventId}`).emit('participant_kicked', {
+    toEventRoom(io, eventId).emit('participant_kicked', {
       participantId,
       reason,
       timestamp: new Date().toISOString(),
@@ -525,7 +454,7 @@ const handleParticipantBanned = async (socket, io, data) => {
       reason,
     });
 
-    io.to(`event:${eventId}`).emit('participant_banned', {
+    toEventRoom(io, eventId).emit('participant_banned', {
       participantId,
       reason,
       timestamp: new Date().toISOString(),
@@ -557,7 +486,7 @@ const handleSongNowPlaying = async (socket, io, data) => {
     });
 
     /* Broadcast to event room */
-    io.to(`event:${eventId}`).emit('song_now_playing', {
+    toEventRoom(io, eventId).emit('song_now_playing', {
       songId,
       title,
       artist,
@@ -608,7 +537,7 @@ const handleSuggestSong = async (socket, io, data, callback) => {
     );
 
     // Broadcast to room
-    io.to(`event:${eventId}`).emit('song_suggested', {
+    toEventRoom(io, eventId).emit('song_suggested', {
       songId: song._id,
       title: song.title,
       artist: song.artist,
@@ -622,10 +551,10 @@ const handleSuggestSong = async (socket, io, data, callback) => {
     logger.info('Song suggested via Socket.IO', { songId: song._id, eventId });
 
     // Acknowledge to sender with result
-    callback({ success: true, data: song, error: null });
+    ackSuccess(callback, song);
   } catch (error) {
     logger.error('Error suggesting song via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 
@@ -649,7 +578,7 @@ const handleApproveSong = async (socket, io, data, callback) => {
 
     const song = await songsService.approveSong(songId, eventId, actor);
 
-    io.to(`event:${eventId}`).emit('song_approved', {
+    toEventRoom(io, eventId).emit('song_approved', {
       songId: song._id,
       title: song.title,
       artist: song.artist,
@@ -661,10 +590,10 @@ const handleApproveSong = async (socket, io, data, callback) => {
     await emitQueueUpdated(io, eventId);
 
     logger.info('Song approved via Socket.IO', { songId, eventId });
-    callback({ success: true, data: song, error: null });
+    ackSuccess(callback, song);
   } catch (error) {
     logger.error('Error approving song via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 
@@ -688,7 +617,7 @@ const handleRejectSong = async (socket, io, data, callback) => {
 
     const song = await songsService.rejectSong(songId, eventId, reason, actor);
 
-    io.to(`event:${eventId}`).emit('song_rejected', {
+    toEventRoom(io, eventId).emit('song_rejected', {
       songId: song._id,
       title: song.title,
       artist: song.artist,
@@ -699,10 +628,10 @@ const handleRejectSong = async (socket, io, data, callback) => {
     await emitQueueUpdated(io, eventId);
 
     logger.info('Song rejected via Socket.IO', { songId, eventId, reason });
-    callback({ success: true, data: song, error: null });
+    ackSuccess(callback, song);
   } catch (error) {
     logger.error('Error rejecting song via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 
@@ -726,7 +655,7 @@ const handleSkipSong = async (socket, io, data, callback) => {
 
     const song = await songsService.skipSong(songId, eventId, reason, actor);
 
-    io.to(`event:${eventId}`).emit('song_skipped', {
+    toEventRoom(io, eventId).emit('song_skipped', {
       songId: song._id,
       title: song.title,
       artist: song.artist,
@@ -737,10 +666,10 @@ const handleSkipSong = async (socket, io, data, callback) => {
     await emitQueueUpdated(io, eventId);
 
     logger.info('Song skipped via Socket.IO', { songId, eventId, reason });
-    callback({ success: true, data: song, error: null });
+    ackSuccess(callback, song);
   } catch (error) {
     logger.error('Error skipping song via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 
@@ -764,7 +693,7 @@ const handleSendNow = async (socket, io, data, callback) => {
 
     const song = await songsService.sendNow(songId, eventId, actor);
 
-    io.to(`event:${eventId}`).emit('song_now_playing', {
+    toEventRoom(io, eventId).emit('song_now_playing', {
       songId: song._id,
       title: song.title,
       artist: song.artist,
@@ -777,10 +706,10 @@ const handleSendNow = async (socket, io, data, callback) => {
     await emitQueueUpdated(io, eventId);
 
     logger.info('Song sent now via Socket.IO', { songId, eventId });
-    callback({ success: true, data: song, error: null });
+    ackSuccess(callback, song);
   } catch (error) {
     logger.error('Error sending song now via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 
@@ -809,7 +738,7 @@ const handleCastVote = async (socket, io, data, callback) => {
     const vote = result.vote;
     const song = result.song;
 
-    io.to(`event:${eventId}`).emit('votes_updated', {
+    toEventRoom(io, eventId).emit('votes_updated', {
       songId,
       participantId,
       value,
@@ -819,7 +748,7 @@ const handleCastVote = async (socket, io, data, callback) => {
       timestamp: new Date().toISOString(),
     });
     if (result.autoRejected) {
-      io.to(`event:${eventId}`).emit('song_rejected', {
+      toEventRoom(io, eventId).emit('song_rejected', {
         songId,
         title: song.title,
         artist: song.artist,
@@ -831,10 +760,10 @@ const handleCastVote = async (socket, io, data, callback) => {
     await emitQueueUpdated(io, eventId);
 
     logger.info('Vote cast via Socket.IO', { songId, participantId, value });
-    callback({ success: true, data: vote, error: null });
+    ackSuccess(callback, vote);
   } catch (error) {
     logger.error('Error casting vote via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 
@@ -857,17 +786,17 @@ const handleRemoveVote = async (socket, io, data, callback) => {
 
     const vote = await votesService.removeVote(songId, participantId, socket.user);
 
-    io.to(`event:${eventId}`).emit('vote_removed', {
+    toEventRoom(io, eventId).emit('vote_removed', {
       songId,
       participantId,
       timestamp: new Date().toISOString(),
     });
 
     logger.info('Vote removed via Socket.IO', { songId, participantId });
-    callback({ success: true, data: vote, error: null });
+    ackSuccess(callback, vote);
   } catch (error) {
     logger.error('Error removing vote via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 
@@ -896,7 +825,7 @@ const handleSetCooldown = async (socket, io, data, callback) => {
       actor,
     );
 
-    io.to(`event:${eventId}`).emit('participant_cooldown', {
+    toEventRoom(io, eventId).emit('participant_cooldown', {
       participantId,
       reason: reason || 'Administrative action',
       cooldownUntil:
@@ -907,10 +836,10 @@ const handleSetCooldown = async (socket, io, data, callback) => {
     });
 
     logger.info('Cooldown set via Socket.IO', { participantId, eventId, durationMs });
-    callback({ success: true, data: result.participant, error: null });
+    ackSuccess(callback, result.participant);
   } catch (error) {
     logger.error('Error setting cooldown via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 
@@ -938,7 +867,7 @@ const handleKickParticipant = async (socket, io, data, callback) => {
       actor,
     );
 
-    io.to(`event:${eventId}`).emit('participant_kicked', {
+    toEventRoom(io, eventId).emit('participant_kicked', {
       participantId,
       reason: reason || 'No reason provided',
       kickedAt:
@@ -949,10 +878,10 @@ const handleKickParticipant = async (socket, io, data, callback) => {
     });
 
     logger.info('Participant kicked via Socket.IO', { participantId, eventId });
-    callback({ success: true, data: result.participant, error: null });
+    ackSuccess(callback, result.participant);
   } catch (error) {
     logger.error('Error kicking participant via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 
@@ -977,7 +906,7 @@ const handleBanParticipant = async (socket, io, data, callback) => {
       actor,
     );
 
-    io.to(`event:${eventId}`).emit('participant_banned', {
+    toEventRoom(io, eventId).emit('participant_banned', {
       participantId,
       reason: reason || 'No reason provided',
       bannedAt:
@@ -988,10 +917,10 @@ const handleBanParticipant = async (socket, io, data, callback) => {
     });
 
     logger.info('Participant banned via Socket.IO', { participantId, eventId });
-    callback({ success: true, data: result.participant, error: null });
+    ackSuccess(callback, result.participant);
   } catch (error) {
     logger.error('Error banning participant via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 
@@ -1027,7 +956,7 @@ const handleSetPremium = async (socket, io, data, callback) => {
     const broadcastEventId = participant.eventId?.toString() || '';
 
     if (broadcastEventId) {
-      io.to(`event:${broadcastEventId}`).emit('participant_premium_updated', {
+      toEventRoom(io, broadcastEventId).emit('participant_premium_updated', {
         participantId,
         isPremium,
         timestamp: new Date().toISOString(),
@@ -1035,10 +964,10 @@ const handleSetPremium = async (socket, io, data, callback) => {
     }
 
     logger.info('Premium status set via Socket.IO', { participantId, isPremium });
-    callback({ success: true, data: participant, error: null });
+    ackSuccess(callback, participant);
   } catch (error) {
     logger.error('Error setting premium via Socket.IO:', error);
-    callback({ success: false, data: null, error: error.message });
+    ackError(callback, error);
   }
 };
 

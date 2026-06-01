@@ -122,6 +122,18 @@ class EventsService {
     return events.map((e) => this._formatEvent(e));
   }
 
+  async getActiveEventForOwner(ownerId) {
+    const event = await EventModel.findOne({ ownerId, state: 'LIVE' })
+      .populate('ownerId', 'email displayName profilePicture')
+      .sort({ startsAt: -1 });
+
+    if (!event) {
+      throw new NotFoundError('Event not found');
+    }
+
+    return this._formatEvent(event);
+  }
+
   async updateEvent(eventId, ownerId, updates) {
     const event = await EventModel.findById(eventId);
     if (!event) {

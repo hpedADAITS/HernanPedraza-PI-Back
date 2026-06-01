@@ -1,253 +1,100 @@
 const { logger } = require('../utils');
 const events = require('./events');
 
+const noop = () => {};
+
+const emitSocketError = (socket, message) => {
+  socket.emit('error', { message });
+};
+
+const onSocketEvent = (socket, eventName, handler, errorMessage) => {
+  socket.on(eventName, async (data) => {
+    try {
+      await handler(data);
+    } catch (error) {
+      logger.error(`Error in ${eventName}:`, error);
+      if (errorMessage) emitSocketError(socket, errorMessage);
+    }
+  });
+};
+
+const onAckEvent = (socket, eventName, handler) => {
+  socket.on(eventName, async (data, callback) => {
+    try {
+      await handler(data, callback || noop);
+    } catch (error) {
+      logger.error(`Error in ${eventName}:`, error);
+      if (callback) callback({ success: false, error: error.message });
+    }
+  });
+};
+
+const legacyEvents = [
+  ['vote_cast', 'Error casting vote'],
+  ['vote_removed', 'Error removing vote'],
+  ['song_suggested', 'Error suggesting song'],
+  ['song_approved', 'Error approving song'],
+  ['song_rejected', 'Error rejecting song'],
+  ['song_skipped', 'Error skipping song'],
+  ['queue_updated', 'Error updating queue'],
+  ['participant_cooldown', 'Error setting cooldown'],
+  ['participant_kicked', 'Error kicking participant'],
+  ['participant_banned', 'Error banning participant'],
+  ['song_now_playing', 'Error setting song as playing'],
+];
+
+const ackEvents = [
+  ['suggest_song', events.handleSuggestSong],
+  ['approve_song', events.handleApproveSong],
+  ['reject_song', events.handleRejectSong],
+  ['skip_song', events.handleSkipSong],
+  ['send_now', events.handleSendNow],
+  ['cast_vote', events.handleCastVote],
+  ['remove_vote', events.handleRemoveVote],
+  ['set_cooldown', events.handleSetCooldown],
+  ['kick_participant', events.handleKickParticipant],
+  ['ban_participant', events.handleBanParticipant],
+  ['set_premium', events.handleSetPremium],
+];
+
 /**
  * Handle all socket events
  * @param {Socket} socket - Socket.IO socket instance
  * @param {Server} io - Socket.IO server instance
  */
 const handleSocketEvents = (socket, io) => {
-  console.log(`[Socket Handler] Setting up handlers for socket ${socket.id}`);
+  logger.debug('Setting up socket handlers', { socketId: socket.id });
+
   socket.on('join_event', async (data) => {
-    console.log(`[Socket Handler] Received join_event on socket ${socket.id}`);
+    logger.debug('Received join_event', { socketId: socket.id });
     try {
       await events.handleJoinEvent(socket, io, data);
     } catch (error) {
       logger.error('Error in join_event:', error);
-      socket.emit('error', { message: 'Error joining event' });
+      emitSocketError(socket, 'Error joining event');
     }
   });
 
-  socket.on('leave_event', (data) => {
-    try {
-      events.handleLeaveEvent(socket, io, data);
-    } catch (error) {
-      logger.error('Error in leave_event:', error);
-      socket.emit('error', { message: 'Error leaving event' });
-    }
+  onSocketEvent(
+    socket,
+    'leave_event',
+    (data) => events.handleLeaveEvent(socket, io, data),
+    'Error leaving event'
+  );
+
+  onSocketEvent(socket, 'disconnect', () => events.handleDisconnect(socket, io));
+
+  legacyEvents.forEach(([eventName, errorMessage]) => {
+    onSocketEvent(
+      socket,
+      eventName,
+      () => events.rejectLegacyCommand(socket, eventName),
+      errorMessage
+    );
   });
 
-  socket.on('disconnect', () => {
-    try {
-      events.handleDisconnect(socket, io);
-    } catch (error) {
-      logger.error('Error in disconnect:', error);
-    }
-  });
-
-  /* ============ VOTING ============ */
-  socket.on('vote_cast', async (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'vote_cast');
-    } catch (error) {
-      logger.error('Error in vote_cast:', error);
-      socket.emit('error', { message: 'Error casting vote' });
-    }
-  });
-
-  socket.on('vote_removed', (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'vote_removed');
-    } catch (error) {
-      logger.error('Error in vote_removed:', error);
-      socket.emit('error', { message: 'Error removing vote' });
-    }
-  });
-
-  /* ============ SONGS ============ */
-  socket.on('song_suggested', (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'song_suggested');
-    } catch (error) {
-      logger.error('Error in song_suggested:', error);
-      socket.emit('error', { message: 'Error suggesting song' });
-    }
-  });
-
-  socket.on('song_approved', async (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'song_approved');
-    } catch (error) {
-      logger.error('Error in song_approved:', error);
-      socket.emit('error', { message: 'Error approving song' });
-    }
-  });
-
-  socket.on('song_rejected', (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'song_rejected');
-    } catch (error) {
-      logger.error('Error in song_rejected:', error);
-      socket.emit('error', { message: 'Error rejecting song' });
-    }
-  });
-
-  socket.on('song_skipped', (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'song_skipped');
-    } catch (error) {
-      logger.error('Error in song_skipped:', error);
-      socket.emit('error', { message: 'Error skipping song' });
-    }
-  });
-
-  socket.on('queue_updated', (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'queue_updated');
-    } catch (error) {
-      logger.error('Error in queue_updated:', error);
-      socket.emit('error', { message: 'Error updating queue' });
-    }
-  });
-
-  /* ============ PARTICIPANTS ============ */
-  socket.on('participant_cooldown', (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'participant_cooldown');
-    } catch (error) {
-      logger.error('Error in participant_cooldown:', error);
-      socket.emit('error', { message: 'Error setting cooldown' });
-    }
-  });
-
-  socket.on('participant_kicked', (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'participant_kicked');
-    } catch (error) {
-      logger.error('Error in participant_kicked:', error);
-      socket.emit('error', { message: 'Error kicking participant' });
-    }
-  });
-
-  socket.on('participant_banned', (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'participant_banned');
-    } catch (error) {
-      logger.error('Error in participant_banned:', error);
-      socket.emit('error', { message: 'Error banning participant' });
-    }
-  });
-
-  /* ============ SONG NOW PLAYING ============ */
-  socket.on('song_now_playing', (data) => {
-    try {
-      events.rejectLegacyCommand(socket, 'song_now_playing');
-    } catch (error) {
-      logger.error('Error in song_now_playing:', error);
-      socket.emit('error', { message: 'Error setting song as playing' });
-    }
-  });
-
-  /* ============ SOCKET.IO PRIMARY STATE CHANGES (with acknowledgment) ============ */
-
-  /* Suggest Song - PRIMARY entry point */
-  socket.on('suggest_song', (data, callback) => {
-    try {
-      events.handleSuggestSong(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in suggest_song:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
-  });
-
-  /* Approve Song - PRIMARY entry point */
-  socket.on('approve_song', (data, callback) => {
-    try {
-      events.handleApproveSong(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in approve_song:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
-  });
-
-  /* Reject Song - PRIMARY entry point */
-  socket.on('reject_song', (data, callback) => {
-    try {
-      events.handleRejectSong(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in reject_song:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
-  });
-
-  /* Skip Song - PRIMARY entry point */
-  socket.on('skip_song', (data, callback) => {
-    try {
-      events.handleSkipSong(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in skip_song:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
-  });
-
-  /* Send Now - PRIMARY entry point */
-  socket.on('send_now', (data, callback) => {
-    try {
-      events.handleSendNow(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in send_now:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
-  });
-
-  /* Cast Vote - PRIMARY entry point */
-  socket.on('cast_vote', (data, callback) => {
-    try {
-      events.handleCastVote(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in cast_vote:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
-  });
-
-  /* Remove Vote - PRIMARY entry point */
-  socket.on('remove_vote', (data, callback) => {
-    try {
-      events.handleRemoveVote(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in remove_vote:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
-  });
-
-  /* Set Cooldown - PRIMARY entry point */
-  socket.on('set_cooldown', (data, callback) => {
-    try {
-      events.handleSetCooldown(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in set_cooldown:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
-  });
-
-  /* Kick Participant - PRIMARY entry point */
-  socket.on('kick_participant', (data, callback) => {
-    try {
-      events.handleKickParticipant(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in kick_participant:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
-  });
-
-  /* Ban Participant - PRIMARY entry point */
-  socket.on('ban_participant', (data, callback) => {
-    try {
-      events.handleBanParticipant(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in ban_participant:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
-  });
-
-  /* Set Premium - PRIMARY entry point */
-  socket.on('set_premium', (data, callback) => {
-    try {
-      events.handleSetPremium(socket, io, data, callback || (() => {}));
-    } catch (error) {
-      logger.error('Error in set_premium:', error);
-      if (callback) callback({ success: false, error: error.message });
-    }
+  ackEvents.forEach(([eventName, handler]) => {
+    onAckEvent(socket, eventName, (data, callback) => handler(socket, io, data, callback));
   });
 };
 

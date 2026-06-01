@@ -20,6 +20,7 @@ router.use(authenticate);
 /* Event CRUD */
 router.post('/', eventsController.createEvent.bind(eventsController));
 router.get('/', eventsController.listActiveEvents.bind(eventsController));
+router.get('/mine/active', eventsController.getMyActiveEvent.bind(eventsController));
 router.get('/:eventId', eventsController.getEvent.bind(eventsController));
 router.put('/:eventId', eventsController.updateEvent.bind(eventsController));
 
