@@ -4,6 +4,7 @@ const authRoutes = require('./auth.routes');
 const eventsRoutes = require('./events.routes');
 const songsRoutes = require('./songs.routes');
 const participantsRoutes = require('./participants.routes');
+const attendeeSessionRoutes = require('./attendee-session.routes');
 const votesRoutes = require('./votes.routes');
 const debugRoutes = require('./debug.routes');
 
@@ -30,6 +31,7 @@ router.use('/auth', authRoutes);
 router.use('/events', eventsRoutes);
 router.use('/songs', songsRoutes);
 router.use('/participants', participantsRoutes);
+router.use('/attendee-session', attendeeSessionRoutes);
 router.use('/votes', votesRoutes);
 router.use('/debug', debugRoutes);
 

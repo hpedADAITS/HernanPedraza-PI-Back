@@ -26,6 +26,7 @@ class ParticipantsService {
     userId,
     options = {},
   ) {
+    const { dbSession } = options;
     const nicknameTrimmed = nickname.trim();
     const nicknameLower = nicknameTrimmed.toLowerCase();
     await this.ensureNicknameIsNotAccessCode(nicknameTrimmed);
@@ -33,7 +34,9 @@ class ParticipantsService {
     const existing = await ParticipantModel.findOne({
       eventId,
       nicknameLower,
-    }).select('+passwordHash');
+    })
+      .select('+passwordHash')
+      .session(dbSession || null);
 
     if (existing) {
       if (existing.isBanned) {
@@ -56,7 +59,7 @@ class ParticipantsService {
         existing.profilePicture = profilePicture ?? existing.profilePicture;
         existing.joinedAt = new Date();
         existing.lastSeenAt = new Date();
-        await existing.save();
+        await existing.save({ session: dbSession });
 
         logger.info(`Protected participant resumed event: ${eventId} - ${nickname}`);
         return this._formatParticipant(existing);
@@ -78,7 +81,7 @@ class ParticipantsService {
       existing.profilePicture = profilePicture ?? existing.profilePicture;
       existing.joinedAt = new Date();
       existing.lastSeenAt = new Date();
-      await existing.save();
+      await existing.save({ session: dbSession });
 
       logger.info(`Participant rejoined event: ${eventId} - ${nickname}`);
       return this._formatParticipant(existing);
@@ -94,7 +97,7 @@ class ParticipantsService {
       lastSeenAt: new Date(),
     });
 
-    await participant.save();
+    await participant.save({ session: dbSession });
     logger.info(`Participant joined event: ${eventId} - ${nickname}`);
 
     return this._formatParticipant(participant);

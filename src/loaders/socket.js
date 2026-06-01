@@ -5,6 +5,7 @@ const { initializeSocket, socketAuthMiddleware } = require('../socket');
 const {
   eventsController,
   participantsController,
+  attendeeSessionController,
   songsController,
   votesController,
 } = require('../controllers');
@@ -45,6 +46,7 @@ const initSocketIO = (app) => {
     /* Inject Socket.IO into controllers that need it */
     eventsController.setIO(io);
     participantsController.setIO(io);
+    attendeeSessionController.setIO(io);
     songsController.setIO(io);
     votesController.setIO(io);
 

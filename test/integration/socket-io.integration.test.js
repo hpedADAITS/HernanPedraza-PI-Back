@@ -10,8 +10,11 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const {
   SongModel,
   EventModel,
+  EventMemberModel,
   ParticipantModel,
+  UserModel,
   VoteModel,
+  defaultPermissionsForRole,
   connectMongo,
 } = require('../../src/models/schema');
 const { songsService, votesService, participantsService } = require('../../src/services');
@@ -48,6 +51,9 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
   let testEvent;
   let testParticipant;
   let testSong;
+  let testDj;
+  let testUser;
+  let testActor;
 
   /**
     * Setup: Create test data before each test
@@ -55,19 +61,46 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
   beforeEach(async () => {
     // Clean up previous test data
     await SongModel.deleteMany({});
+    await EventMemberModel.deleteMany({});
     await EventModel.deleteMany({});
     await ParticipantModel.deleteMany({});
+    await UserModel.deleteMany({});
     await VoteModel.deleteMany({});
     cooldownCache.clearAll();
+
+    testDj = await UserModel.create({
+      email: 'socket-dj@example.com',
+      passwordHash: 'hash',
+      displayName: 'Socket DJ',
+      role: 'DJ',
+      emailRegistered: true,
+    });
+    testUser = await UserModel.create({
+      email: 'socket-user@example.com',
+      passwordHash: 'hash',
+      displayName: 'Socket User',
+      role: 'ATTENDEE',
+    });
+    testActor = {
+      userId: testUser._id.toString(),
+      role: 'ATTENDEE',
+    };
 
     // Create test event with all required fields
     testEvent = await EventModel.create({
       name: 'Test Event',
-      ownerId: new (require('mongoose')).Types.ObjectId(),
+      ownerId: testDj._id,
       eventId: 'TESTEV',
       accessCode: 'TESTEV123',
       startsAt: new Date(),
       state: 'LIVE',
+    });
+    await EventMemberModel.create({
+      eventId: testEvent._id,
+      userId: testDj._id,
+      role: 'DJ',
+      permissions: defaultPermissionsForRole('DJ'),
+      addedBy: testDj._id,
     });
 
     // Create test participant
@@ -76,6 +109,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       nickname: 'Test User',
       profilePicture: 'https://example.com/pic.jpg',
       isPremium: false,
+      userId: testUser._id,
     });
 
     // Create test song
@@ -94,8 +128,10 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
    */
   afterEach(async () => {
     await SongModel.deleteMany({});
+    await EventMemberModel.deleteMany({});
     await EventModel.deleteMany({});
     await ParticipantModel.deleteMany({});
+    await UserModel.deleteMany({});
     await VoteModel.deleteMany({});
     cooldownCache.clearAll();
   });
@@ -108,7 +144,9 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         testEvent._id,
         testParticipant._id,
         'New Song',
-        'New Artist'
+        'New Artist',
+        undefined,
+        testActor
       );
 
       expect(result).toBeDefined();
@@ -132,6 +170,10 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         5000,
         'Spam prevention'
       );
+      await ParticipantModel.findByIdAndUpdate(testParticipant._id, {
+        cooldownUntil: new Date(Date.now() + 5000),
+        cooldownReason: 'Spam prevention',
+      });
 
       // Try to suggest
       await expect(
@@ -139,7 +181,9 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
           testEvent._id,
           testParticipant._id,
           'Cooldown Song',
-          'Artist'
+          'Artist',
+          undefined,
+          testActor
         )
       ).rejects.toThrow('Participant is on cooldown');
     });
@@ -148,7 +192,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       const fakeId = new (require('mongoose')).Types.ObjectId();
 
       await expect(
-        songsService.suggestSong(testEvent._id, fakeId, 'Song', 'Artist')
+        songsService.suggestSong(testEvent._id, fakeId, 'Song', 'Artist', undefined, testActor)
       ).rejects.toThrow('Participant not found');
     });
   });
@@ -157,12 +201,10 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
 
   describe('Song Status Transitions', () => {
     test('should transition PENDING -> APPROVED', async () => {
-      const userId = new (require('mongoose')).Types.ObjectId();
-
       const updated = await songsService.approveSong(
         testSong._id,
         testEvent._id,
-        userId
+        testDj._id
       );
 
       expect(updated.status).toBe('APPROVED');
@@ -177,16 +219,15 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       await songsService.approveSong(
         testSong._id,
         testEvent._id,
-        new (require('mongoose')).Types.ObjectId()
+        testDj._id
       );
 
       // Then reject
-      const userId = new (require('mongoose')).Types.ObjectId();
       const updated = await songsService.rejectSong(
         testSong._id,
         testEvent._id,
         'Not suitable',
-        userId
+        testDj._id
       );
 
       expect(updated.status).toBe('REJECTED');
@@ -219,7 +260,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         songsService.approveSong(
           testSong._id,
           testEvent._id,
-          new (require('mongoose')).Types.ObjectId()
+          testDj._id
         )
       ).rejects.toThrow();
     });
@@ -240,7 +281,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
 
   describe('Voting System', () => {
     test('should cast upvote and update song vote score', async () => {
-      const vote = await votesService.castVote(testSong._id, testParticipant._id, 1);
+      const vote = await votesService.castVote(testSong._id, testParticipant._id, 1, testActor);
 
       expect(vote).toBeDefined();
       expect(vote.value).toBe(1);
@@ -252,7 +293,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
     });
 
     test('should cast downvote and update song vote score', async () => {
-      const vote = await votesService.castVote(testSong._id, testParticipant._id, -1);
+      const vote = await votesService.castVote(testSong._id, testParticipant._id, -1, testActor);
 
       expect(vote.value).toBe(-1);
 
@@ -263,13 +304,13 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
 
     test('should update vote when same participant votes again', async () => {
       // First vote (upvote)
-      await votesService.castVote(testSong._id, testParticipant._id, 1);
+      await votesService.castVote(testSong._id, testParticipant._id, 1, testActor);
 
       let dbSong = await SongModel.findById(testSong._id);
       expect(dbSong.voteScore).toBe(1);
 
       // Change vote to downvote
-      const vote = await votesService.castVote(testSong._id, testParticipant._id, -1);
+      const vote = await votesService.castVote(testSong._id, testParticipant._id, -1, testActor);
       expect(vote.value).toBe(-1);
 
       dbSong = await SongModel.findById(testSong._id);
@@ -279,13 +320,13 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
 
     test('should remove vote and update song score', async () => {
       // Cast vote
-      await votesService.castVote(testSong._id, testParticipant._id, 1);
+      await votesService.castVote(testSong._id, testParticipant._id, 1, testActor);
 
       let dbSong = await SongModel.findById(testSong._id);
       expect(dbSong.voteScore).toBe(1);
 
       // Remove vote
-      const removed = await votesService.removeVote(testSong._id, testParticipant._id);
+      const removed = await votesService.removeVote(testSong._id, testParticipant._id, testActor);
       expect(removed).toBeDefined();
 
       dbSong = await SongModel.findById(testSong._id);
@@ -294,17 +335,27 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
     });
 
     test('should handle multiple participants voting', async () => {
+      const user2 = await UserModel.create({
+        email: 'socket-user-2@example.com',
+        passwordHash: 'hash',
+        displayName: 'Socket User 2',
+        role: 'ATTENDEE',
+      });
       const participant2 = await ParticipantModel.create({
         eventId: testEvent._id,
         nickname: 'User 2',
         profilePicture: 'https://example.com/pic2.jpg',
+        userId: user2._id,
       });
 
       // Participant 1 upvotes
-      await votesService.castVote(testSong._id, testParticipant._id, 1);
+      await votesService.castVote(testSong._id, testParticipant._id, 1, testActor);
 
       // Participant 2 upvotes
-      await votesService.castVote(testSong._id, participant2._id, 1);
+      await votesService.castVote(testSong._id, participant2._id, 1, {
+        userId: user2._id.toString(),
+        role: 'ATTENDEE',
+      });
 
       const dbSong = await SongModel.findById(testSong._id);
       expect(dbSong.voteScore).toBe(2);
@@ -385,33 +436,27 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
 
   describe('Participant Management', () => {
     test('should set cooldown for participant', async () => {
-      const adminId = new (require('mongoose')).Types.ObjectId();
       const duration = 5000;
 
       const result = await participantsService.setParticipantCooldown(
         testParticipant._id,
         duration,
         'Spam prevention',
-        adminId
+        { userId: testDj._id.toString(), role: 'DJ' }
       );
 
       expect(result.participant).toBeDefined();
 
-      // Verify in cache
-      const isOnCooldown = cooldownCache.isOnCooldown(
-        testEvent._id.toString(),
-        testParticipant._id.toString()
-      );
-      expect(isOnCooldown).toBe(true);
+      const dbParticipant = await ParticipantModel.findById(testParticipant._id);
+      expect(dbParticipant.cooldownUntil.getTime()).toBeGreaterThan(Date.now());
+      expect(dbParticipant.cooldownReason).toBe('Spam prevention');
     });
 
     test('should kick participant', async () => {
-      const adminId = new (require('mongoose')).Types.ObjectId();
-
       const result = await participantsService.kickParticipant(
         testParticipant._id,
         'Inappropriate behavior',
-        adminId
+        { userId: testDj._id.toString(), role: 'DJ' }
       );
 
       expect(result.participant).toBeDefined();
@@ -423,7 +468,11 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
     });
 
     test('should set premium status', async () => {
-      const updated = await participantsService.setPremium(testParticipant._id, true);
+      const updated = await participantsService.setPremium(
+        testParticipant._id,
+        true,
+        { userId: testDj._id.toString(), role: 'DJ' },
+      );
 
       expect(updated.isPremium).toBe(true);
 
@@ -434,10 +483,18 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
 
     test('should unset premium status', async () => {
       // First set premium
-      await participantsService.setPremium(testParticipant._id, true);
+      await participantsService.setPremium(
+        testParticipant._id,
+        true,
+        { userId: testDj._id.toString(), role: 'DJ' },
+      );
 
       // Then unset
-      const updated = await participantsService.setPremium(testParticipant._id, false);
+      const updated = await participantsService.setPremium(
+        testParticipant._id,
+        false,
+        { userId: testDj._id.toString(), role: 'DJ' },
+      );
 
       expect(updated.isPremium).toBe(false);
     });
@@ -447,11 +504,17 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
 
   describe('Complete Real-World Flows', () => {
     test('should execute complete suggest-approve-vote-play flow', async () => {
-      const userId = new (require('mongoose')).Types.ObjectId();
+      const user2 = await UserModel.create({
+        email: 'socket-flow-user-2@example.com',
+        passwordHash: 'hash',
+        displayName: 'Socket Flow User 2',
+        role: 'ATTENDEE',
+      });
       const participant2 = await ParticipantModel.create({
         eventId: testEvent._id,
         nickname: 'User 2',
         profilePicture: 'https://example.com/pic2.jpg',
+        userId: user2._id,
       });
 
       // 1. User 1 suggests song
@@ -459,7 +522,9 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         testEvent._id,
         testParticipant._id,
         'Popular Song',
-        'Artist Name'
+        'Artist Name',
+        undefined,
+        testActor
       );
       expect(suggested.status).toBe('PENDING');
 
@@ -467,19 +532,22 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       const approved = await songsService.approveSong(
         suggested._id,
         testEvent._id,
-        userId
+        testDj._id
       );
       expect(approved.status).toBe('APPROVED');
 
       // 3. User 2 votes
-      await votesService.castVote(suggested._id, participant2._id, 1);
+      await votesService.castVote(suggested._id, participant2._id, 1, {
+        userId: user2._id.toString(),
+        role: 'ATTENDEE',
+      });
 
       let song = await SongModel.findById(suggested._id);
       expect(song.voteCount).toBe(1);
       expect(song.voteScore).toBe(1);
 
       // 4. DJ plays
-      const playing = await songsService.sendNow(suggested._id, testEvent._id, userId);
+      const playing = await songsService.sendNow(suggested._id, testEvent._id, testDj._id);
       expect(playing.status).toBe('PLAYING');
 
       // 5. Verify final state
@@ -515,12 +583,11 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
 
     test('should prevent state changes on cooldown', async () => {
       // Set cooldown
-      const adminId = new (require('mongoose')).Types.ObjectId();
       await participantsService.setParticipantCooldown(
         testParticipant._id,
         5000,
         'Spam',
-        adminId
+        { userId: testDj._id.toString(), role: 'DJ' }
       );
 
       // Try to suggest (should fail)
@@ -529,7 +596,9 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
           testEvent._id,
           testParticipant._id,
           'New Song',
-          'Artist'
+          'Artist',
+          undefined,
+          testActor
         )
       ).rejects.toThrow('on cooldown');
     });
