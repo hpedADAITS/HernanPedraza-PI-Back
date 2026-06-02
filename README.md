@@ -74,7 +74,7 @@ Copy `.env.example` or `env.template` and set local values.
 | `JWT_SECRET`, `JWT_EXPIRES_IN` | Auth signing and lifetime. Production requires a strong secret. |
 | `FRONTEND_URL`, `ALLOWED_ORIGINS`, `SOCKET_CORS_ORIGIN` | REST/socket CORS origins. |
 | `LOG_LEVEL`, `LOG_FILE` | Logger config. |
-| `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | Email delivery. |
+| `RESEND_FROM_EMAIL` | Optional email delivery sender. |
 | `DEBUG_MODE`, `SOCKET_AUTH_DISABLED` | Local/debug only; production rejects `DEBUG_MODE=true`. |
 
 ## Run

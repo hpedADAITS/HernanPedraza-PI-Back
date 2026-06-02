@@ -1,6 +1,7 @@
 const { Router } = require('express');
-const { eventsController } = require('../controllers');
+const { audioTracksController, eventsController } = require('../controllers');
 const { authenticate } = require('../middleware');
+const { parseMultipartAudio } = require('../middleware/multipart-audio.middleware');
 
 const router = Router();
 
@@ -41,6 +42,24 @@ router.post(
 router.get(
   '/:eventId/phone-microphone-link',
   eventsController.getPhoneMicrophoneLink.bind(eventsController),
+);
+router.post(
+  '/:eventId/audio-tracks',
+  parseMultipartAudio,
+  audioTracksController.createTrack.bind(audioTracksController),
+);
+router.get(
+  '/:eventId/audio-tracks',
+  audioTracksController.listTracks.bind(audioTracksController),
+);
+router.delete(
+  '/:eventId/audio-tracks/:trackId',
+  audioTracksController.deleteTrack.bind(audioTracksController),
+);
+router.post(
+  '/:eventId/audio-match',
+  parseMultipartAudio,
+  audioTracksController.matchAudio.bind(audioTracksController),
 );
 
 /* Participants */

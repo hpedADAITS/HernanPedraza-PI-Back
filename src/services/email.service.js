@@ -6,10 +6,7 @@ const { generateToken } = require('../utils/jwt.utils');
 class EmailService {
   constructor() {
     const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      logger.warn('RESEND_API_KEY is not configured in environment variables');
-    }
-    this.resend = new Resend(apiKey);
+    this.resend = apiKey ? new Resend(apiKey) : null;
     this.fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
   }
 
@@ -61,6 +58,14 @@ class EmailService {
     /* Debug mode: bypass email sending */
     if (process.env.DEBUG_EMAIL === 'true') {
       logger.info(`[DEBUG] Email verification token for ${email}: ${verificationToken}`);
+      return {
+        success: true,
+        token: verificationToken,
+      };
+    }
+
+    if (!this.resend) {
+      logger.info(`Email service disabled; generated verification token for ${email}`);
       return {
         success: true,
         token: verificationToken,

@@ -1,5 +1,6 @@
 const { authService } = require('../services');
 const { logger } = require('../utils');
+const { verifyToken } = require('../utils/jwt.utils');
 
 const socketAuthMiddleware = async (socket, next) => {
   try {
@@ -13,12 +14,23 @@ const socketAuthMiddleware = async (socket, next) => {
       return next(new Error('UNAUTHORIZED: missing token'));
     }
 
-    const { decoded, user } = await authService.validateDefaultToken(token);
+    let decoded;
+    let role;
+    try {
+      const result = await authService.validateDefaultToken(token);
+      decoded = result.decoded;
+      role = result.user.role;
+    } catch (error) {
+      decoded = verifyToken(token);
+      if (decoded.type !== 'phone-microphone') throw error;
+      role = 'DJ';
+    }
+
     socket.user = {
       ...decoded,
       userId: decoded.userId?.toString(),
       id: decoded.userId?.toString(),
-      role: user.role,
+      role,
     };
     socket.token = token;
     next();

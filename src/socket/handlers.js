@@ -55,6 +55,9 @@ const ackEvents = [
   ['kick_participant', events.handleKickParticipant],
   ['ban_participant', events.handleBanParticipant],
   ['set_premium', events.handleSetPremium],
+  ['audio_match_start', events.handleAudioMatchStart],
+  ['audio_match_chunk', events.handleAudioMatchChunk],
+  ['audio_match_stop', events.handleAudioMatchStop],
 ];
 
 /**

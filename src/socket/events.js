@@ -3,8 +3,9 @@ const { requireFields } = require('./middleware');
 const { isInEventRoom, joinEventRoom, leaveEventRoom, toEventRoom } = require('./rooms');
 const { ackSuccess, ackError } = require('./ack');
 const { validateTransition } = require('../utils/song-state-machine');
-const { songsService, votesService, participantsService } = require('../services');
+const { audioTracksService, songsService, votesService, participantsService } = require('../services');
 const { SongModel } = require('../models/schema');
+const { StreamingFingerprinter } = require('../services/audio-recognition/streaming');
 const {
   assertEventRoomAccess,
   isSocketAuthOptional,
@@ -35,6 +36,21 @@ const rejectLegacyCommand = (socket, eventName) => {
   socket.emit('error', {
     message: `${eventName} is a server broadcast event and cannot be used as a command`,
   });
+};
+
+const assertAudioEventAccess = async (socket, eventId) => {
+  if (!isValidId(eventId)) throw new Error('Invalid event ID');
+  if (socket.user?.type === 'phone-microphone' && socket.user.eventId !== eventId) {
+    throw new Error('Invalid phone microphone token');
+  }
+  await audioTracksService.listTracks(eventId, socket.user);
+};
+
+const float32 = (data) => {
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  const out = new Float32Array(buffer.length >>> 2);
+  for (let i = 0; i < out.length; i++) out[i] = buffer.readFloatLE(i << 2);
+  return out;
 };
 
 const emitQueueUpdated = async (io, eventId) => {
@@ -996,6 +1012,63 @@ const handleSetPremium = async (socket, io, data, callback) => {
   }
 };
 
+const handleAudioMatchStart = async (socket, io, data, callback) => {
+  try {
+    const { eventId, sampleRate } = data || {};
+    await assertAudioEventAccess(socket, eventId);
+    socket.audioMatch = {
+      eventId,
+      fingerprinter: new StreamingFingerprinter(Number(sampleRate)),
+      lastEmitAt: 0,
+    };
+    ackSuccess(callback, { eventId });
+  } catch (error) {
+    logger.error('Error starting audio matcher:', error);
+    ackError(callback, error);
+  }
+};
+
+const handleAudioMatchChunk = async (socket, io, data, callback) => {
+  try {
+    if (!socket.audioMatch) throw new Error('Audio matcher has not started');
+    const session = socket.audioMatch;
+    const hashes = session.fingerprinter.process(float32(data));
+    const now = Date.now();
+    if (hashes.length && now - session.lastEmitAt > 700) {
+      session.lastEmitAt = now;
+      const matches = await audioTracksService.matchHashes(session.eventId, hashes);
+      socket.emit('audio_match_update', {
+        eventId: session.eventId,
+        matches,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    ackSuccess(callback, { hashes: hashes.length });
+  } catch (error) {
+    logger.error('Error matching audio chunk:', error);
+    ackError(callback, error);
+  }
+};
+
+const handleAudioMatchStop = async (socket, io, data, callback) => {
+  try {
+    if (socket.audioMatch) {
+      const { eventId, fingerprinter } = socket.audioMatch;
+      const matches = await audioTracksService.matchHashes(eventId, fingerprinter.flush());
+      socket.emit('audio_match_update', {
+        eventId,
+        matches,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    socket.audioMatch = null;
+    ackSuccess(callback, { stopped: true });
+  } catch (error) {
+    logger.error('Error stopping audio matcher:', error);
+    ackError(callback, error);
+  }
+};
+
 module.exports = {
   handleJoinEvent,
   handleLeaveEvent,
@@ -1023,5 +1096,8 @@ module.exports = {
   handleKickParticipant,
   handleBanParticipant,
   handleSetPremium,
+  handleAudioMatchStart,
+  handleAudioMatchChunk,
+  handleAudioMatchStop,
   rejectLegacyCommand,
 };

@@ -7,6 +7,9 @@ const { ParticipantModel } = require('./participant.model');
 const { SongModel } = require('./song.model');
 const { VoteModel } = require('./vote.model');
 const { EventActionLogModel } = require('./event-action-log.model');
+const { AudioTrackModel } = require('./audio-track.model');
+const { AudioFingerprintPointModel } = require('./audio-fingerprint-point.model');
+const { AudioFingerprintHashModel } = require('./audio-fingerprint-hash.model');
 const {
   ALL_EVENT_PERMISSIONS,
   defaultPermissionsForRole,
@@ -39,6 +42,9 @@ module.exports = {
   SongModel,
   VoteModel,
   EventActionLogModel,
+  AudioTrackModel,
+  AudioFingerprintPointModel,
+  AudioFingerprintHashModel,
   connectMongo,
   hasEventPermission,
   defaultPermissionsForRole,

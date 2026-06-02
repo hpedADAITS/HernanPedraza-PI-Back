@@ -1,4 +1,21 @@
-require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const dotenv = require('dotenv');
+
+const explicitEnv = { ...process.env };
+const envPath = path.join(__dirname, '..', '.env');
+const localEnvPath = path.join(__dirname, '..', '.env.local');
+
+dotenv.config({ path: envPath });
+
+if (explicitEnv.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'production') {
+  if (fs.existsSync(localEnvPath)) {
+    const localEnv = dotenv.parse(fs.readFileSync(localEnvPath));
+    Object.entries(localEnv).forEach(([key, value]) => {
+      if (explicitEnv[key] === undefined) process.env[key] = value;
+    });
+  }
+}
 
 const env = process.env.NODE_ENV || 'development';
 const DEVELOPMENT_JWT_SECRET = 'syncrekuest-local-development-secret';
