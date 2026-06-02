@@ -50,6 +50,29 @@ class ParticipantsSchema {
     return data;
   }
 
+  parseUpdateProfile(body) {
+    const data = {
+      nickname:
+        typeof body.nickname === 'string' ? body.nickname.trim() : undefined,
+      profilePicture:
+        typeof body.profilePicture === 'string' || body.profilePicture === null
+          ? body.profilePicture
+          : undefined,
+    };
+
+    if (data.nickname === undefined && data.profilePicture === undefined) {
+      throw new ValidationError('No participant profile updates provided');
+    }
+    if (data.nickname !== undefined && data.nickname.length < 2) {
+      throw new ValidationError('Nickname must be at least 2 characters');
+    }
+    if (data.nickname !== undefined && data.nickname.length > 30) {
+      throw new ValidationError('Nickname must be less than 30 characters');
+    }
+
+    return data;
+  }
+
   parseKickParticipant(body) {
     // Transform
     const data = {

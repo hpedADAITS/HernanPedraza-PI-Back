@@ -22,4 +22,24 @@ describe('ParticipantsSchema', () => {
       ).toBe('ABC123');
     });
   });
+
+  describe('parseUpdateProfile', () => {
+    test('accepts nickname and profile picture updates', () => {
+      expect(
+        participantsSchema.parseUpdateProfile({
+          nickname: ' Ada ',
+          profilePicture: 'avatar-1',
+        })
+      ).toEqual({
+        nickname: 'Ada',
+        profilePicture: 'avatar-1',
+      });
+    });
+
+    test('rejects empty update payloads', () => {
+      expect(() => participantsSchema.parseUpdateProfile({})).toThrow(
+        'No participant profile updates provided',
+      );
+    });
+  });
 });

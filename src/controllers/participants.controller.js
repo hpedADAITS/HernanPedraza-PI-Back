@@ -110,6 +110,45 @@ class ParticipantsController {
     }
   }
 
+  async updateProfile(req, res, next) {
+    try {
+      const { participantId } = req.params;
+      const data = participantsSchema.parseUpdateProfile(req.body);
+
+      const participant = await participantsService.updateProfile(
+        participantId,
+        data,
+        req.user,
+      );
+      const payload = {
+        eventId: participant.eventId,
+        participantId: participant._id,
+        nickname: participant.nickname,
+        profilePicture: participant.profilePicture,
+      };
+
+      this.emitParticipantEvent(participant.eventId, 'participant_updated', payload);
+      if (data.nickname !== undefined) {
+        this.emitParticipantEvent(participant.eventId, 'participant_renamed', payload);
+      }
+      if (data.profilePicture !== undefined) {
+        this.emitParticipantEvent(
+          participant.eventId,
+          'participant_profile_changed',
+          payload,
+        );
+      }
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { participant },
+      });
+    } catch (error) {
+      logger.error('Update participant profile error:', error);
+      next(error);
+    }
+  }
+
   async getParticipant(req, res, next) {
     try {
       const { participantId } = req.params;

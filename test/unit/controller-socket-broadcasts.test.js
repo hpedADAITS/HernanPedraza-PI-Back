@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
 const eventsController = require('../../src/controllers/events.controller');
+const participantsController = require('../../src/controllers/participants.controller');
 const songsController = require('../../src/controllers/songs.controller');
 const votesController = require('../../src/controllers/votes.controller');
 const {
@@ -226,6 +227,48 @@ describe('REST controller Socket.IO broadcasts', () => {
           event: 'queue_updated',
           payload: expect.objectContaining({ eventId: event._id.toString() }),
         }),
+      ]),
+    );
+  });
+
+  test('update participant profile persists and emits profile update events', async () => {
+    const { owner, event, participant } = await createEventFlow();
+    const { io, emitted } = createIO();
+    const res = createResponse();
+    const next = jest.fn();
+    participantsController.setIO(io);
+
+    await participantsController.updateProfile(
+      {
+        params: { participantId: participant._id.toString() },
+        body: {
+          nickname: 'Avery',
+          profilePicture: 'avatar-2',
+        },
+        user: { userId: owner._id.toString(), role: 'ATTENDEE' },
+      },
+      res,
+      next,
+    );
+
+    const stored = await ParticipantModel.findById(participant._id).lean();
+
+    expect(next).not.toHaveBeenCalled();
+    expect(stored.nickname).toBe('Avery');
+    expect(stored.profilePicture).toBe('avatar-2');
+    expect(emitted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          room: `event:${event._id}`,
+          event: 'participant_updated',
+          payload: expect.objectContaining({
+            participantId: participant._id.toString(),
+            nickname: 'Avery',
+            profilePicture: 'avatar-2',
+          }),
+        }),
+        expect.objectContaining({ event: 'participant_renamed' }),
+        expect.objectContaining({ event: 'participant_profile_changed' }),
       ]),
     );
   });

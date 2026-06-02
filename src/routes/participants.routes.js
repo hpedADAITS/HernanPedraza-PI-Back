@@ -26,6 +26,10 @@ router.post(
   '/:participantId/password',
   participantsController.setPassword.bind(participantsController),
 );
+router.patch(
+  '/:participantId/profile',
+  participantsController.updateProfile.bind(participantsController),
+);
 
 /* Get participants */
 router.get(

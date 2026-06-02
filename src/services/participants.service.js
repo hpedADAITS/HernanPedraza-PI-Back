@@ -134,6 +134,37 @@ class ParticipantsService {
     return this._formatParticipant(participant);
   }
 
+  async updateProfile(participantId, updates, actorUser) {
+    const participant = await ParticipantModel.findById(participantId);
+    if (!participant) {
+      throw new NotFoundError('Participant not found');
+    }
+
+    this._assertParticipantSession(participant, actorUser);
+
+    if (updates.nickname !== undefined && updates.nickname !== participant.nickname) {
+      await this.ensureNicknameIsNotAccessCode(updates.nickname);
+      const existing = await ParticipantModel.exists({
+        eventId: participant.eventId,
+        nicknameLower: updates.nickname.toLowerCase(),
+        _id: { $ne: participant._id },
+      });
+      if (existing) {
+        throw new ValidationError('Nickname already taken in this event');
+      }
+      participant.nickname = updates.nickname;
+    }
+
+    if (updates.profilePicture !== undefined) {
+      participant.profilePicture = updates.profilePicture;
+    }
+
+    await participant.save();
+    logger.info(`Participant profile updated: ${participantId}`);
+
+    return this._formatParticipant(participant);
+  }
+
   async getParticipant(participantId) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
