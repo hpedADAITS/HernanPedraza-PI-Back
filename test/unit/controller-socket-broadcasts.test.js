@@ -1,32 +1,18 @@
-const mockEventsService = {
-  regenerateAccessCode: jest.fn(),
-};
-const mockSongsService = {
-  approveSong: jest.fn(),
-  getQueueForEvent: jest.fn(),
-  getSongStats: jest.fn(),
-};
-const mockParticipantsService = {
-  getParticipant: jest.fn(),
-};
-const mockVotesService = {
-  castVote: jest.fn(),
-};
-const mockAuthService = {
-  getCurrentUser: jest.fn(),
-};
-
-jest.mock('../../src/services', () => ({
-  authService: mockAuthService,
-  eventsService: mockEventsService,
-  participantsService: mockParticipantsService,
-  songsService: mockSongsService,
-  votesService: mockVotesService,
-}));
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 
 const eventsController = require('../../src/controllers/events.controller');
 const songsController = require('../../src/controllers/songs.controller');
 const votesController = require('../../src/controllers/votes.controller');
+const {
+  EventModel,
+  ParticipantModel,
+  SongModel,
+  UserModel,
+  VoteModel,
+} = require('../../src/models');
+
+let mongoServer;
 
 function createResponse() {
   return {
@@ -36,145 +22,211 @@ function createResponse() {
 }
 
 function createIO() {
-  const room = { emit: jest.fn() };
+  const emitted = [];
+
   return {
-    room,
+    emitted,
     io: {
-      to: jest.fn(() => room),
+      to: jest.fn((room) => ({
+        emit: jest.fn((event, payload) => {
+          emitted.push({ room, event, payload });
+        }),
+      })),
     },
   };
 }
 
-describe('REST controller Socket.IO broadcasts', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+async function createEventFlow() {
+  const owner = await UserModel.create({
+    email: `dj-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`,
+    passwordHash: 'hashed-password',
+    displayName: 'DJ Flow',
+    role: 'DJ',
+  });
+  const event = await EventModel.create({
+    name: 'Controller Flow',
+    ownerId: owner._id,
+    eventId: `EV${Math.random().toString(36).slice(2, 8)}`.toUpperCase(),
+    accessCode: `AC${Math.random().toString(36).slice(2, 8)}`.toUpperCase(),
+    startsAt: new Date(),
+    state: 'LIVE',
+  });
+  const participant = await ParticipantModel.create({
+    eventId: event._id,
+    nickname: 'Bailey',
+    userId: owner._id,
   });
 
-  test('regenerateAccessCode emits event and access code updates', async () => {
-    const { io, room } = createIO();
+  return { owner, event, participant };
+}
+
+async function createSong(event, participant, overrides = {}) {
+  return SongModel.create({
+    eventId: event._id,
+    requestedBy: participant._id,
+    title: 'Track',
+    artist: 'Artist',
+    status: 'PENDING',
+    sortKey: `${Date.now()}_${Math.random()}`,
+    ...overrides,
+  });
+}
+
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  await mongoose.connect(mongoServer.getUri());
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  await mongoServer.stop();
+});
+
+beforeEach(async () => {
+  await Promise.all([
+    EventModel.deleteMany({}),
+    ParticipantModel.deleteMany({}),
+    SongModel.deleteMany({}),
+    UserModel.deleteMany({}),
+    VoteModel.deleteMany({}),
+  ]);
+  jest.clearAllMocks();
+});
+
+describe('REST controller Socket.IO broadcasts', () => {
+  test('regenerateAccessCode persists through service and emits event/access code updates', async () => {
+    const { owner, event } = await createEventFlow();
+    const { io, emitted } = createIO();
     const res = createResponse();
     const next = jest.fn();
-    const event = {
-      id: 'event-1',
-      accessCode: 'FRESH1',
-    };
     eventsController.setIO(io);
-    mockEventsService.regenerateAccessCode.mockResolvedValue(event);
 
     await eventsController.regenerateAccessCode(
       {
-        params: { eventId: 'event-1' },
-        user: { userId: 'dj-1' },
+        params: { eventId: event._id.toString() },
+        user: { userId: owner._id.toString() },
       },
       res,
       next,
     );
 
+    const stored = await EventModel.findById(event._id).lean();
+
     expect(next).not.toHaveBeenCalled();
-    expect(io.to).toHaveBeenCalledWith('event:event-1');
-    expect(room.emit).toHaveBeenCalledWith(
-      'event_updated',
-      expect.objectContaining({ eventId: 'event-1', event }),
-    );
-    expect(room.emit).toHaveBeenCalledWith(
-      'access_code_updated',
-      expect.objectContaining({
-        eventId: 'event-1',
-        event,
-        accessCode: 'FRESH1',
-      }),
+    expect(stored.accessCode).not.toBe(event.accessCode);
+    expect(emitted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          room: `event:${event._id}`,
+          event: 'event_updated',
+          payload: expect.objectContaining({ eventId: event._id.toString() }),
+        }),
+        expect.objectContaining({
+          room: `event:${event._id}`,
+          event: 'access_code_updated',
+          payload: expect.objectContaining({
+            eventId: event._id.toString(),
+            accessCode: stored.accessCode,
+          }),
+        }),
+      ]),
     );
   });
 
-  test('approveSong emits song_approved and the canonical queue snapshot', async () => {
-    const { io, room } = createIO();
+  test('approveSong persists the approved song and emits the canonical queue snapshot', async () => {
+    const { owner, event, participant } = await createEventFlow();
+    const song = await createSong(event, participant, { voteScore: 3, voteCount: 3 });
+    const { io, emitted } = createIO();
     const res = createResponse();
     const next = jest.fn();
-    const song = {
-      _id: 'song-1',
-      title: 'Track',
-      artist: 'Artist',
-      status: 'APPROVED',
-      voteScore: 3,
-      voteCount: 3,
-    };
     songsController.setIO(io);
-    mockSongsService.approveSong.mockResolvedValue(song);
-    mockSongsService.getQueueForEvent.mockResolvedValue([song]);
 
     await songsController.approveSong(
       {
-        params: { eventId: 'event-1', songId: 'song-1' },
-        user: { userId: 'dj-1' },
+        params: { eventId: event._id.toString(), songId: song._id.toString() },
+        user: { userId: owner._id.toString() },
       },
       res,
       next,
     );
 
+    const stored = await SongModel.findById(song._id).lean();
+
     expect(next).not.toHaveBeenCalled();
-    expect(room.emit).toHaveBeenCalledWith(
-      'song_approved',
-      expect.objectContaining({
-        eventId: 'event-1',
-        songId: 'song-1',
-        title: 'Track',
-      }),
-    );
-    expect(room.emit).toHaveBeenCalledWith(
-      'queue_updated',
-      expect.objectContaining({
-        eventId: 'event-1',
-        queue: [song],
-      }),
+    expect(stored.status).toBe('APPROVED');
+    expect(emitted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'song_approved',
+          payload: expect.objectContaining({
+            eventId: event._id.toString(),
+            songId: song._id,
+            title: 'Track',
+            status: 'APPROVED',
+          }),
+        }),
+        expect.objectContaining({
+          event: 'queue_updated',
+          payload: expect.objectContaining({
+            eventId: event._id.toString(),
+            queue: expect.arrayContaining([
+              expect.objectContaining({ _id: song._id, status: 'APPROVED' }),
+            ]),
+          }),
+        }),
+      ]),
     );
   });
 
-  test('castVote emits vote and queue updates using the saved song stats', async () => {
-    const { io, room } = createIO();
+  test('castVote persists the vote and emits queue updates using saved song stats', async () => {
+    const { event, participant } = await createEventFlow();
+    const song = await createSong(event, participant);
+    const { io, emitted } = createIO();
     const res = createResponse();
     const next = jest.fn();
     votesController.setIO(io);
-    mockVotesService.castVote.mockResolvedValue({
-      id: 'vote-1',
-      songId: 'song-1',
-      participantId: 'participant-1',
-      value: 1,
-    });
-    mockSongsService.getSongStats.mockResolvedValue({
-      _id: 'song-1',
-      eventId: 'event-1',
-      voteScore: 4,
-      voteCount: 6,
-    });
-    mockSongsService.getQueueForEvent.mockResolvedValue([]);
 
     await votesController.castVote(
       {
         body: {
-          songId: '507f1f77bcf86cd799439011',
-          participantId: '507f1f77bcf86cd799439012',
+          songId: song._id.toString(),
+          participantId: participant._id.toString(),
           value: 1,
         },
+        user: { userId: participant.userId.toString(), role: 'ATTENDEE' },
       },
       res,
       next,
     );
 
+    const storedSong = await SongModel.findById(song._id).lean();
+    const storedVote = await VoteModel.findOne({
+      songId: song._id,
+      participantId: participant._id,
+    }).lean();
+
     expect(next).not.toHaveBeenCalled();
-    expect(room.emit).toHaveBeenCalledWith(
-      'votes_updated',
-      expect.objectContaining({
-        eventId: 'event-1',
-        songId: '507f1f77bcf86cd799439011',
-        participantId: '507f1f77bcf86cd799439012',
-        value: 1,
-        voteScore: 4,
-        voteCount: 6,
-      }),
-    );
-    expect(room.emit).toHaveBeenCalledWith(
-      'queue_updated',
-      expect.objectContaining({ eventId: 'event-1', queue: [] }),
+    expect(storedVote.value).toBe(1);
+    expect(storedSong.voteScore).toBe(1);
+    expect(storedSong.voteCount).toBe(1);
+    expect(emitted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'votes_updated',
+          payload: expect.objectContaining({
+            eventId: event._id.toString(),
+            songId: song._id.toString(),
+            participantId: participant._id.toString(),
+            value: 1,
+            voteScore: 1,
+            voteCount: 1,
+          }),
+        }),
+        expect.objectContaining({
+          event: 'queue_updated',
+          payload: expect.objectContaining({ eventId: event._id.toString() }),
+        }),
+      ]),
     );
   });
 });

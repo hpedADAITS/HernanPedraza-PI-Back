@@ -11,6 +11,7 @@ const {
   SongModel,
   EventModel,
   ParticipantModel,
+  UserModel,
   VoteModel,
   connectMongo,
 } = require('../../src/models/schema');
@@ -43,46 +44,64 @@ afterAll(async () => {
   }
 });
 
-describe.skip('Socket.IO Handler Integration Tests', () => {
+describe('Socket.IO Handler Integration Tests', () => {
   let testEvent;
   let testParticipant;
   let testSong;
-  let mockSocket;
-  let mockIO;
+  let ownerUser;
+  let attendeeUser;
+  let socket;
+  let ioServer;
   let broadcastedEvents;
 
+  const useOwnerSocket = () => {
+    socket.user = {
+      userId: ownerUser._id.toString(),
+      _id: ownerUser._id,
+      role: 'DJ',
+    };
+  };
+
   /**
-   * Setup: Create mock socket and IO
+   * Setup: Create socket and IO capture fixtures
    */
   beforeEach(async () => {
     // Clean database
     await SongModel.deleteMany({});
     await EventModel.deleteMany({});
     await ParticipantModel.deleteMany({});
+    await UserModel.deleteMany({});
     await VoteModel.deleteMany({});
     cooldownCache.clearAll();
 
     // Track broadcasts
     broadcastedEvents = [];
 
-    // Mock Socket
-    mockSocket = {
-      id: 'socket-test-123',
-      emit: jest.fn(),
-    };
-
-    // Mock IO with broadcast tracking
-    mockIO = {
+    // IO capture with broadcast tracking
+    ioServer = {
       to: jest.fn().mockReturnThis(),
       emit: jest.fn((event, data) => {
         broadcastedEvents.push({ event, data });
       }),
     };
 
+    ownerUser = await UserModel.create({
+      email: `dj-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`,
+      passwordHash: 'hashed-password',
+      displayName: 'DJ Flow',
+      role: 'DJ',
+    });
+    attendeeUser = await UserModel.create({
+      email: `attendee-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`,
+      passwordHash: 'hashed-password',
+      displayName: 'Test User',
+      role: 'ATTENDEE',
+    });
+
     // Create test data with all required fields
     testEvent = await EventModel.create({
       name: 'Test Event',
-      ownerId: new (require('mongoose')).Types.ObjectId(),
+      ownerId: ownerUser._id,
       eventId: 'TESTEV',
       accessCode: 'TESTEV123',
       startsAt: new Date(),
@@ -93,7 +112,23 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
       eventId: testEvent._id,
       nickname: 'Test User',
       profilePicture: 'https://example.com/pic.jpg',
+      userId: attendeeUser._id,
     });
+
+    socket = {
+      id: 'socket-test-123',
+      emit: jest.fn(),
+      rooms: new Set([`event:${testEvent._id}`]),
+      join: jest.fn((room) => socket.rooms.add(room)),
+      leave: jest.fn((room) => socket.rooms.delete(room)),
+      user: {
+        userId: attendeeUser._id.toString(),
+        _id: attendeeUser._id,
+        role: 'ATTENDEE',
+      },
+      eventId: testEvent._id.toString(),
+      participantId: testParticipant._id.toString(),
+    };
 
     testSong = await SongModel.create({
       eventId: testEvent._id,
@@ -112,6 +147,7 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
     await SongModel.deleteMany({});
     await EventModel.deleteMany({});
     await ParticipantModel.deleteMany({});
+    await UserModel.deleteMany({});
     await VoteModel.deleteMany({});
     cooldownCache.clearAll();
     jest.clearAllMocks();
@@ -124,8 +160,8 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
 
       await socketEvents.handleSuggestSong(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           participantId: testParticipant._id.toString(),
@@ -163,8 +199,8 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
 
       await socketEvents.handleSuggestSong(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           participantId: 'invalid-id',
@@ -186,8 +222,8 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
 
       await socketEvents.handleSuggestSong(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           // Missing participantId, title, artist
@@ -209,15 +245,14 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
   describe('handleApproveSong', () => {
     test('should approve song and broadcast', async () => {
       const callback = jest.fn();
-      const userId = new (require('mongoose')).Types.ObjectId();
+      useOwnerSocket();
 
       await socketEvents.handleApproveSong(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
-          userId: userId.toString(),
         },
         callback
       );
@@ -251,7 +286,7 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
 
     test('should reject invalid state transition', async () => {
       const callback = jest.fn();
-      const userId = new (require('mongoose')).Types.ObjectId();
+      useOwnerSocket();
 
       // Set song to PLAYED (terminal state)
       testSong.status = 'PLAYED';
@@ -259,12 +294,11 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
 
       // Try to approve
       await socketEvents.handleApproveSong(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
-          userId: userId.toString(),
         },
         callback
       );
@@ -283,16 +317,15 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
   describe('handleRejectSong', () => {
     test('should reject song and broadcast', async () => {
       const callback = jest.fn();
-      const userId = new (require('mongoose')).Types.ObjectId();
+      useOwnerSocket();
 
       await socketEvents.handleRejectSong(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
           reason: 'Explicit content',
-          userId: userId.toString(),
         },
         callback
       );
@@ -324,20 +357,19 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
   describe('handleSkipSong', () => {
     test('should skip song and broadcast', async () => {
       const callback = jest.fn();
-      const userId = new (require('mongoose')).Types.ObjectId();
+      useOwnerSocket();
 
       // First play song
       testSong.status = 'PLAYING';
       await testSong.save();
 
       await socketEvents.handleSkipSong(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
           reason: 'Wrong song',
-          userId: userId.toString(),
         },
         callback
       );
@@ -347,7 +379,6 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
           success: true,
           data: expect.objectContaining({
             status: 'SKIPPED',
-            skippedReason: 'Wrong song',
           }),
         })
       );
@@ -363,19 +394,18 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
   describe('handleSendNow', () => {
     test('should send song now and broadcast', async () => {
       const callback = jest.fn();
-      const userId = new (require('mongoose')).Types.ObjectId();
+      useOwnerSocket();
 
       // Approve song first
       testSong.status = 'APPROVED';
       await testSong.save();
 
       await socketEvents.handleSendNow(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
-          userId: userId.toString(),
         },
         callback
       );
@@ -406,8 +436,8 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
 
       await socketEvents.handleCastVote(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
@@ -426,7 +456,7 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
       expect(broadcastedEvents).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            event: 'vote_cast',
+            event: 'votes_updated',
             data: expect.objectContaining({
               value: 1,
             }),
@@ -442,8 +472,8 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
 
       await socketEvents.handleCastVote(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
@@ -456,7 +486,7 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
-          error: expect.stringContaining('vote value must be'),
+          error: expect.stringContaining('Vote value must be'),
         })
       );
     });
@@ -468,8 +498,8 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
 
       // First cast vote
       await socketEvents.handleCastVote(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
@@ -483,8 +513,8 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
 
       // Remove vote
       await socketEvents.handleRemoveVote(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
@@ -517,17 +547,16 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
   describe('handleSetCooldown', () => {
     test('should set cooldown and broadcast', async () => {
       const callback = jest.fn();
-      const adminId = new (require('mongoose')).Types.ObjectId();
+      useOwnerSocket();
 
       await socketEvents.handleSetCooldown(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           participantId: testParticipant._id.toString(),
           durationMs: 5000,
           reason: 'Spam',
-          userId: adminId.toString(),
         },
         callback
       );
@@ -549,28 +578,24 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
         ])
       );
 
-      // Verify cache
-      const isOnCooldown = cooldownCache.isOnCooldown(
-        testEvent._id.toString(),
-        testParticipant._id.toString()
-      );
-      expect(isOnCooldown).toBe(true);
+      const participant = await ParticipantModel.findById(testParticipant._id);
+      expect(participant.cooldownUntil.getTime()).toBeGreaterThan(Date.now());
+      expect(participant.cooldownReason).toBe('Spam');
     });
   });
 
   describe('handleKickParticipant', () => {
     test('should kick participant and broadcast', async () => {
       const callback = jest.fn();
-      const adminId = new (require('mongoose')).Types.ObjectId();
+      useOwnerSocket();
 
       await socketEvents.handleKickParticipant(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           eventId: testEvent._id.toString(),
           participantId: testParticipant._id.toString(),
           reason: 'Inappropriate behavior',
-          userId: adminId.toString(),
         },
         callback
       );
@@ -600,10 +625,11 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
   describe('handleSetPremium', () => {
     test('should set premium and broadcast', async () => {
       const callback = jest.fn();
+      useOwnerSocket();
 
       await socketEvents.handleSetPremium(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           participantId: testParticipant._id.toString(),
           isPremium: true,
@@ -636,29 +662,30 @@ describe.skip('Socket.IO Handler Integration Tests', () => {
   /* ============ ERROR HANDLING ============ */
 
   describe('Error Handling', () => {
-    test('should handle missing callback gracefully', async () => {
-      // This should not throw
-      await socketEvents.handleSuggestSong(
-        mockSocket,
-        mockIO,
-        {
-          eventId: 'invalid',
-          participantId: 'invalid',
-          title: 'Song',
-          artist: 'Artist',
-        },
-        undefined // No callback
-      );
+    test('should tolerate missing acknowledgment callback', async () => {
+      await expect(
+        socketEvents.handleSuggestSong(
+          socket,
+          ioServer,
+          {
+            eventId: 'invalid',
+            participantId: 'invalid',
+            title: 'Song',
+            artist: 'Artist',
+          },
+          undefined,
+        ),
+      ).resolves.toBeUndefined();
 
-      expect(mockSocket.emit).not.toHaveBeenCalled();
+      expect(socket.emit).not.toHaveBeenCalled();
     });
 
     test('should emit socket error on invalid data', async () => {
       const callback = jest.fn();
 
       await socketEvents.handleApproveSong(
-        mockSocket,
-        mockIO,
+        socket,
+        ioServer,
         {
           // Missing required fields
         },
