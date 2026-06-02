@@ -5,8 +5,7 @@ const isValidId = (v) => typeof v === 'string' && /^[a-f\d]{24}$/i.test(v);
 const isAuthBypassed = () =>
   process.env.SOCKET_AUTH_DISABLED === 'true' && process.env.NODE_ENV !== 'production';
 
-const isSocketAuthOptional = (socket) =>
-  isAuthBypassed() || (process.env.NODE_ENV === 'test' && !socket.user);
+const isSocketAuthOptional = () => isAuthBypassed();
 
 const socketUserId = (socket) =>
   socket.user?.userId?.toString() || socket.user?._id?.toString() || socket.user?.id?.toString();
@@ -57,10 +56,15 @@ const isEventMemberOrOwner = async (eventId, socket) => {
 };
 
 const assertEventRoomAccess = async (socket, eventId, participantId) => {
-  if (isSocketAuthOptional(socket)) return null;
-
   if (!isValidId(eventId)) {
     throw new Error('Invalid event ID');
+  }
+
+  if (isSocketAuthOptional(socket) && !socket.user) {
+    if (!participantId) {
+      throw new Error('Participant access is required');
+    }
+    return null;
   }
 
   const userId = requireSocketUser(socket);

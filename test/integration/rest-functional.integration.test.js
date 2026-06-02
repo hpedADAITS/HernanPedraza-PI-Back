@@ -254,10 +254,16 @@ describe('REST functional coverage', () => {
   test('protects participant nicknames, resumes password-protected sessions and bans rejoin', async () => {
     const dj = await createVerifiedDj();
     const attendee = await registerUser({ displayName: 'Protected Guest' });
+    const otherAttendee = await registerUser({ displayName: 'Other Guest' });
     const attendeeToken = attendee.body.data.token;
     const event = await createEvent(dj.token);
 
     const participant = await joinEvent(event.id, attendeeToken, 'Casey');
+
+    await request(app)
+      .post(`/api/v1/participants/${participant._id}/leave`)
+      .set(authHeader(otherAttendee.body.data.token))
+      .expect(403);
 
     await request(app)
       .get(`/api/v1/participants/${participant._id}`)
@@ -311,6 +317,41 @@ describe('REST functional coverage', () => {
       .set(authHeader(attendeeToken))
       .send({ nickname: 'Casey', password: 'SeatPass123!' })
       .expect(403);
+  });
+
+  test('participant endpoints exclude event owner rows from lists and counts', async () => {
+    const dj = await createVerifiedDj();
+    const attendee = await registerUser({ displayName: 'Visible Guest' });
+    const event = await createEvent(dj.token);
+    const participant = await joinEvent(event.id, attendee.body.data.token, 'Visible');
+
+    await ParticipantModel.create({
+      eventId: event.id,
+      nickname: 'Owner Row',
+      userId: dj.user.id,
+    });
+
+    await request(app)
+      .get(`/api/v1/events/${event.id}/participants`)
+      .set(authHeader(dj.token))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.count).toBe(1);
+        expect(res.body.data.participants.map((p) => p._id.toString())).toEqual([
+          participant._id,
+        ]);
+      });
+
+    await request(app)
+      .get(`/api/v1/participants/${event.id}/list`)
+      .set(authHeader(dj.token))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.count).toBe(1);
+        expect(res.body.data.participants.map((p) => p._id)).toEqual([
+          participant._id,
+        ]);
+      });
   });
 
   test('orders queue by playing state and votes, exposes positions, skip and empty vote state', async () => {

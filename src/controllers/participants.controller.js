@@ -77,7 +77,7 @@ class ParticipantsController {
     try {
       const { participantId } = req.params;
 
-      const participant = await participantsService.leaveEvent(participantId);
+      const participant = await participantsService.leaveEvent(participantId, req.user);
 
       res.status(httpStatus.OK).json({
         success: true,

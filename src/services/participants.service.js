@@ -119,11 +119,13 @@ class ParticipantsService {
     return this._formatParticipant(participant);
   }
 
-  async leaveEvent(participantId) {
+  async leaveEvent(participantId, actorUser) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
       throw new NotFoundError('Participant not found');
     }
+
+    this._assertParticipantSession(participant, actorUser);
 
     participant.leftAt = new Date();
     await participant.save();
@@ -141,26 +143,17 @@ class ParticipantsService {
   }
 
   async getEventParticipants(eventId) {
-    const event = await EventModel.findById(eventId).select('ownerId');
-    const query = {
-      eventId,
-      leftAt: null,
-    };
-
-    if (event?.ownerId) {
-      query.userId = { $ne: event.ownerId };
-    }
-
-    const participants = await ParticipantModel.find(query).sort({ joinedAt: 1 });
+    const participants = await ParticipantModel.find(
+      await this._activeParticipantQuery(eventId),
+    ).sort({ joinedAt: 1 });
 
     return participants.map((p) => this._formatParticipant(p));
   }
 
   async countActiveParticipants(eventId) {
-    return await ParticipantModel.countDocuments({
-      eventId,
-      leftAt: null,
-    });
+    return await ParticipantModel.countDocuments(
+      await this._activeParticipantQuery(eventId),
+    );
   }
 
   async updateLastSeen(participantId) {
@@ -426,6 +419,13 @@ class ParticipantsService {
     }
 
     return { userId: null, role: null };
+  }
+
+  async _activeParticipantQuery(eventId) {
+    const event = await EventModel.findById(eventId).select('ownerId').lean();
+    const query = { eventId, leftAt: null };
+    if (event?.ownerId) query.userId = { $ne: event.ownerId };
+    return query;
   }
 
   _assertParticipantOwner(participant, actorUser) {

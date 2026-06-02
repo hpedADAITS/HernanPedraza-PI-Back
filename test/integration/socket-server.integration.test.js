@@ -1,5 +1,6 @@
 process.env.SOCKET_AUTH_DISABLED = 'true';
 
+const { Types } = require('mongoose');
 const app = require('../../src/app');
 const { initSocketIO } = require('../../src/loaders/socket');
 const { io: Client } = require('../../../Front/node_modules/socket.io-client');
@@ -68,25 +69,28 @@ describe('Socket.IO server integration', () => {
   test('broadcasts join_event to another client in the event room', async () => {
     const broadcaster = await connectClient();
     const listener = await connectClient();
+    const eventId = new Types.ObjectId().toString();
+    const listenerParticipantId = new Types.ObjectId().toString();
+    const broadcasterParticipantId = new Types.ObjectId().toString();
 
     const listenerJoined = waitForEvent(listener, 'participant_joined');
     listener.emit('join_event', {
-      eventId: 'event-real-1',
-      participantId: 'participant-listener',
+      eventId,
+      participantId: listenerParticipantId,
       nickname: 'Listener',
     });
     await listenerJoined;
 
     const broadcastReceived = waitForEvent(listener, 'participant_joined');
     broadcaster.emit('join_event', {
-      eventId: 'event-real-1',
-      participantId: 'participant-broadcaster',
+      eventId,
+      participantId: broadcasterParticipantId,
       nickname: 'Broadcaster',
     });
 
     await expect(broadcastReceived).resolves.toEqual(
       expect.objectContaining({
-        participantId: 'participant-broadcaster',
+        participantId: broadcasterParticipantId,
         nickname: 'Broadcaster',
         joinedAt: expect.any(String),
       }),
@@ -98,11 +102,11 @@ describe('Socket.IO server integration', () => {
 
     const errorReceived = waitForEvent(client, 'error');
     client.emit('join_event', {
-      eventId: 'event-real-1',
+      eventId: 'invalid-event-id',
     });
 
     await expect(errorReceived).resolves.toEqual({
-      message: 'Invalid event or participant ID',
+      message: 'Error joining event',
     });
   });
 });

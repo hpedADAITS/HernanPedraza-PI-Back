@@ -213,18 +213,16 @@ class EventsService {
   }
 
   async getEventParticipants(eventId) {
-    const event = await EventModel.findById(eventId).select('ownerId').lean();
-    const query = { eventId, leftAt: null };
-    if (event?.ownerId) {
-      query.userId = { $ne: event.ownerId };
-    }
-
-    const participants = await ParticipantModel.find(query);
+    const participants = await ParticipantModel.find(
+      await this._activeParticipantQuery(eventId),
+    );
     return participants;
   }
 
   async getEventParticipantCount(eventId) {
-    return await ParticipantModel.countDocuments({ eventId, leftAt: null });
+    return await ParticipantModel.countDocuments(
+      await this._activeParticipantQuery(eventId),
+    );
   }
 
   async regenerateAccessCode(eventId, userId) {
@@ -343,6 +341,13 @@ class EventsService {
       createdAt: event.createdAt,
       updatedAt: event.updatedAt,
     };
+  }
+
+  async _activeParticipantQuery(eventId) {
+    const event = await EventModel.findById(eventId).select('ownerId').lean();
+    const query = { eventId, leftAt: null };
+    if (event?.ownerId) query.userId = { $ne: event.ownerId };
+    return query;
   }
 }
 

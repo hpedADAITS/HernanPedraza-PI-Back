@@ -1,7 +1,24 @@
 const events = require('../../src/socket/events');
+const { Types } = require('mongoose');
 
 describe('Socket event broadcasts', () => {
+  const originalSocketAuthDisabled = process.env.SOCKET_AUTH_DISABLED;
+
+  beforeEach(() => {
+    process.env.SOCKET_AUTH_DISABLED = 'true';
+  });
+
+  afterEach(() => {
+    if (originalSocketAuthDisabled === undefined) {
+      delete process.env.SOCKET_AUTH_DISABLED;
+    } else {
+      process.env.SOCKET_AUTH_DISABLED = originalSocketAuthDisabled;
+    }
+  });
+
   test('join_event includes the participant profile picture', async () => {
+    const eventId = new Types.ObjectId().toString();
+    const participantId = new Types.ObjectId().toString();
     const socket = {
       id: 'socket-1',
       join: jest.fn(),
@@ -14,18 +31,18 @@ describe('Socket event broadcasts', () => {
     };
 
     await events.handleJoinEvent(socket, io, {
-      eventId: 'event-1',
-      participantId: 'participant-1',
+      eventId,
+      participantId,
       nickname: 'Ada',
       profilePicture: 'avatar-1',
     });
 
-    expect(socket.join).toHaveBeenCalledWith('event:event-1');
-    expect(io.to).toHaveBeenCalledWith('event:event-1');
+    expect(socket.join).toHaveBeenCalledWith(`event:${eventId}`);
+    expect(io.to).toHaveBeenCalledWith(`event:${eventId}`);
     expect(emit).toHaveBeenCalledWith(
       'participant_joined',
       expect.objectContaining({
-        participantId: 'participant-1',
+        participantId,
         nickname: 'Ada',
         profilePicture: 'avatar-1',
       }),
