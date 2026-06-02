@@ -32,6 +32,7 @@ class AudioTracksService {
 
     const title = cleanRequired(fields.title, 'title');
     const artist = cleanRequired(fields.artist, 'artist');
+    const coverUrl = cleanOptional(fields.coverUrl);
     const tmpFile = await writeTempFile(file);
 
     try {
@@ -43,6 +44,7 @@ class AudioTracksService {
         eventId: eventObjectId,
         title,
         artist,
+        coverUrl,
         uploadedBy: userId,
         duration: samples.length / sampleRate,
         sampleRate,
@@ -171,6 +173,7 @@ class AudioTracksService {
       eventId: track.eventId,
       title: track.title,
       artist: track.artist,
+      coverUrl: track.coverUrl || null,
       duration: track.duration,
       sampleRate: track.sampleRate,
       pointsCount: track.pointsCount,
@@ -186,6 +189,10 @@ function cleanRequired(value, field) {
     throw new ValidationError(`${field} is required`);
   }
   return value.trim();
+}
+
+function cleanOptional(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 async function writeTempFile(file) {

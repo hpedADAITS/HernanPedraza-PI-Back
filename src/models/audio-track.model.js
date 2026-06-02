@@ -12,6 +12,7 @@ const AudioTrackSchema = new Schema(
     },
     title: { type: String, required: true, trim: true },
     artist: { type: String, required: true, trim: true },
+    coverUrl: { type: String, trim: true, default: null },
     uploadedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',

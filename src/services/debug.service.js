@@ -1,5 +1,8 @@
 const bcrypt = require('bcryptjs');
 const {
+  AudioFingerprintHashModel,
+  AudioFingerprintPointModel,
+  AudioTrackModel,
   EventMemberModel,
   EventModel,
   ParticipantModel,
@@ -60,6 +63,35 @@ function buildAttendeeNickname(suffix) {
 }
 
 class DebugService {
+  async getAudioFingerprintStats() {
+    assertDebugModeAllowed();
+
+    const [
+      tracks,
+      fingerprintedSongs,
+      indexedSongs,
+      fingerprintPoints,
+      fingerprintHashes,
+    ] = await Promise.all([
+      AudioTrackModel.countDocuments(),
+      AudioTrackModel.countDocuments({
+        $or: [{ pointsCount: { $gt: 0 } }, { hashesCount: { $gt: 0 } }],
+      }),
+      AudioTrackModel.countDocuments({ hashesCount: { $gt: 0 } }),
+      AudioFingerprintPointModel.countDocuments(),
+      AudioFingerprintHashModel.countDocuments(),
+    ]);
+
+    return {
+      tracks,
+      fingerprintedSongs,
+      indexedSongs,
+      fingerprintPoints,
+      fingerprintHashes,
+      countedAt: new Date().toISOString(),
+    };
+  }
+
   async createMockAccounts() {
     assertDebugModeAllowed();
 

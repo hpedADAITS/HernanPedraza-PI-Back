@@ -179,6 +179,53 @@ describe('REST controller Socket.IO broadcasts', () => {
     );
   });
 
+  test('approveSong queues recognized title when a suggestion matched a fingerprint', async () => {
+    const { owner, event, participant } = await createEventFlow();
+    const song = await createSong(event, participant, {
+      title: 'Midnight Cty',
+      artist: 'M83',
+      recognitionMatch: {
+        title: 'Midnight City',
+        artist: 'M83',
+        score: 0.93,
+        matchedOn: 'title_artist',
+      },
+    });
+    const { io, emitted } = createIO();
+    const res = createResponse();
+    const next = jest.fn();
+    songsController.setIO(io);
+
+    await songsController.approveSong(
+      {
+        params: { eventId: event._id.toString(), songId: song._id.toString() },
+        user: { userId: owner._id.toString() },
+      },
+      res,
+      next,
+    );
+
+    const stored = await SongModel.findById(song._id).lean();
+
+    expect(next).not.toHaveBeenCalled();
+    expect(stored).toMatchObject({
+      title: 'Midnight City',
+      artist: 'M83',
+      status: 'APPROVED',
+    });
+    expect(emitted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'song_approved',
+          payload: expect.objectContaining({
+            title: 'Midnight City',
+            recognitionMatch: expect.objectContaining({ score: 0.93 }),
+          }),
+        }),
+      ]),
+    );
+  });
+
   test('castVote persists the vote and emits queue updates using saved song stats', async () => {
     const { event, participant } = await createEventFlow();
     const song = await createSong(event, participant);

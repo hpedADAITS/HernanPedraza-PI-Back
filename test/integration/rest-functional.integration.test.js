@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = require('../../src/app');
 const {
+  AudioTrackModel,
   EventMemberModel,
   EventModel,
   ParticipantModel,
@@ -102,6 +103,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await Promise.all([
     EventMemberModel.deleteMany({}),
+    AudioTrackModel.deleteMany({}),
     EventModel.deleteMany({}),
     ParticipantModel.deleteMany({}),
     SongModel.deleteMany({}),
@@ -317,6 +319,51 @@ describe('REST functional coverage', () => {
       .set(authHeader(attendeeToken))
       .send({ nickname: 'Casey', password: 'SeatPass123!' })
       .expect(403);
+  });
+
+  test('suggested songs include close fingerprint metadata matches', async () => {
+    const dj = await createVerifiedDj();
+    const attendee = await registerUser({ displayName: 'Request Guest' });
+    const event = await createEvent(dj.token);
+    const participant = await joinEvent(event.id, attendee.body.data.token, 'Riley');
+
+    const track = await AudioTrackModel.create({
+      eventId: event.id,
+      title: 'Midnight City',
+      artist: 'M83',
+      coverUrl: 'https://example.com/midnight.jpg',
+      uploadedBy: dj.user.id,
+      duration: 244,
+      sampleRate: 44100,
+      pointsCount: 1,
+      hashesCount: 1,
+    });
+
+    const song = await suggestSong(event.id, attendee.body.data.token, participant._id, {
+      title: 'Midnight Cty',
+      artist: 'M83',
+    });
+
+    expect(song.recognitionMatch).toMatchObject({
+      trackId: track._id.toString(),
+      title: 'Midnight City',
+      artist: 'M83',
+      coverUrl: 'https://example.com/midnight.jpg',
+      matchedOn: 'title_artist',
+    });
+    expect(song.recognitionMatch.score).toBeGreaterThan(0.8);
+
+    await request(app)
+      .post(`/api/v1/songs/${event.id}/${song.id}/approve`)
+      .set(authHeader(dj.token))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.song).toMatchObject({
+          title: 'Midnight City',
+          artist: 'M83',
+          status: 'APPROVED',
+        });
+      });
   });
 
   test('participant endpoints exclude event owner rows from lists and counts', async () => {

@@ -2,6 +2,7 @@ const {
   SongModel,
   EventModel,
   EventMemberModel,
+  AudioTrackModel,
 } = require('../models/schema');
 const { logger } = require('../utils');
 const { ForbiddenError, NotFoundError } = require('../errors');
@@ -21,6 +22,7 @@ class SongsService {
       eventId,
       title,
       artist,
+      recognitionMatch: await this._findRecognitionMatch(eventId, title, artist),
       requestedBy: participantId,
       status: 'PENDING',
       sortKey: `${Date.now()}_${Math.random()}`,
@@ -78,6 +80,10 @@ class SongsService {
     /* Validate state transition using state machine */
     validateTransition(song.status, 'APPROVED', 'DJ');
 
+    if (song.recognitionMatch?.title) {
+      song.title = song.recognitionMatch.title;
+      song.artist = song.recognitionMatch.artist || song.artist;
+    }
     song.status = 'APPROVED';
     await song.save();
 
@@ -333,6 +339,7 @@ class SongsService {
       eventId: song.eventId,
       title: song.title,
       artist: song.artist,
+      recognitionMatch: song.recognitionMatch || null,
       requestedBy: song.requestedBy,
       status: song.status,
       voteScore: song.voteScore,
@@ -346,6 +353,43 @@ class SongsService {
       skippedAt: song.skippedAt,
       createdAt: song.createdAt,
     };
+  }
+
+  async _findRecognitionMatch(eventId, title, artist) {
+    const targetTitle = normalizeText(title);
+    const targetArtist = normalizeText(artist);
+    if (!targetTitle && !targetArtist) return null;
+
+    const tracks = await AudioTrackModel.find({ eventId })
+      .select('title artist coverUrl')
+      .lean();
+
+    let best = null;
+    for (const track of tracks) {
+      const titleScore = similarity(targetTitle, normalizeText(track.title));
+      const artistScore = similarity(targetArtist, normalizeText(track.artist));
+      const score = (titleScore * 0.65) + (artistScore * 0.35);
+      const matchedOn =
+        titleScore >= 0.82 && artistScore >= 0.72
+          ? 'title_artist'
+          : titleScore >= 0.86
+            ? 'title'
+            : artistScore >= 0.9
+              ? 'artist'
+              : null;
+
+      if (!matchedOn || (best && score <= best.score)) continue;
+      best = {
+        trackId: track._id,
+        title: track.title,
+        artist: track.artist,
+        coverUrl: track.coverUrl || null,
+        score: Number(score.toFixed(3)),
+        matchedOn,
+      };
+    }
+
+    return best;
   }
 
   async _assertSongAdmin(eventId, actorUser) {
@@ -384,6 +428,47 @@ class SongsService {
 
     throw new ForbiddenError('You do not have permission to manage songs in this event');
   }
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function similarity(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return Math.min(a.length, b.length) / Math.max(a.length, b.length);
+
+  const aTokens = new Set(a.split(' '));
+  const bTokens = new Set(b.split(' '));
+  let overlap = 0;
+  for (const token of aTokens) {
+    if (bTokens.has(token)) overlap += 1;
+  }
+  const tokenScore = overlap ? (2 * overlap) / (aTokens.size + bTokens.size) : 0;
+  const editScore = 1 - levenshtein(a, b) / Math.max(a.length, b.length);
+  return Math.max(tokenScore, editScore);
+}
+
+function levenshtein(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const next = row[j];
+      row[j] = a[i - 1] === b[j - 1]
+        ? prev
+        : Math.min(prev, row[j - 1], row[j]) + 1;
+      prev = next;
+    }
+  }
+  return row[b.length];
 }
 
 module.exports = new SongsService();

@@ -13,6 +13,14 @@ const SongSchema = new Schema(
 
     title: { type: String, required: true, trim: true },
     artist: { type: String, required: true, trim: true },
+    recognitionMatch: {
+      trackId: { type: Schema.Types.ObjectId, ref: 'AudioTrack' },
+      title: { type: String, trim: true },
+      artist: { type: String, trim: true },
+      coverUrl: { type: String, trim: true, default: null },
+      score: { type: Number, min: 0, max: 1 },
+      matchedOn: { type: String, enum: ['title', 'artist', 'title_artist'] },
+    },
 
     requestedBy: {
       type: Schema.Types.ObjectId,

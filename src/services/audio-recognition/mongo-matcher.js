@@ -57,7 +57,7 @@ async function matchHashes(eventId, hashes, limit = 5) {
   const tracks = await AudioTrackModel.find({
     _id: { $in: scored.map(({ trackId }) => trackId) },
   })
-    .select('title artist duration sampleRate')
+    .select('title artist coverUrl duration sampleRate')
     .lean();
   const trackById = new Map(tracks.map((track) => [track._id.toString(), track]));
 
@@ -67,6 +67,7 @@ async function matchHashes(eventId, hashes, limit = 5) {
       ...match,
       title: track?.title || 'Unknown track',
       artist: track?.artist || 'Unknown artist',
+      coverUrl: track?.coverUrl || null,
       duration: track?.duration || 0,
       sampleRate: track?.sampleRate || 0,
     };

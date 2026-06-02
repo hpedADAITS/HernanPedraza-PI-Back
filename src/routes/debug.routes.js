@@ -16,6 +16,11 @@ router.use((req, res, next) => {
   return next(new NotFoundError('Debug routes are disabled'));
 });
 
+router.get(
+  '/audio-fingerprint-stats',
+  debugController.getAudioFingerprintStats.bind(debugController),
+);
+
 router.post(
   '/mock-accounts',
   debugController.createMockAccounts.bind(debugController),

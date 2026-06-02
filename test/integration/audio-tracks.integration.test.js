@@ -71,6 +71,7 @@ function uploadTrack(eventId, token, overrides = {}) {
     .set(authHeader(token))
     .field('title', overrides.title || 'Fixture Track')
     .field('artist', overrides.artist || 'Fixture Artist')
+    .field('coverUrl', overrides.coverUrl || 'https://example.com/cover.jpg')
     .attach('audio', fixture);
 }
 
@@ -108,6 +109,7 @@ describe('Audio track REST integration', () => {
     expect(res.body.data.track).toMatchObject({
       title: 'Fixture Track',
       artist: 'Fixture Artist',
+      coverUrl: 'https://example.com/cover.jpg',
       sampleRate: expect.any(Number),
       pointsCount: expect.any(Number),
       hashesCount: expect.any(Number),
@@ -134,6 +136,7 @@ describe('Audio track REST integration', () => {
           trackId,
           title: 'Fixture Track',
           artist: 'Fixture Artist',
+          coverUrl: 'https://example.com/cover.jpg',
           offset: 0,
           score: expect.any(Number),
         });
