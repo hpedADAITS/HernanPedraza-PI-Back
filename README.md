@@ -1,4 +1,13 @@
-<p align="center"><img src="docs/logo.png" alt="SyncRekuest logo" width="180" /></p>
+<div align="center" style="max-width:320px; margin:0 auto;">
+  <a href="https://sr-frontend.onrender.com/" target="_blank" rel="noopener noreferrer">
+    <img align="center"
+      alt="SyncRekuest Logo"
+      src="docs/logo.png"
+      style="display:block; width:100%; height:auto;"
+    />
+  </a>
+</div>
+&nbsp;
 <h1 align="center">SyncRekuest Backend</h1>
 
 Node.js/Express API, MongoDB data layer, and Socket.IO realtime server for collaborative music-request events.
