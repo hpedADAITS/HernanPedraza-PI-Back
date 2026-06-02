@@ -124,6 +124,51 @@ describe('Event, participant, song and vote integration flow', () => {
       });
   });
 
+  test('allows event DJ members to generate phone microphone links', async () => {
+    const owner = await createConfirmedDj();
+    const memberRes = await register({
+      email: 'member.dj@example.com',
+      password: 'StrongPass123!',
+      displayName: 'Member DJ',
+      role: 'DJ',
+    }).expect(201);
+    const memberId = memberRes.body.data.user.id;
+    await UserModel.findByIdAndUpdate(memberId, {
+      emailRegistered: true,
+      emailRegisteredAt: new Date(),
+    });
+    const eventRes = await request(app)
+      .post('/api/v1/events')
+      .set(authHeader(owner.token))
+      .send({
+        name: 'Shared DJ Mic Night',
+        description: 'Remote microphone check',
+        startsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      })
+      .expect(201);
+    const event = eventRes.body.data.event;
+    await EventMemberModel.create({
+      eventId: event.id,
+      userId: memberId,
+      role: 'DJ',
+      permissions: [],
+      addedBy: owner.userId,
+    });
+
+    const linkRes = await request(app)
+      .get(`/api/v1/events/${event.id}/phone-microphone-link`)
+      .set(authHeader(memberRes.body.data.token))
+      .expect(200);
+    const decoded = verifyToken(new URL(linkRes.body.data.link).searchParams.get('token'));
+
+    expect(decoded).toMatchObject({
+      userId: owner.userId,
+      role: 'DJ',
+      type: 'phone-microphone',
+      eventId: event.id,
+    });
+  });
+
   test('does not use a localhost origin when the request host is reachable', async () => {
     const dj = await createConfirmedDj();
     const eventRes = await request(app)

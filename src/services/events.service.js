@@ -245,19 +245,31 @@ class EventsService {
     return this._formatEvent(event);
   }
 
-  async getPhoneMicrophoneLink(eventId, userId, frontendUrl) {
+  async getPhoneMicrophoneLink(eventId, userId, userRole, frontendUrl) {
     const event = await EventModel.findById(eventId);
     if (!event) {
       throw new NotFoundError('Event not found');
     }
 
-    if (event.ownerId.toString() !== userId.toString()) {
-      throw new UnauthorizedError('Unauthorized');
+    const isOwner = event.ownerId.toString() === userId.toString();
+    
+    if (!isOwner) {
+      // Check if user is a DJ (either from User role or EventMember role)
+      const isDjByRole = userRole === 'DJ';
+      const member = await EventMemberModel.findOne({ eventId: event._id, userId })
+        .select('role permissions')
+        .lean();
+      const isDjByMembership = member?.role === 'DJ';
+      const hasSongApprovePermission = member?.permissions?.includes('SONG_APPROVE_REJECT');
+
+      if (!isDjByRole && !isDjByMembership && !hasSongApprovePermission) {
+        throw new UnauthorizedError('Unauthorized');
+      }
     }
 
     const token = generateToken(
       {
-        userId,
+        userId: event.ownerId.toString(),
         email: `phone-microphone:${event._id}`,
         role: 'DJ',
         type: 'phone-microphone',

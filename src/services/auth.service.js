@@ -36,6 +36,8 @@ class AuthService {
       throw new UnauthorizedError(messages.AUTH.INVALID_TOKEN);
     }
 
+    decoded.userId = decoded.userId?.toString();
+
     const user = await UserModel.findById(decoded.userId);
     if (!user || !user.isActive) {
       throw new UnauthorizedError(messages.AUTH.INVALID_TOKEN);

@@ -279,6 +279,7 @@ class EventsController {
       const link = await eventsService.getPhoneMicrophoneLink(
         eventId,
         req.user.userId,
+        req.user.role,
         frontendBase,
       );
 
