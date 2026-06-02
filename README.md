@@ -2,7 +2,7 @@
   <a href="https://sr-frontend.onrender.com/" target="_blank" rel="noopener noreferrer">
     <img align="center"
       alt="SyncRekuest Logo"
-      src="docs/logo.png"
+      src="https://github.com/hpedADAITS/HernanPedraza-PI-Front/blob/main/src/assets/logo.png?raw=true"
       style="display:block; width:100%; height:auto;"
     />
   </a>
