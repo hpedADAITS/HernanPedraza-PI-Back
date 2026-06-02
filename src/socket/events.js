@@ -500,7 +500,7 @@ const handleParticipantBanned = async (socket, io, data) => {
 };
 
 const handleSongNowPlaying = async (socket, io, data) => {
-  const { eventId, songId, title, artist, totalDuration, duration } = data;
+  const { eventId, songId, title, artist, totalDuration, duration, recognitionMatch } = data;
 
   if (!eventId || !songId || !title || !artist) {
     logger.error(`Invalid song data for now_playing`, data);
@@ -522,6 +522,7 @@ const handleSongNowPlaying = async (socket, io, data) => {
       songId,
       title,
       artist,
+      recognitionMatch: recognitionMatch || null,
       totalDuration: totalDuration ?? duration,
       duration: totalDuration ?? duration,
       timestamp: new Date().toISOString(),
@@ -614,6 +615,7 @@ const handleApproveSong = async (socket, io, data, callback) => {
       songId: song._id,
       title: song.title,
       artist: song.artist,
+      recognitionMatch: song.recognitionMatch || null,
       status: song.status,
       totalDuration: song.totalDuration,
       duration: song.duration,
@@ -729,6 +731,7 @@ const handleSendNow = async (socket, io, data, callback) => {
       songId: song._id,
       title: song.title,
       artist: song.artist,
+      recognitionMatch: song.recognitionMatch || null,
       status: song.status,
       totalDuration: song.totalDuration || 0,
       duration: song.duration || 0,

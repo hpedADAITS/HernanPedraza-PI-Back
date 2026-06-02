@@ -398,6 +398,13 @@ describe('Socket.IO Handler Integration Tests', () => {
 
       // Approve song first
       testSong.status = 'APPROVED';
+      testSong.recognitionMatch = {
+        title: 'Test Song',
+        artist: 'Test Artist',
+        coverUrl: 'https://example.com/cover.jpg',
+        score: 1,
+        matchedOn: 'title_artist',
+      };
       await testSong.save();
 
       await socketEvents.handleSendNow(
@@ -423,6 +430,11 @@ describe('Socket.IO Handler Integration Tests', () => {
         expect.arrayContaining([
           expect.objectContaining({
             event: 'song_now_playing',
+            data: expect.objectContaining({
+              recognitionMatch: expect.objectContaining({
+                coverUrl: 'https://example.com/cover.jpg',
+              }),
+            }),
           }),
         ])
       );

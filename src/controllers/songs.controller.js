@@ -167,6 +167,7 @@ class SongsController {
         songId: getSongId(song),
         title: song.title,
         artist: song.artist,
+        recognitionMatch: song.recognitionMatch || null,
         status: song.status,
         reason,
       });
@@ -227,6 +228,7 @@ class SongsController {
         songId: getSongId(song),
         title: song.title,
         artist: song.artist,
+        recognitionMatch: song.recognitionMatch || null,
         status: song.status,
         totalDuration: song.totalDuration || 0,
         duration: song.duration || 0,

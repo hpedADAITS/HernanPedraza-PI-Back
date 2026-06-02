@@ -210,8 +210,8 @@ class AuthService {
       throw new ValidationError(messages.VALIDATION.REQUIRED_FIELD);
     }
 
-    if (!profilePicture || typeof profilePicture !== 'string') {
-      throw new ValidationError('Profile picture must be a valid string');
+    if (profilePicture !== null && typeof profilePicture !== 'string') {
+      throw new ValidationError('Profile picture must be a valid string or null');
     }
 
     const user = await UserModel.findById(userId);
