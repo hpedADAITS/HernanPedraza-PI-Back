@@ -13,21 +13,44 @@ class AttendeeSessionService {
     let result;
 
     try {
-      await session.withTransaction(async () => {
+      try {
+        await session.withTransaction(async () => {
+          result = await this._joinEventInSession(
+            eventId,
+            nickname,
+            profilePicture,
+            password,
+            options,
+            session,
+          );
+        });
+      } catch (error) {
+        if (!this._isUnsupportedTransactionError(error)) {
+          throw error;
+        }
+
         result = await this._joinEventInSession(
           eventId,
           nickname,
           profilePicture,
           password,
           options,
-          session,
+          null,
         );
-      });
+      }
     } finally {
       await session.endSession();
     }
 
     return result;
+  }
+
+  _isUnsupportedTransactionError(error) {
+    const message = error?.message || '';
+    return (
+      /Transaction numbers are only allowed on a replica set member or mongos/i.test(message) ||
+      error?.code === 20
+    );
   }
 
   async _joinEventInSession(eventId, nickname, profilePicture, password, options, dbSession) {
