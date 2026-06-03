@@ -8,6 +8,7 @@ const { ForbiddenError, NotFoundError } = require('../errors');
 const { validateTransition } = require('../utils/song-state-machine');
 const participantsService = require('./participants.service');
 const eventPermissionsService = require('./event-permissions.service');
+const musicBrainzService = require('./musicbrainz.service');
 
 class SongsService {
   async suggestSong(eventId, participantId, title, artist, totalDuration, actorUser) {
@@ -18,15 +19,25 @@ class SongsService {
       { checkCooldown: true },
     );
 
+    const recognitionMatch = await this._findRecognitionMatch(
+      eventId,
+      title,
+      artist,
+      totalDuration,
+    );
+    const resolvedDuration = Number.isFinite(Number(totalDuration))
+      ? Number(totalDuration)
+      : recognitionMatch?.duration ?? undefined;
+
     const song = new SongModel({
       eventId,
       title,
       artist,
-      recognitionMatch: await this._findRecognitionMatch(eventId, title, artist),
+      recognitionMatch,
       requestedBy: participantId,
       status: 'PENDING',
       sortKey: `${Date.now()}_${Math.random()}`,
-      totalDuration,
+      totalDuration: resolvedDuration,
     });
 
     await song.save();
@@ -355,7 +366,18 @@ class SongsService {
     };
   }
 
-  async _findRecognitionMatch(eventId, title, artist) {
+  async _findRecognitionMatch(eventId, title, artist, totalDuration) {
+    const [localMatch, musicBrainzMatch] = await Promise.all([
+      this._findLocalRecognitionMatch(eventId, title, artist),
+      musicBrainzService.findRecordingMatch(title, artist, totalDuration),
+    ]);
+
+    if (!localMatch) return musicBrainzMatch;
+    if (!musicBrainzMatch) return localMatch;
+    return localMatch.score >= musicBrainzMatch.score ? localMatch : musicBrainzMatch;
+  }
+
+  async _findLocalRecognitionMatch(eventId, title, artist) {
     const targetTitle = normalizeText(title);
     const targetArtist = normalizeText(artist);
     if (!targetTitle && !targetArtist) return null;
@@ -384,6 +406,7 @@ class SongsService {
         title: track.title,
         artist: track.artist,
         coverUrl: track.coverUrl || null,
+        duration: Number.isFinite(Number(track.duration)) ? Number(track.duration) : null,
         score: Number(score.toFixed(3)),
         matchedOn,
       };

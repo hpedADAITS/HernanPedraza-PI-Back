@@ -18,6 +18,7 @@ const SongSchema = new Schema(
       title: { type: String, trim: true },
       artist: { type: String, trim: true },
       coverUrl: { type: String, trim: true, default: null },
+      duration: { type: Number, min: 0 },
       score: { type: Number, min: 0, max: 1 },
       matchedOn: { type: String, enum: ['title', 'artist', 'title_artist'] },
     },
