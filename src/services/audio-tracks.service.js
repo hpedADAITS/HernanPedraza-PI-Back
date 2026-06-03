@@ -7,9 +7,11 @@ const {
   AudioFingerprintPointModel,
   AudioTrackModel,
   EventModel,
+  SongModel,
 } = require('../models/schema');
 const { ForbiddenError, NotFoundError, ValidationError } = require('../errors');
 const eventPermissionsService = require('./event-permissions.service');
+const songsService = require('./songs.service');
 const { createConstellation } = require('./audio-recognition/constellation');
 const { createHashes } = require('./audio-recognition/hashes');
 const { readWav } = require('./audio-recognition/wav');
@@ -121,6 +123,23 @@ class AudioTracksService {
 
   async matchHashes(eventId, hashes) {
     return matchHashes(eventId, hashes);
+  }
+
+  async sendMatchedTrackNow(eventId, actor, trackId) {
+    const { eventObjectId } = await this._assertDj(eventId, actor);
+    const track = await AudioTrackModel.findOne({ _id: trackId, eventId: eventObjectId }).lean();
+    if (!track) throw new NotFoundError('Audio track not found');
+
+    const song = await SongModel.findOne({
+      eventId: eventObjectId,
+      status: { $in: ['APPROVED', 'QUEUED'] },
+      'recognitionMatch.trackId': track._id.toString(),
+    })
+      .sort({ queuePosition: 1, approvedAt: 1, createdAt: 1 })
+      .lean();
+
+    if (!song) throw new NotFoundError('No queued song matches this audio track');
+    return songsService.sendNow(song._id, eventObjectId, actor);
   }
 
   async _assertDj(eventId, actor) {

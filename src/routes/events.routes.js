@@ -14,6 +14,10 @@ router.post(
   '/:eventId/phone-microphone/connect',
   eventsController.connectPhoneMicrophone.bind(eventsController),
 );
+router.post(
+  '/:eventId/audio-tracks/:trackId/send-now',
+  audioTracksController.sendMatchedTrackNow.bind(audioTracksController),
+);
 
 /* All event routes require authentication */
 router.use(authenticate);

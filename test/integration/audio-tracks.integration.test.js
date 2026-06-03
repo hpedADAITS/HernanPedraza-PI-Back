@@ -147,6 +147,27 @@ describe('Audio track REST integration', () => {
       });
   });
 
+  test('does not return low-confidence background-noise fingerprint matches', async () => {
+    const dj = await createVerifiedDj();
+    const event = await createEvent(dj.token);
+    const created = await uploadTrack(event.id, dj.token).expect(201);
+    const trackId = created.body.data.track.id;
+    const sampleHashes = await AudioFingerprintHashModel.find({ eventId: event.id, trackId })
+      .select('hash sourceTime')
+      .limit(3)
+      .lean();
+
+    const sparseNoiseHashes = [
+      ...sampleHashes.map(({ hash, sourceTime }) => ({ hash, time: sourceTime })),
+      ...Array.from({ length: 80 }, (_, index) => ({ hash: 10_000_000 + index, time: index })),
+    ];
+
+    const matches = await require('../../src/services/audio-recognition/mongo-matcher')
+      .matchHashes(event.id, sparseNoiseHashes);
+
+    expect(matches).toEqual([]);
+  });
+
   test('rejects another authenticated DJ and deletes owner fingerprints through REST', async () => {
     const owner = await createVerifiedDj();
     const other = await createVerifiedDj();
