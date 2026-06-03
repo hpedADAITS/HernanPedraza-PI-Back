@@ -76,12 +76,14 @@ describe('Debug mock accounts', () => {
     expect(res.body.data.validatedAgainstMongo).toBe(true);
     expect(res.body.data.accounts).toHaveLength(2);
     expect(res.body.data.event).toMatchObject({
-      accessCode: expect.any(String),
+      accessCode: 'DEBUG1',
+      eventId: 'DEBUGEVT',
+      name: 'Debug Event',
       state: 'LIVE',
-      ownerName: expect.stringContaining('Debug DJ'),
+      ownerName: 'Debug DJ',
     });
     expect(res.body.data.attendeeLogin).toMatchObject({
-      nickname: expect.stringMatching(/^Debug_Attendee_[A-Za-z0-9_]+$/),
+      nickname: 'Debug_Attendee',
       accessCode: res.body.data.event.accessCode,
       password: 'DebugPass123!',
       participantId: expect.any(String),
@@ -143,5 +145,39 @@ describe('Debug mock accounts', () => {
     expect(join.body.data.participant._id).toBe(
       res.body.data.attendeeLogin.participantId,
     );
+  });
+
+  test('reuses stable debug accounts and event across repeated calls', async () => {
+    process.env.DEBUG_MODE = 'true';
+    process.env.NODE_ENV = 'test';
+
+    const first = await request(app)
+      .post('/api/v1/debug/mock-accounts')
+      .expect(201);
+    const second = await request(app)
+      .post('/api/v1/debug/mock-accounts')
+      .expect(201);
+
+    const stableFields = (data) => ({
+      event: data.event,
+      attendeeLogin: data.attendeeLogin,
+      accounts: data.accounts.map(
+        ({ email, password, displayName, role, emailRegistered }) => ({
+          email,
+          password,
+          displayName,
+          role,
+          emailRegistered,
+        }),
+      ),
+    });
+
+    expect(stableFields(second.body.data)).toEqual(
+      stableFields(first.body.data),
+    );
+    expect(await UserModel.countDocuments()).toBe(2);
+    expect(await EventModel.countDocuments()).toBe(1);
+    expect(await EventMemberModel.countDocuments()).toBe(1);
+    expect(await ParticipantModel.countDocuments()).toBe(1);
   });
 });

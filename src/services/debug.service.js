@@ -9,10 +9,12 @@ const {
   UserModel,
   defaultPermissionsForRole,
 } = require('../models');
-const { generateEventCode } = require('../utils/code-generator');
 const { generateToken } = require('../utils/jwt.utils');
 
 const DEBUG_PASSWORD = 'DebugPass123!';
+const DEBUG_EVENT_ID = 'DEBUGEVT';
+const DEBUG_ACCESS_CODE = 'DEBUG1';
+const DEBUG_ATTENDEE_NICKNAME = 'Debug_Attendee';
 
 const DEBUG_ACCOUNT_TYPES = [
   {
@@ -55,13 +57,6 @@ function accountResponse(user) {
   };
 }
 
-function buildAttendeeNickname(suffix) {
-  return `Debug_Attendee_${suffix.replace(/[^A-Za-z0-9_]/g, '_')}`.slice(
-    0,
-    30,
-  );
-}
-
 class DebugService {
   async getAudioFingerprintStats() {
     assertDebugModeAllowed();
@@ -95,21 +90,12 @@ class DebugService {
   async createMockAccounts() {
     assertDebugModeAllowed();
 
-    const suffix = `${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
     const passwordHash = await bcrypt.hash(DEBUG_PASSWORD, 10);
 
-    const users = await UserModel.insertMany(
-      DEBUG_ACCOUNT_TYPES.map((account) => ({
-        email: `${account.emailPrefix}.${suffix}@syncrekuest.local`,
-        passwordHash,
-        displayName: `${account.displayName} ${suffix}`,
-        role: account.role,
-        emailRegistered: true,
-        emailRegisteredAt: new Date(),
-        isActive: true,
-      })),
+    const users = await Promise.all(
+      DEBUG_ACCOUNT_TYPES.map((account) =>
+        this._getOrCreateDebugUser(account, passwordHash),
+      ),
     );
     const dj = users.find((user) => user.role === 'DJ');
     const attendee = users.find((user) => user.role === 'ATTENDEE');
@@ -117,12 +103,12 @@ class DebugService {
       throw new Error('Debug account creation failed');
     }
 
-    const event = await this._createMockEvent(dj, suffix);
+    const event = await this._getOrCreateMockEvent(dj);
     const participant = await this._createMockParticipant(
       event,
       attendee,
       passwordHash,
-      buildAttendeeNickname(suffix),
+      DEBUG_ATTENDEE_NICKNAME,
     );
 
     const storedUsers = await UserModel.find({
@@ -188,15 +174,55 @@ class DebugService {
     };
   }
 
-  async _createMockEvent(dj, suffix) {
-    const event = new EventModel({
-      name: `Debug Event ${suffix}`,
+  async _getOrCreateDebugUser(account, passwordHash) {
+    const email = `${account.emailPrefix}@syncrekuest.local`;
+    let user = await UserModel.findOne({ email }).select('+passwordHash');
+
+    if (!user) {
+      return UserModel.create({
+        email,
+        passwordHash,
+        displayName: account.displayName,
+        role: account.role,
+        emailRegistered: true,
+        emailRegisteredAt: new Date(),
+        isActive: true,
+      });
+    }
+
+    user.displayName = account.displayName;
+    user.role = account.role;
+    user.emailRegistered = true;
+    user.isActive = true;
+    if (
+      !user.passwordHash ||
+      !(await bcrypt.compare(DEBUG_PASSWORD, user.passwordHash))
+    ) {
+      user.passwordHash = passwordHash;
+    }
+    if (!user.emailRegisteredAt) user.emailRegisteredAt = new Date();
+
+    return user.save();
+  }
+
+  async _getOrCreateMockEvent(dj) {
+    let event = await EventModel.findOne({
+      $or: [{ eventId: DEBUG_EVENT_ID }, { accessCode: DEBUG_ACCESS_CODE }],
+    });
+
+    if (!event) {
+      event = new EventModel({
+        eventId: DEBUG_EVENT_ID,
+        accessCode: DEBUG_ACCESS_CODE,
+        startsAt: new Date(),
+      });
+    }
+
+    event.set({
+      name: 'Debug Event',
       description: 'Generated from the debug account tool',
       ownerId: dj._id,
-      eventId: generateEventCode(8),
-      accessCode: generateEventCode(6),
       state: 'LIVE',
-      startsAt: new Date(),
       settings: {
         allowRequests: true,
         requireApproval: false,
@@ -207,28 +233,64 @@ class DebugService {
     });
 
     await event.save();
-    await EventMemberModel.create({
-      eventId: event._id,
-      userId: dj._id,
-      role: 'DJ',
-      permissions: defaultPermissionsForRole('DJ'),
-      addedBy: dj._id,
-    });
+    await EventMemberModel.findOneAndUpdate(
+      { eventId: event._id, userId: dj._id },
+      {
+        $set: {
+          role: 'DJ',
+          permissions: defaultPermissionsForRole('DJ'),
+          addedBy: dj._id,
+        },
+      },
+      { new: true, upsert: true },
+    );
 
     return event;
   }
 
   async _createMockParticipant(event, attendee, passwordHash, nickname) {
-    return ParticipantModel.create({
+    const participant = await ParticipantModel.findOne({
       eventId: event._id,
+      nicknameLower: nickname.toLowerCase(),
+    }).select('+passwordHash');
+
+    if (!participant) {
+      return ParticipantModel.create({
+        eventId: event._id,
+        userId: attendee._id,
+        nickname,
+        nicknameLower: nickname.toLowerCase(),
+        passwordHash,
+        passwordSetAt: new Date(),
+        joinedAt: new Date(),
+        lastSeenAt: new Date(),
+      });
+    }
+
+    participant.set({
       userId: attendee._id,
       nickname,
-      nicknameLower: nickname.toLowerCase(),
-      passwordHash,
-      passwordSetAt: new Date(),
-      joinedAt: new Date(),
+      isBanned: false,
+      kickedAt: null,
+      kickedBy: null,
+      kickReason: null,
+      bannedAt: null,
+      bannedBy: null,
+      banReason: null,
+      cooldownUntil: null,
+      cooldownReason: null,
+      leftAt: null,
       lastSeenAt: new Date(),
     });
+    if (
+      !participant.passwordHash ||
+      !(await bcrypt.compare(DEBUG_PASSWORD, participant.passwordHash))
+    ) {
+      participant.passwordHash = passwordHash;
+      participant.passwordSetAt = new Date();
+    }
+
+    return participant.save();
   }
 }
 
