@@ -1,0 +1,57 @@
+version: "1"
+projects:
+- name: Project-1
+  environments:
+  - name: Production
+    services:
+    - type: web
+      name: SR-Frontend
+      runtime: node
+      repo: https://github.com/hpedADAITS/HernanPedraza-PI-Front
+      plan: free
+      envVars:
+      - key: VITE_API_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+      buildCommand: npm install && npm run build
+      startCommand: npm start
+      autoDeployTrigger: commit
+    - type: web
+      name: SR-Backend
+      runtime: node
+      repo: https://github.com/hpedADAITS/HernanPedraza-PI-Back
+      plan: free
+      envVars:
+      - key: JWT_SECRET
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_PASSWORD
+        sync: false
+      - key: DEBUG_EMAIL
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SOCKET_CORS_ORIGIN
+        sync: false
+      - key: PORT
+        sync: false
+      - key: NODE_ENV
+        sync: false
+      - key: MONGODB_USER
+        sync: false
+      - key: MONGODB_CLUSTER
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      region: frankfurt
+      buildCommand: npm install
+      startCommand: npm start
+      autoDeployTrigger: commit
