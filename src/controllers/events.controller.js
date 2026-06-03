@@ -53,6 +53,7 @@ class EventsController {
         data.name,
         data.description,
         data.startsAt,
+        data.eventId,
       );
 
       res.status(httpStatus.CREATED).json({

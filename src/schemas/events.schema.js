@@ -10,6 +10,7 @@ class EventsSchema {
           ? body.description.trim()
           : body.description || '',
       startsAt: body.startsAt,
+      eventId: typeof body.eventId === 'string' ? body.eventId.trim() : body.eventId,
     };
 
     // Validate
@@ -28,6 +29,17 @@ class EventsSchema {
     const date = new Date(data.startsAt);
     if (isNaN(date.getTime())) {
       throw new ValidationError('Invalid start date');
+    }
+    if (data.eventId !== undefined && data.eventId !== null && data.eventId !== '') {
+      if (typeof data.eventId !== 'string') {
+        throw new ValidationError('Event ID must be a string');
+      }
+      if (data.eventId.length < 4 || data.eventId.length > 20) {
+        throw new ValidationError('Event ID must be 4-20 characters');
+      }
+      if (!/^[A-Za-z0-9]+$/.test(data.eventId)) {
+        throw new ValidationError('Event ID must be alphanumeric');
+      }
     }
 
     return data;
