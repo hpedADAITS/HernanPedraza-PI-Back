@@ -7,6 +7,8 @@ const {
 const { logger } = require('../utils');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../errors');
 
+const PARTICIPANT_MANAGE_PERMISSIONS = ['PARTICIPANT_KICK', 'PARTICIPANT_BAN'];
+
 class ParticipantsService {
   async ensureNicknameIsNotAccessCode(nickname) {
     const trimmed = nickname.trim();
@@ -444,7 +446,11 @@ class ParticipantsService {
 
     if (actorUser && typeof actorUser === 'object') {
       return {
-        userId: actorUser.userId?.toString() || actorUser._id?.toString() || null,
+        userId:
+          actorUser.userId?.toString() ||
+          actorUser._id?.toString() ||
+          actorUser.id?.toString() ||
+          null,
         role: actorUser.role || null,
       };
     }
@@ -518,14 +524,17 @@ class ParticipantsService {
       eventId: participant.eventId,
       userId,
     })
-      .select({ permissions: 1 })
+      .select({ role: 1, permissions: 1 })
       .lean();
 
-    const canKickParticipant =
-      Array.isArray(membership?.permissions) &&
-      membership.permissions.includes('PARTICIPANT_KICK');
+    const canManageParticipant =
+      membership?.role === 'DJ' ||
+      (Array.isArray(membership?.permissions) &&
+        PARTICIPANT_MANAGE_PERMISSIONS.some((permission) =>
+          membership.permissions.includes(permission),
+        ));
 
-    if (!canKickParticipant) {
+    if (!canManageParticipant) {
       throw new ForbiddenError(
         'You do not have permission to manage attendees in this event',
       );

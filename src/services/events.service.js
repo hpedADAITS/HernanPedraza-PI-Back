@@ -16,6 +16,12 @@ const {
   ForbiddenError,
 } = require('../errors');
 
+const PHONE_MICROPHONE_PERMISSIONS = [
+  'EVENT_SETTINGS_EDIT',
+  'QUEUE_EDIT',
+  'SONG_APPROVE_REJECT',
+];
+
 class EventsService {
   async createEvent(actorUser, name, description, startsAt, eventId = null) {
     const ownerId = await this._assertCanCreateEvent(actorUser);
@@ -252,17 +258,19 @@ class EventsService {
     }
 
     const isOwner = event.ownerId.toString() === userId.toString();
-    
-    if (!isOwner) {
-      // Check if user is a DJ (either from User role or EventMember role)
-      const isDjByRole = userRole === 'DJ';
+
+    if (!isOwner && userRole !== 'ADMIN') {
       const member = await EventMemberModel.findOne({ eventId: event._id, userId })
         .select('role permissions')
         .lean();
-      const isDjByMembership = member?.role === 'DJ';
-      const hasSongApprovePermission = member?.permissions?.includes('SONG_APPROVE_REJECT');
+      const canUsePhoneMicrophone =
+        member?.role === 'DJ' ||
+        (Array.isArray(member?.permissions) &&
+          PHONE_MICROPHONE_PERMISSIONS.some((permission) =>
+            member.permissions.includes(permission),
+          ));
 
-      if (!isDjByRole && !isDjByMembership && !hasSongApprovePermission) {
+      if (!canUsePhoneMicrophone) {
         throw new UnauthorizedError('Unauthorized');
       }
     }

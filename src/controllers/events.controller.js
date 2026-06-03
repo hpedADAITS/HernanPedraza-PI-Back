@@ -6,10 +6,6 @@ const config = require('../config');
 
 let io = null;
 
-function isLocalhostUrl(url) {
-  return /\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(url || '');
-}
-
 function getSafeFrontendOrigin(value) {
   if (typeof value !== 'string' || !value.trim()) return '';
 
@@ -268,13 +264,7 @@ class EventsController {
       const host = req.get('host');
       const requestBase = getSafeFrontendOrigin(host ? `${req.protocol}://${host}` : '');
       const frontendBase =
-        requestedOrigin && !isLocalhostUrl(requestedOrigin)
-          ? requestedOrigin
-          : origin && !isLocalhostUrl(origin)
-          ? origin
-          : requestBase && !isLocalhostUrl(requestBase)
-          ? requestBase
-          : config.frontendUrl;
+        origin || requestedOrigin || requestBase || config.frontendUrl;
 
       const link = await eventsService.getPhoneMicrophoneLink(
         eventId,

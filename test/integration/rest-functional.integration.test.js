@@ -401,6 +401,60 @@ describe('REST functional coverage', () => {
       });
   });
 
+  test('event DJ members can cooldown attendees and create phone microphone links', async () => {
+    const owner = await createVerifiedDj();
+    const eventDj = await createVerifiedDj({
+      email: 'event-member-dj@example.com',
+      displayName: 'Event DJ',
+    });
+    const attendee = await registerUser({ displayName: 'Cooldown Guest' });
+    const event = await createEvent(owner.token);
+    const participant = await joinEvent(event.id, attendee.body.data.token, 'Morgan');
+
+    await EventMemberModel.create({
+      eventId: event.id,
+      userId: eventDj.user.id,
+      role: 'DJ',
+      permissions: [],
+      addedBy: owner.user.id,
+    });
+
+    await request(app)
+      .post(`/api/v1/participants/${participant._id}/cooldown`)
+      .set(authHeader(eventDj.token))
+      .send({ durationMs: 60_000, reason: 'Queue spam' })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.participant.cooldownUntil).toEqual(expect.any(String));
+        expect(res.body.data.participant.cooldownReason).toBe('Queue spam');
+      });
+
+    await request(app)
+      .get(`/api/v1/events/${event.id}/phone-microphone-link`)
+      .set(authHeader(eventDj.token))
+      .set('Origin', 'https://192.168.1.50:5173')
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.link).toMatch(
+          new RegExp(`^https://192\\.168\\.1\\.50:5173/dj/microphone/${event.id}\\?token=`),
+        );
+      });
+  });
+
+  test('unscoped DJs cannot create phone microphone links for other events', async () => {
+    const owner = await createVerifiedDj();
+    const otherDj = await createVerifiedDj({
+      email: 'unscoped-dj@example.com',
+      displayName: 'Unscoped DJ',
+    });
+    const event = await createEvent(owner.token);
+
+    await request(app)
+      .get(`/api/v1/events/${event.id}/phone-microphone-link`)
+      .set(authHeader(otherDj.token))
+      .expect(401);
+  });
+
   test('orders queue by playing state and votes, exposes positions, skip and empty vote state', async () => {
     const dj = await createVerifiedDj();
     const attendeeA = await registerUser({ displayName: 'Voter A' });
