@@ -124,7 +124,7 @@ class SongsController {
       const song = await songsService.approveSong(
         songId,
         eventId,
-        req.user.userId,
+        req.user,
       );
 
       this.emitSongEvent(eventId, 'song_approved', {
@@ -160,7 +160,7 @@ class SongsController {
         songId,
         eventId,
         reason,
-        req.user.userId,
+        req.user,
       );
 
       this.emitSongEvent(eventId, 'song_rejected', {
@@ -192,7 +192,7 @@ class SongsController {
         songId,
         eventId,
         reason,
-        req.user.userId,
+        req.user,
       );
 
       this.emitSongEvent(eventId, 'song_skipped', {
@@ -221,7 +221,7 @@ class SongsController {
       const song = await songsService.sendNow(
         songId,
         eventId,
-        req.user.userId,
+        req.user,
       );
 
       this.emitSongEvent(eventId, 'song_now_playing', {
