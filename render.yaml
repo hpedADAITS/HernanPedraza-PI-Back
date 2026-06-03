@@ -15,8 +15,8 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: FRONTEND_URL
-        value: https://sr-frontend.onrender.com
+        value: https://sr-frontend-xrwk.onrender.com
       - key: ALLOWED_ORIGINS
-        value: https://sr-frontend.onrender.com
+        value: https://sr-frontend-xrwk.onrender.com,https://sr-frontend.onrender.com
       - key: SOCKET_CORS_ORIGIN
-        value: https://sr-frontend.onrender.com
+        value: https://sr-frontend-xrwk.onrender.com,https://sr-frontend.onrender.com
