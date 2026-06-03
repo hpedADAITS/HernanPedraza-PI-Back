@@ -10,7 +10,7 @@
 &nbsp;
 <h1 align="center">SyncRekuest Backend</h1>
 
-Node.js/Express API, MongoDB data layer, and Socket.IO realtime server for collaborative music-request events.
+Non commercial Student proyect Server Backend combining Node.js/Express API, MongoDB data layer, and Socket.IO realtime server for collaborative music-request events.
 
 ## Overview
 
