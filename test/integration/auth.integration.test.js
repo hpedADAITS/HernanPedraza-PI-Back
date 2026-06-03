@@ -27,6 +27,23 @@ const logout = (token) =>
     .post('/api/v1/auth/logout')
     .set('Authorization', `Bearer ${token}`);
 
+const originalEnv = {
+  NODE_ENV: process.env.NODE_ENV,
+  DEBUG_MODE: process.env.DEBUG_MODE,
+  DEBUG_EMAIL: process.env.DEBUG_EMAIL,
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+};
+
+function restoreEnv() {
+  Object.entries(originalEnv).forEach(([key, value]) => {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  });
+}
+
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri());
@@ -38,7 +55,12 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  restoreEnv();
   await UserModel.deleteMany({});
+});
+
+afterEach(() => {
+  restoreEnv();
 });
 
 describe('Auth Flows Integration', () => {
@@ -60,6 +82,29 @@ describe('Auth Flows Integration', () => {
       }).select('+passwordHash');
       expect(stored).toBeTruthy();
       expect(stored.passwordHash).not.toBe(VALID_USER.password);
+    });
+
+    test('does not expose email verification token outside backend debug mode', async () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.DEBUG_MODE;
+      delete process.env.DEBUG_EMAIL;
+      delete process.env.RESEND_API_KEY;
+
+      const res = await registerUser().expect(201);
+
+      expect(res.body.data.token).toEqual(expect.any(String));
+      expect(res.body.data.emailVerificationToken).toBeUndefined();
+    });
+
+    test('exposes email verification token only for non-production backend debug mode', async () => {
+      process.env.NODE_ENV = 'test';
+      process.env.DEBUG_MODE = 'true';
+      process.env.DEBUG_EMAIL = 'true';
+      delete process.env.RESEND_API_KEY;
+
+      const res = await registerUser().expect(201);
+
+      expect(res.body.data.emailVerificationToken).toEqual(expect.any(String));
     });
 
     test('rejects duplicate email with 400', async () => {

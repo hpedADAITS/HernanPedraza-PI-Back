@@ -1,4 +1,5 @@
 process.env.DEBUG_EMAIL = 'true';
+process.env.DEBUG_MODE = 'true';
 
 const request = require('supertest');
 const mongoose = require('mongoose');

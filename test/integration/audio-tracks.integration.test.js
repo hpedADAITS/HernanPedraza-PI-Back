@@ -1,4 +1,5 @@
 process.env.DEBUG_EMAIL = 'true';
+process.env.DEBUG_MODE = 'true';
 
 const fs = require('fs');
 const os = require('os');

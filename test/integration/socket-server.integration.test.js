@@ -1,4 +1,5 @@
 process.env.DEBUG_EMAIL = 'true';
+process.env.DEBUG_MODE = 'true';
 process.env.SOCKET_AUTH_DISABLED = 'true';
 
 const mongoose = require('mongoose');

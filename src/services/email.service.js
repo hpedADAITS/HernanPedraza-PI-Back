@@ -3,6 +3,10 @@ const crypto = require('crypto');
 const { logger } = require('../utils');
 const { generateToken } = require('../utils/jwt.utils');
 
+function canExposeVerificationToken() {
+  return process.env.DEBUG_MODE === 'true' || process.env.NODE_ENV !== 'production';
+}
+
 class EmailService {
   constructor() {
     const apiKey = process.env.RESEND_API_KEY;
@@ -57,10 +61,12 @@ class EmailService {
 
     /* Debug mode: bypass email sending */
     if (process.env.DEBUG_EMAIL === 'true') {
-      logger.info(`[DEBUG] Email verification token for ${email}: ${verificationToken}`);
+      if (canExposeVerificationToken()) {
+        logger.info(`[DEBUG] Email verification token for ${email}: ${verificationToken}`);
+      }
       return {
         success: true,
-        token: verificationToken,
+        ...(canExposeVerificationToken() && { token: verificationToken }),
       };
     }
 
@@ -68,7 +74,7 @@ class EmailService {
       logger.info(`Email service disabled; generated verification token for ${email}`);
       return {
         success: true,
-        token: verificationToken,
+        ...(canExposeVerificationToken() && { token: verificationToken }),
       };
     }
 
