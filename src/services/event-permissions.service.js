@@ -13,6 +13,10 @@ function actorId(actor) {
   return actor?.userId?.toString() || actor?._id?.toString() || actor?.id?.toString() || null;
 }
 
+function objectId(value) {
+  return value?._id ?? value;
+}
+
 class EventPermissionsService {
   async getEvent(eventId) {
     const event = await EventModel.findById(eventId).select('ownerId').lean();
@@ -28,7 +32,7 @@ class EventPermissionsService {
     if (!userId) return { event, userId: null, role: null, isOwner: false, isAdmin: false, member: null };
 
     const isAdmin = actor?.role === 'ADMIN';
-    const isOwner = event.ownerId?.toString() === userId.toString();
+    const isOwner = objectId(event.ownerId)?.toString() === userId.toString();
     const member = isOwner || isAdmin
       ? null
       : await EventMemberModel.findOne({ eventId: event._id, userId })
