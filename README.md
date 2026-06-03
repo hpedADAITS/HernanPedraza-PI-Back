@@ -91,3 +91,9 @@ npm run test:coverage
 ```
 
 Docker and Render configs are included. Swagger is initialized in `src/loaders/swagger.js`; check that loader for the served docs route.
+
+## Attribution
+
+This project contains a Node.js implementation port of Michael Strauss's "Shazam In Python" Python educational repository and article: https://michaelstrauss.dev/shazam-in-python.
+The fingerprinting approach is based on Avery Li-Chun Wang's Shazam paper, "An Industrial-Strength Audio Search Algorithm" (2003).
+Additionally the MuisBrainzDB API is used to gather suggestion metadata. https://musicbrainz.org/doc/MusicBrainz_API
