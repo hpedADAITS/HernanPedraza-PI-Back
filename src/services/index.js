@@ -6,6 +6,7 @@ const attendeeSessionService = require('./attendee-session.service');
 const votesService = require('./votes.service');
 const emailService = require('./email.service');
 const audioTracksService = require('./audio-tracks.service');
+const eventPermissionsService = require('./event-permissions.service');
 
 module.exports = {
   authService,
@@ -16,4 +17,5 @@ module.exports = {
   votesService,
   emailService,
   audioTracksService,
+  eventPermissionsService,
 };

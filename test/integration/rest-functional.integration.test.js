@@ -452,7 +452,7 @@ describe('REST functional coverage', () => {
     await request(app)
       .get(`/api/v1/events/${event.id}/phone-microphone-link`)
       .set(authHeader(otherDj.token))
-      .expect(401);
+      .expect(403);
   });
 
   test('orders queue by playing state and votes, exposes positions, skip and empty vote state', async () => {
@@ -537,4 +537,109 @@ describe('REST functional coverage', () => {
         expect(res.body.data.queue[0].queuePosition).toBe(1);
       });
   });
+  test('covers auth, public attendee session, participant profile, pending/reject, vote stats and logout paths', async () => {
+    const dj = await createVerifiedDj();
+    const event = await createEvent(dj.token);
+
+    await request(app)
+      .post('/api/v1/participants/nickname/validate')
+      .send({ eventId: event.id, nickname: 'Web Guest' })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.valid).toBe(true);
+      });
+
+    const sessionRes = await request(app)
+      .post(`/api/v1/attendee-session/events/${event.id}/join`)
+      .send({ nickname: 'Web Guest', profilePicture: 'web-avatar' })
+      .expect(201);
+    const attendeeToken = sessionRes.body.data.token;
+    const participant = sessionRes.body.data.participant;
+
+    await request(app)
+      .patch(`/api/v1/participants/${participant._id}/profile`)
+      .set(authHeader(attendeeToken))
+      .send({ nickname: 'Web Guest Renamed', profilePicture: 'renamed-avatar' })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.participant).toMatchObject({
+          nickname: 'Web Guest Renamed',
+          profilePicture: 'renamed-avatar',
+        });
+      });
+
+    await request(app)
+      .put(`/api/v1/participants/${participant._id}/premium`)
+      .set(authHeader(dj.token))
+      .send({ isPremium: true })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.participant.isPremium).toBe(true);
+      });
+
+    const keepSong = await suggestSong(event.id, attendeeToken, participant._id, {
+      title: 'Keep Me',
+    });
+    const rejectSong = await suggestSong(event.id, attendeeToken, participant._id, {
+      title: 'Reject Me',
+    });
+
+    await request(app)
+      .get(`/api/v1/songs/${event.id}/pending`)
+      .set(authHeader(dj.token))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.pending.map((song) => song.id)).toEqual(
+          expect.arrayContaining([keepSong.id, rejectSong.id]),
+        );
+      });
+
+    await request(app)
+      .post(`/api/v1/songs/${event.id}/${rejectSong.id}/reject`)
+      .set(authHeader(dj.token))
+      .send({ reason: 'Duplicate' })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.song.status).toBe('REJECTED');
+      });
+
+    await request(app)
+      .post(`/api/v1/songs/${event.id}/${keepSong.id}/approve`)
+      .set(authHeader(dj.token))
+      .expect(200);
+
+    await request(app)
+      .post('/api/v1/votes')
+      .set(authHeader(attendeeToken))
+      .send({ songId: keepSong.id, participantId: participant._id, value: 1 })
+      .expect(201);
+
+    await request(app)
+      .get(`/api/v1/votes/${event.id}/stats`)
+      .set(authHeader(dj.token))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.stats.total_votes).toBe(1);
+      });
+
+    await request(app)
+      .delete(`/api/v1/votes/${keepSong.id}/${participant._id}`)
+      .set(authHeader(attendeeToken))
+      .expect(200);
+
+    await request(app)
+      .post(`/api/v1/participants/${participant._id}/kick`)
+      .set(authHeader(dj.token))
+      .send({ reason: 'Done testing' })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.participant.leftAt).toEqual(expect.any(String));
+      });
+
+    await request(app)
+      .post('/api/v1/auth/logout')
+      .set(authHeader(attendeeToken))
+      .expect(200);
+  });
+
 });

@@ -6,10 +6,10 @@ const {
   AudioFingerprintHashModel,
   AudioFingerprintPointModel,
   AudioTrackModel,
-  EventMemberModel,
   EventModel,
 } = require('../models/schema');
 const { ForbiddenError, NotFoundError, ValidationError } = require('../errors');
+const eventPermissionsService = require('./event-permissions.service');
 const { createConstellation } = require('./audio-recognition/constellation');
 const { createHashes } = require('./audio-recognition/hashes');
 const { readWav } = require('./audio-recognition/wav');
@@ -124,27 +124,15 @@ class AudioTracksService {
   }
 
   async _assertDj(eventId, actor) {
-    const userId =
-      typeof actor === 'string'
-        ? actor
-        : actor?.userId?.toString() || actor?._id?.toString() || actor?.id?.toString();
-    if (!userId) throw new ForbiddenError('DJ authentication is required');
-    const event = await this._findEvent(eventId);
-    if (actor?.role === 'ADMIN') return { userId, eventObjectId: event._id };
-
-    if (event.ownerId?.toString() === userId) {
-      return { userId, eventObjectId: event._id };
-    }
-
-    const member = await EventMemberModel.findOne({ eventId: event._id, userId })
-      .select('role permissions')
-      .lean();
-    if (member?.role === 'DJ' || member?.permissions?.includes('SONG_APPROVE_REJECT')) {
-      return { userId, eventObjectId: event._id };
-    }
-
-    throw new ForbiddenError('You do not have permission to manage audio fingerprints');
+    const context = await eventPermissionsService.assertAnyPermission(
+      eventId,
+      actor,
+      ['SONG_APPROVE_REJECT'],
+      'You do not have permission to manage audio fingerprints',
+    );
+    return { userId: context.userId, eventObjectId: context.event._id };
   }
+
 
   async _findEvent(eventId) {
     const event = OBJECT_ID.test(String(eventId || ''))

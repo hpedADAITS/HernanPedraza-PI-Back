@@ -6,6 +6,7 @@ const {
   UserModel,
   defaultPermissionsForRole,
 } = require('../models/schema');
+const eventPermissionsService = require('./event-permissions.service');
 const { generateEventCode } = require('../utils/code-generator');
 const { logger } = require('../utils');
 const { generateToken, verifyToken } = require('../utils/jwt.utils');
@@ -15,12 +16,6 @@ const {
   ValidationError,
   ForbiddenError,
 } = require('../errors');
-
-const PHONE_MICROPHONE_PERMISSIONS = [
-  'EVENT_SETTINGS_EDIT',
-  'QUEUE_EDIT',
-  'SONG_APPROVE_REJECT',
-];
 
 class EventsService {
   async createEvent(actorUser, name, description, startsAt, eventId = null) {
@@ -257,23 +252,10 @@ class EventsService {
       throw new NotFoundError('Event not found');
     }
 
-    const isOwner = event.ownerId.toString() === userId.toString();
-
-    if (!isOwner && userRole !== 'ADMIN') {
-      const member = await EventMemberModel.findOne({ eventId: event._id, userId })
-        .select('role permissions')
-        .lean();
-      const canUsePhoneMicrophone =
-        member?.role === 'DJ' ||
-        (Array.isArray(member?.permissions) &&
-          PHONE_MICROPHONE_PERMISSIONS.some((permission) =>
-            member.permissions.includes(permission),
-          ));
-
-      if (!canUsePhoneMicrophone) {
-        throw new UnauthorizedError('Unauthorized');
-      }
-    }
+    await eventPermissionsService.assertPhoneMicrophone(event._id, {
+      userId,
+      role: userRole,
+    });
 
     const token = generateToken(
       {

@@ -1,13 +1,13 @@
 const {
   SongModel,
   EventModel,
-  EventMemberModel,
   AudioTrackModel,
 } = require('../models/schema');
 const { logger } = require('../utils');
 const { ForbiddenError, NotFoundError } = require('../errors');
 const { validateTransition } = require('../utils/song-state-machine');
 const participantsService = require('./participants.service');
+const eventPermissionsService = require('./event-permissions.service');
 
 class SongsService {
   async suggestSong(eventId, participantId, title, artist, totalDuration, actorUser) {
@@ -393,40 +393,7 @@ class SongsService {
   }
 
   async _assertSongAdmin(eventId, actorUser) {
-    const userId =
-      typeof actorUser === 'string'
-        ? actorUser
-        : actorUser?.userId?.toString() || actorUser?._id?.toString();
-    const role = typeof actorUser === 'object' ? actorUser?.role : null;
-
-    if (!userId) {
-      throw new ForbiddenError('User is required for this song action');
-    }
-
-    if (role === 'ADMIN') {
-      return;
-    }
-
-    const event = await EventModel.findById(eventId).select('ownerId').lean();
-    if (!event) {
-      throw new NotFoundError('Event not found');
-    }
-
-    if (event.ownerId?.toString() === userId.toString()) {
-      return;
-    }
-
-    const member = await EventMemberModel.findOne({ eventId, userId })
-      .select('permissions')
-      .lean();
-    if (
-      Array.isArray(member?.permissions) &&
-      member.permissions.includes('SONG_APPROVE_REJECT')
-    ) {
-      return;
-    }
-
-    throw new ForbiddenError('You do not have permission to manage songs in this event');
+    await eventPermissionsService.assertSongAdmin(eventId, actorUser);
   }
 }
 

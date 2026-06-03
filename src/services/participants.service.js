@@ -2,12 +2,11 @@ const bcrypt = require('bcryptjs');
 const {
   EventModel,
   ParticipantModel,
-  EventMemberModel,
 } = require('../models/schema');
 const { logger } = require('../utils');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../errors');
 
-const PARTICIPANT_MANAGE_PERMISSIONS = ['PARTICIPANT_KICK', 'PARTICIPANT_BAN'];
+const eventPermissionsService = require('./event-permissions.service');
 
 class ParticipantsService {
   async ensureNicknameIsNotAccessCode(nickname) {
@@ -508,38 +507,7 @@ class ParticipantsService {
       throw new ForbiddenError('You cannot moderate your own attendee session');
     }
 
-    if (role === 'ADMIN') {
-      return userId;
-    }
-
-    const event = await EventModel.findById(participant.eventId)
-      .select({ ownerId: 1 })
-      .lean();
-
-    if (event?.ownerId?.toString() === userId) {
-      return userId;
-    }
-
-    const membership = await EventMemberModel.findOne({
-      eventId: participant.eventId,
-      userId,
-    })
-      .select({ role: 1, permissions: 1 })
-      .lean();
-
-    const canManageParticipant =
-      membership?.role === 'DJ' ||
-      (Array.isArray(membership?.permissions) &&
-        PARTICIPANT_MANAGE_PERMISSIONS.some((permission) =>
-          membership.permissions.includes(permission),
-        ));
-
-    if (!canManageParticipant) {
-      throw new ForbiddenError(
-        'You do not have permission to manage attendees in this event',
-      );
-    }
-
+    await eventPermissionsService.assertParticipantAdmin(participant.eventId, { userId, role });
     return userId;
   }
 }

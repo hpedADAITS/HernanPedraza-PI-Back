@@ -1,5 +1,7 @@
 process.env.DEBUG_EMAIL = 'true';
 
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const request = require('supertest');
 const mongoose = require('mongoose');
@@ -20,11 +22,8 @@ const {
 jest.setTimeout(60000);
 
 let mongoServer;
+let fixture;
 
-const fixture = path.join(
-  __dirname,
-  '../../../audio-recognition-service-node/data/recording1.wav',
-);
 const authHeader = (token) => ({ Authorization: `Bearer ${token}` });
 const futureDate = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
@@ -76,6 +75,8 @@ function uploadTrack(eventId, token, overrides = {}) {
 }
 
 beforeAll(async () => {
+  fixture = path.join(os.tmpdir(), `audio-track-fixture-${process.pid}.wav`);
+  await fs.promises.writeFile(fixture, createWavFixture());
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri());
 });
@@ -83,6 +84,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await mongoose.disconnect();
   await mongoServer.stop();
+  await fs.promises.rm(fixture, { force: true });
 });
 
 beforeEach(async () => {
@@ -164,3 +166,34 @@ describe('Audio track REST integration', () => {
     await expect(AudioFingerprintHashModel.countDocuments({ trackId })).resolves.toBe(0);
   });
 });
+
+function createWavFixture() {
+  const sampleRate = 8000;
+  const samples = sampleRate * 5;
+  const data = Buffer.alloc(samples * 2);
+
+  for (let i = 0; i < samples; i += 1) {
+    const t = i / sampleRate;
+    const sample = (
+      Math.sin(2 * Math.PI * 440 * t) * 0.45
+      + Math.sin(2 * Math.PI * 960 * t) * 0.35
+      + Math.sin(2 * Math.PI * 1720 * t) * 0.2
+    ) * 0x7fff;
+    data.writeInt16LE(Math.max(-0x8000, Math.min(0x7fff, Math.round(sample))), i * 2);
+  }
+
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write('WAVEfmt ', 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(data.length, 40);
+  return Buffer.concat([header, data]);
+}

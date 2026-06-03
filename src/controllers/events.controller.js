@@ -17,6 +17,13 @@ function getSafeFrontendOrigin(value) {
   }
 }
 
+function isLoopbackOrigin(origin) {
+  if (!origin) return false;
+
+  const { hostname } = new URL(origin);
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
 const roomForEvent = (eventId) => `event:${eventId}`;
 
 class EventsController {
@@ -264,7 +271,12 @@ class EventsController {
       const host = req.get('host');
       const requestBase = getSafeFrontendOrigin(host ? `${req.protocol}://${host}` : '');
       const frontendBase =
-        origin || requestedOrigin || requestBase || config.frontendUrl;
+        requestedOrigin ||
+        (!isLoopbackOrigin(origin) && origin) ||
+        (!isLoopbackOrigin(requestBase) && requestBase) ||
+        config.frontendUrl ||
+        origin ||
+        requestBase;
 
       const link = await eventsService.getPhoneMicrophoneLink(
         eventId,
