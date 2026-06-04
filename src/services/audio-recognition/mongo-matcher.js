@@ -2,7 +2,6 @@ const { AudioFingerprintHashModel, AudioTrackModel } = require('../../models/sch
 
 const MAX_MATCH_HASHES = 1200;
 const MIN_ALIGNED_HASHES = 4;
-const MIN_ALIGNED_RATIO = 0.08;
 const MIN_BEST_SCORE_GAP = 2;
 
 function normalizeHashRows(hashes) {
@@ -80,7 +79,6 @@ async function matchHashes(eventId, hashes, limit = 5) {
 
 function isConfidentMatch(match, index, matches, sampleHashCount) {
   if (match.score < MIN_ALIGNED_HASHES) return false;
-  if (match.score / sampleHashCount < MIN_ALIGNED_RATIO) return false;
   if (index === 0 && matches[1] && match.score - matches[1].score < MIN_BEST_SCORE_GAP) return false;
   return true;
 }

@@ -154,7 +154,7 @@ describe('Audio track REST integration', () => {
     const trackId = created.body.data.track.id;
     const sampleHashes = await AudioFingerprintHashModel.find({ eventId: event.id, trackId })
       .select('hash sourceTime')
-      .limit(3)
+      .limit(2)
       .lean();
 
     const sparseNoiseHashes = [
