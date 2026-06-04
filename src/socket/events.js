@@ -144,6 +144,27 @@ const handleJoinEvent = async (socket, io, data) => {
   socket.participantId =
     authorizedParticipant?._id?.toString() || participantId || null;
 
+  // Ensure participant is persisted in MongoDB when joining via socket
+  // This fixes participants appearing in DJ connected users list
+  let persistedParticipant = authorizedParticipant;
+  if (!persistedParticipant && nickname && eventId) {
+    try {
+      const userId = socketUserId(socket);
+      // joinEvent handles creation or reactivation if nickname exists
+      persistedParticipant = await participantsService.joinEvent(
+        eventId,
+        nickname,
+        data.profilePicture || null,
+        undefined, // no password for socket joins
+        userId,
+      );
+      socket.participantId = persistedParticipant?._id?.toString() || participantId;
+    } catch (err) {
+      // May fail for duplicate or protected nickname - that's okay for socket-only join
+      logger.warn('Persist socket participant:', err.message);
+    }
+  }
+
   logger.info(`Socket joined event ${eventId}`, {
     participantId: socket.participantId,
     userId: socketUserId(socket),

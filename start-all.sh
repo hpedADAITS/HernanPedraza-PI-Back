@@ -83,7 +83,7 @@ echo "Frontend: http://localhost:5173"
 echo "Backend:  http://localhost:5000/api/v1"
 
 # Handle cleanup on exit
-trap "kill $BACK_PID $FRONT_PID 2>/dev/null; cd $BACK_DIR && docker compose down; echo 'Services stopped.'" EXIT
+trap "rm -rf "$FRONT_DIR"/.certs" kill $BACK_PID $FRONT_PID 2>/dev/null; cd $BACK_DIR && docker compose down; echo 'Services stopped.'" EXIT
 
 # Keep open
 wait

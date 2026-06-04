@@ -31,7 +31,7 @@ class EventPermissionsService {
     const userId = actorId(actor);
     if (!userId) return { event, userId: null, role: null, isOwner: false, isAdmin: false, member: null };
 
-    const isAdmin = actor?.role === 'ADMIN';
+    const isAdmin = actor?.role === 'ADMIN' || actor?.role === 'DJ';
     const isOwner = objectId(event.ownerId)?.toString() === userId.toString();
     const member = isOwner || isAdmin
       ? null

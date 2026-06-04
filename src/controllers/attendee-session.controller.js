@@ -41,6 +41,20 @@ class AttendeeSessionController {
       next(error);
     }
   }
+
+  async markTutorialAsSeen(req, res, next) {
+    try {
+      const result = await attendeeSessionService.markTutorialAsSeen(req.user.userId);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      logger.error('Mark tutorial as seen error:', error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new AttendeeSessionController();

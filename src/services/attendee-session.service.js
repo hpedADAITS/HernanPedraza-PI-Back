@@ -75,6 +75,11 @@ class AttendeeSessionService {
     };
   }
 
+  async markTutorialAsSeen(userId) {
+    await UserModel.findByIdAndUpdate(userId, { hasSeenTutorial: true });
+    return { success: true };
+  }
+
   async _getExistingParticipant(eventId, nickname, dbSession) {
     await participantsService.ensureNicknameIsNotAccessCode(nickname);
     return ParticipantModel.findOne({
@@ -138,6 +143,7 @@ class AttendeeSessionService {
       displayName: user.displayName,
       profilePicture: user.profilePicture,
       role: user.role,
+      hasSeenTutorial: user.hasSeenTutorial,
     };
   }
 }

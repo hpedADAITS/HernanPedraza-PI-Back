@@ -45,4 +45,11 @@ router.get(
   authController.verifyEmailToken.bind(authController),
 );
 
+/* Mark tutorial as seen (protected endpoint) */
+router.post(
+  '/mark-tutorial-seen',
+  authenticate,
+  authController.markTutorialAsSeen.bind(authController),
+);
+
 module.exports = router;

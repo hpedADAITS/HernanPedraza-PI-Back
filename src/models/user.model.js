@@ -37,6 +37,7 @@ const UserSchema = new Schema(
     emailVerificationLastSentAt: { type: Date, default: null },
     emailVerificationTokenId: { type: String, default: null, index: true },
     authTokenVersion: { type: Number, default: 0 },
+    hasSeenTutorial: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

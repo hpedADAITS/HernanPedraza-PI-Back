@@ -100,6 +100,7 @@ class AuthService {
         displayName: user.displayName,
         profilePicture: user.profilePicture,
         role: user.role,
+        emailRegistered: user.emailRegistered,
       },
     };
   }
@@ -125,6 +126,9 @@ class AuthService {
     /* Update last login and invalidate older auth tokens */
     user.lastLoginAt = new Date();
     user.authTokenVersion = (user.authTokenVersion || 0) + 1;
+    if (!user.hasSeenTutorial) {
+      user.hasSeenTutorial = false; // Will be set to true after tutorial is shown
+    }
     await user.save();
 
     /* Generate token with user metadata */
@@ -140,6 +144,8 @@ class AuthService {
         displayName: user.displayName,
         profilePicture: user.profilePicture,
         role: user.role,
+        emailRegistered: user.emailRegistered,
+        hasSeenTutorial: user.hasSeenTutorial,
       },
     };
   }
@@ -172,7 +178,18 @@ class AuthService {
       lastLoginAt: user.lastLoginAt,
       emailRegistered: user.emailRegistered,
       emailRegisteredAt: user.emailRegisteredAt,
+      hasSeenTutorial: user.hasSeenTutorial,
     };
+  }
+
+  async markTutorialAsSeen(userId) {
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
+    }
+    user.hasSeenTutorial = true;
+    await user.save();
+    return { success: true };
   }
 
   async updateProfile(userId, updates) {
@@ -312,12 +329,19 @@ class AuthService {
       await user.save();
       logger.info(`Email verified via token for user: ${user.email}`);
 
+      // Generate new token with updated emailRegistered status
+      const token = this.buildAuthToken(user);
+
       return {
-        id: user._id,
-        email: user.email,
-        displayName: user.displayName,
-        role: user.role,
-        emailRegistered: user.emailRegistered,
+        token,
+        user: {
+          id: user._id,
+          email: user.email,
+          displayName: user.displayName,
+          profilePicture: user.profilePicture,
+          role: user.role,
+          emailRegistered: user.emailRegistered,
+        },
       };
     } catch (error) {
       if (

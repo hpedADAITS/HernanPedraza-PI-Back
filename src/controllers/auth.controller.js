@@ -141,6 +141,20 @@ class AuthController {
     }
   }
 
+  async markTutorialAsSeen(req, res, next) {
+    try {
+      const result = await authService.markTutorialAsSeen(req.user.userId);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      logger.error('Mark tutorial as seen error:', error);
+      next(error);
+    }
+  }
+
 }
 
 module.exports = new AuthController();

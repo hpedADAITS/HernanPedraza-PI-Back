@@ -423,6 +423,7 @@ class ParticipantsService {
 
     return {
       _id: participant._id.toString(),
+      userId: participant.userId?.toString(),
       eventId: participant.eventId,
       nickname: participant.nickname,
       profilePicture: participant.profilePicture,
