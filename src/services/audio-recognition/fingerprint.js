@@ -3,13 +3,32 @@
 const fs = require("fs");
 const { createConstellation } = require("./constellation");
 const { createHashes } = require("./hashes");
-const { readWav } = require("./wav");
+const { readWavNormalized, TARGET_SAMPLE_RATE } = require("./wav");
 
 function fingerprintWav(file, songId = null) {
-  const { sampleRate, samples } = readWav(file);
+  const { sampleRate, samples, originalSampleRate } = readWavNormalized(
+    file,
+    TARGET_SAMPLE_RATE
+  );
+
   const constellation = createConstellation(samples, sampleRate);
-  const hashes = [...createHashes(constellation, songId)].map(([hash, [time, id]]) => ({ hash, time, songId: id }));
-  return { file, sampleRate, duration: samples.length / sampleRate, points: constellation.length, hashes };
+
+  const hashes = [...createHashes(constellation, songId)].map(
+    ([hash, [time, id]]) => ({
+      hash,
+      time,
+      songId: id,
+    })
+  );
+
+  return {
+    file,
+    sampleRate,
+    originalSampleRate,
+    duration: samples.length / sampleRate,
+    points: constellation.length,
+    hashes,
+  };
 }
 
 function saveFingerprint(fingerprint, file) {
@@ -21,7 +40,17 @@ function loadFingerprint(file) {
 }
 
 function hashMapFromFingerprint(fingerprint) {
-  return new Map(fingerprint.hashes.map(({ hash, time, songId = null }) => [hash, [time, songId]]));
+  return new Map(
+    fingerprint.hashes.map(({ hash, time, songId = null }) => [
+      hash,
+      [time, songId],
+    ])
+  );
 }
 
-module.exports = { fingerprintWav, hashMapFromFingerprint, loadFingerprint, saveFingerprint };
+module.exports = {
+  fingerprintWav,
+  hashMapFromFingerprint,
+  loadFingerprint,
+  saveFingerprint,
+};

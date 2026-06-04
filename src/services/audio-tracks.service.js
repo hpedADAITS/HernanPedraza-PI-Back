@@ -14,7 +14,7 @@ const eventPermissionsService = require('./event-permissions.service');
 const songsService = require('./songs.service');
 const { createConstellation } = require('./audio-recognition/constellation');
 const { createHashes } = require('./audio-recognition/hashes');
-const { readWav } = require('./audio-recognition/wav');
+const { readWavNormalized } = require('./audio-recognition/wav');
 const { matchHashes } = require('./audio-recognition/mongo-matcher');
 
 const ALLOWED_AUDIO_TYPES = new Set([
@@ -38,7 +38,7 @@ class AudioTracksService {
     const tmpFile = await writeTempFile(file);
 
     try {
-      const { sampleRate, samples } = readWav(tmpFile);
+      const { sampleRate, samples } = readWavNormalized(tmpFile);
       const points = createConstellation(samples, sampleRate);
       const hashRows = [...createHashes(points)];
 
@@ -112,7 +112,7 @@ class AudioTracksService {
     const tmpFile = await writeTempFile(file);
 
     try {
-      const { sampleRate, samples } = readWav(tmpFile);
+      const { sampleRate, samples } = readWavNormalized(tmpFile);
       const points = createConstellation(samples, sampleRate);
       const hashes = [...createHashes(points)].map(([hash, [time]]) => ({ hash, time }));
       return matchHashes(eventObjectId, hashes);

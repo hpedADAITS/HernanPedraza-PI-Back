@@ -219,3 +219,45 @@ function createWavFixture() {
   header.writeUInt32LE(data.length, 40);
   return Buffer.concat([header, data]);
 }
+
+test('matches stored WAV against simulated streaming phone PCM chunks', async () => {
+  const dj = await createVerifiedDj();
+  const event = await createEvent(dj.token);
+
+  const uploaded = await uploadTrack(event.id, dj.token).expect(201);
+  const trackId = uploaded.body.data.track.id;
+
+  const wav = createWavFixture();
+
+  // Strip WAV header. Simulate raw microphone PCM.
+  const pcm16 = wav.subarray(44);
+
+  const samples = new Float32Array(pcm16.length / 2);
+
+  for (let i = 0; i < samples.length; i += 1) {
+    samples[i] = pcm16.readInt16LE(i * 2) / 32768;
+  }
+
+  const chunkSize = 16000; // 1 second if your target rate is 16k
+  const allHashes = [];
+
+  const fingerprinter = createStreamingFingerprinter({
+    sampleRate: 16000,
+  });
+
+  for (let offset = 0; offset < samples.length; offset += chunkSize) {
+    const chunk = samples.subarray(offset, offset + chunkSize);
+    const hashes = fingerprinter.process(chunk) ?? [];
+    allHashes.push(...hashes);
+  }
+
+  const matches = await audioTracksService.matchHashes(event.id, allHashes);
+
+  expect(matches[0]).toMatchObject({
+    trackId,
+    title: 'Fixture Track',
+    artist: 'Fixture Artist',
+  });
+
+  expect(matches[0].score).toBeGreaterThan(0);
+});

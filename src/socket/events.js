@@ -1,11 +1,27 @@
 const { logger } = require('../utils');
 const { requireFields } = require('./middleware');
-const { isInEventRoom, joinEventRoom, leaveEventRoom, toEventRoom } = require('./rooms');
+const {
+  isInEventRoom,
+  joinEventRoom,
+  leaveEventRoom,
+  toEventRoom,
+} = require('./rooms');
 const { ackSuccess, ackError } = require('./ack');
 const { validateTransition } = require('../utils/song-state-machine');
-const { audioTracksService, songsService, votesService, participantsService } = require('../services');
+const {
+  audioTracksService,
+  songsService,
+  votesService,
+  participantsService,
+} = require('../services');
 const { SongModel } = require('../models/schema');
-const { StreamingFingerprinter } = require('../services/audio-recognition/streaming');
+const {
+  TARGET_SAMPLE_RATE,
+  resampleLinear,
+} = require('../services/audio-recognition/wav');
+const {
+  StreamingFingerprinter,
+} = require('../services/audio-recognition/streaming');
 const {
   assertEventRoomAccess,
   isSocketAuthOptional,
@@ -40,7 +56,10 @@ const rejectLegacyCommand = (socket, eventName) => {
 
 const assertAudioEventAccess = async (socket, eventId) => {
   if (!isValidId(eventId)) throw new Error('Invalid event ID');
-  if (socket.user?.type === 'phone-microphone' && socket.user.eventId !== eventId) {
+  if (
+    socket.user?.type === 'phone-microphone' &&
+    socket.user.eventId !== eventId
+  ) {
     throw new Error('Invalid phone microphone token');
   }
   await audioTracksService.listTracks(eventId, socket.user);
@@ -51,6 +70,42 @@ const float32 = (data) => {
   const out = new Float32Array(buffer.length >>> 2);
   for (let i = 0; i < out.length; i++) out[i] = buffer.readFloatLE(i << 2);
   return out;
+};
+
+const extractFloat32Pcm = (payload) => {
+  if (payload instanceof Float32Array) {
+    return payload;
+  }
+
+  if (payload instanceof ArrayBuffer) {
+    return new Float32Array(payload);
+  }
+
+  if (Buffer.isBuffer(payload)) {
+    if (payload.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
+      throw new Error(`Invalid Float32 PCM byte length: ${payload.byteLength}`);
+    }
+
+    return new Float32Array(
+      payload.buffer,
+      payload.byteOffset,
+      payload.byteLength / Float32Array.BYTES_PER_ELEMENT,
+    );
+  }
+
+  if (ArrayBuffer.isView(payload)) {
+    if (payload.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
+      throw new Error(`Invalid typed PCM byte length: ${payload.byteLength}`);
+    }
+
+    return new Float32Array(
+      payload.buffer,
+      payload.byteOffset,
+      payload.byteLength / Float32Array.BYTES_PER_ELEMENT,
+    );
+  }
+
+  throw new Error(`Unsupported audio chunk payload: ${typeof payload}`);
 };
 
 const emitQueueUpdated = async (io, eventId) => {
@@ -85,20 +140,25 @@ const handleJoinEvent = async (socket, io, data) => {
 
   joinEventRoom(socket, eventId);
   socket.eventId = eventId;
-  socket.participantId = authorizedParticipant?._id?.toString() || participantId || null;
+  socket.participantId =
+    authorizedParticipant?._id?.toString() || participantId || null;
 
   logger.info(`Socket joined event ${eventId}`, {
     participantId: socket.participantId,
     userId: socketUserId(socket),
   });
 
-  let profilePicture = authorizedParticipant?.profilePicture || data.profilePicture || null;
+  let profilePicture =
+    authorizedParticipant?.profilePicture || data.profilePicture || null;
   if (participantId && !profilePicture && !isSocketAuthOptional(socket)) {
     try {
-      const participant = await participantsService.getParticipant(participantId);
+      const participant =
+        await participantsService.getParticipant(participantId);
       profilePicture = participant.profilePicture || null;
     } catch (error) {
-      logger.warn(`Unable to load participant picture for socket join: ${participantId}`);
+      logger.warn(
+        `Unable to load participant picture for socket join: ${participantId}`,
+      );
     }
   }
 
@@ -166,7 +226,12 @@ const handleVotesCast = async (socket, io, data) => {
 
   logger.info(`Vote cast: song ${songId}, value ${value}`);
 
-  const result = await votesService.castVote(songId, participantId, value, socket.user);
+  const result = await votesService.castVote(
+    songId,
+    participantId,
+    value,
+    socket.user,
+  );
   const song = result.song;
 
   toEventRoom(io, eventId).emit('votes_updated', {
@@ -233,7 +298,10 @@ const handleSongApproved = async (socket, io, data) => {
   const { eventId, songId } = data;
 
   if (!eventId || !songId) {
-    logger.error(`Invalid song data - eventId: ${eventId}, songId: ${songId}`, data);
+    logger.error(
+      `Invalid song data - eventId: ${eventId}, songId: ${songId}`,
+      data,
+    );
     socket.emit('error', {
       message: 'Invalid song data',
       details: { eventId: !eventId, songId: !songId },
@@ -243,7 +311,9 @@ const handleSongApproved = async (socket, io, data) => {
 
   try {
     const { SongModel } = require('../models/schema');
-    const song = await SongModel.findById(songId).select('title artist status eventId');
+    const song = await SongModel.findById(songId).select(
+      'title artist status eventId',
+    );
 
     if (!song) {
       socket.emit('error', { message: 'Song not found' });
@@ -284,7 +354,10 @@ const handleSongRejected = async (socket, io, data) => {
   const { eventId, songId, reason } = data;
 
   if (!eventId || !songId) {
-    logger.error(`Invalid song data - eventId: ${eventId}, songId: ${songId}`, data);
+    logger.error(
+      `Invalid song data - eventId: ${eventId}, songId: ${songId}`,
+      data,
+    );
     socket.emit('error', {
       message: 'Invalid song data',
       details: { eventId: !eventId, songId: !songId },
@@ -334,7 +407,10 @@ const handleSongSkipped = async (socket, io, data) => {
   const { eventId, songId, reason } = data;
 
   if (!eventId || !songId) {
-    logger.error(`Invalid song data - eventId: ${eventId}, songId: ${songId}`, data);
+    logger.error(
+      `Invalid song data - eventId: ${eventId}, songId: ${songId}`,
+      data,
+    );
     socket.emit('error', {
       message: 'Invalid song data',
       details: { eventId: !eventId, songId: !songId },
@@ -405,7 +481,9 @@ const handleParticipantCooldown = async (socket, io, data) => {
   const { eventId, participantId, reason } = data;
 
   if (!eventId || !participantId) {
-    logger.error(`Invalid participant data - eventId: ${eventId}, participantId: ${participantId}`);
+    logger.error(
+      `Invalid participant data - eventId: ${eventId}, participantId: ${participantId}`,
+    );
     socket.emit('error', {
       message: 'Invalid participant data',
     });
@@ -438,7 +516,9 @@ const handleParticipantKicked = async (socket, io, data) => {
   const { eventId, participantId, reason } = data;
 
   if (!eventId || !participantId) {
-    logger.error(`Invalid participant data - eventId: ${eventId}, participantId: ${participantId}`);
+    logger.error(
+      `Invalid participant data - eventId: ${eventId}, participantId: ${participantId}`,
+    );
     socket.emit('error', {
       message: 'Invalid participant data',
     });
@@ -471,7 +551,9 @@ const handleParticipantBanned = async (socket, io, data) => {
   const { eventId, participantId, reason } = data;
 
   if (!eventId || !participantId) {
-    logger.error(`Invalid participant data - eventId: ${eventId}, participantId: ${participantId}`);
+    logger.error(
+      `Invalid participant data - eventId: ${eventId}, participantId: ${participantId}`,
+    );
     socket.emit('error', {
       message: 'Invalid participant data',
     });
@@ -500,7 +582,15 @@ const handleParticipantBanned = async (socket, io, data) => {
 };
 
 const handleSongNowPlaying = async (socket, io, data) => {
-  const { eventId, songId, title, artist, totalDuration, duration, recognitionMatch } = data;
+  const {
+    eventId,
+    songId,
+    title,
+    artist,
+    totalDuration,
+    duration,
+    recognitionMatch,
+  } = data;
 
   if (!eventId || !songId || !title || !artist) {
     logger.error(`Invalid song data for now_playing`, data);
@@ -546,11 +636,21 @@ const handleSongNowPlaying = async (socket, io, data) => {
  */
 const handleSuggestSong = async (socket, io, data, callback) => {
   try {
-    const { eventId, participantId, title, artist, totalDuration, duration, userId } = data;
+    const {
+      eventId,
+      participantId,
+      title,
+      artist,
+      totalDuration,
+      duration,
+      userId,
+    } = data;
 
     // Validation
     if (!eventId || !participantId || !title || !artist) {
-      throw new Error('Missing required fields: eventId, participantId, title, artist');
+      throw new Error(
+        'Missing required fields: eventId, participantId, title, artist',
+      );
     }
 
     if (!isValidId(eventId) || !isValidId(participantId)) {
@@ -756,10 +856,16 @@ const handleCastVote = async (socket, io, data, callback) => {
     const { eventId, songId, participantId, value, userId } = data;
 
     if (!eventId || !songId || !participantId) {
-      throw new Error('Missing required fields: eventId, songId, participantId, value');
+      throw new Error(
+        'Missing required fields: eventId, songId, participantId, value',
+      );
     }
 
-    if (!isValidId(eventId) || !isValidId(songId) || !isValidId(participantId)) {
+    if (
+      !isValidId(eventId) ||
+      !isValidId(songId) ||
+      !isValidId(participantId)
+    ) {
       throw new Error('Invalid ID format');
     }
 
@@ -815,10 +921,16 @@ const handleRemoveVote = async (socket, io, data, callback) => {
     const { eventId, songId, participantId, userId } = data;
 
     if (!eventId || !songId || !participantId) {
-      throw new Error('Missing required fields: eventId, songId, participantId');
+      throw new Error(
+        'Missing required fields: eventId, songId, participantId',
+      );
     }
 
-    if (!isValidId(eventId) || !isValidId(songId) || !isValidId(participantId)) {
+    if (
+      !isValidId(eventId) ||
+      !isValidId(songId) ||
+      !isValidId(participantId)
+    ) {
       throw new Error('Invalid ID format');
     }
 
@@ -853,7 +965,9 @@ const handleSetCooldown = async (socket, io, data, callback) => {
     const actor = eventActor(socket, userId);
 
     if (!eventId || !participantId || !durationMs || !actor) {
-      throw new Error('Missing required fields: eventId, participantId, durationMs');
+      throw new Error(
+        'Missing required fields: eventId, participantId, durationMs',
+      );
     }
 
     if (!isValidId(eventId) || !isValidId(participantId)) {
@@ -879,7 +993,11 @@ const handleSetCooldown = async (socket, io, data, callback) => {
       timestamp: new Date().toISOString(),
     });
 
-    logger.info('Cooldown set via Socket.IO', { participantId, eventId, durationMs });
+    logger.info('Cooldown set via Socket.IO', {
+      participantId,
+      eventId,
+      durationMs,
+    });
     ackSuccess(callback, result.participant);
   } catch (error) {
     logger.error('Error setting cooldown via Socket.IO:', error);
@@ -1007,7 +1125,10 @@ const handleSetPremium = async (socket, io, data, callback) => {
       });
     }
 
-    logger.info('Premium status set via Socket.IO', { participantId, isPremium });
+    logger.info('Premium status set via Socket.IO', {
+      participantId,
+      isPremium,
+    });
     ackSuccess(callback, participant);
   } catch (error) {
     logger.error('Error setting premium via Socket.IO:', error);
@@ -1017,11 +1138,11 @@ const handleSetPremium = async (socket, io, data, callback) => {
 
 const handleAudioMatchStart = async (socket, io, data, callback) => {
   try {
-    const { eventId, sampleRate } = data || {};
+    const { eventId } = data || {};
     await assertAudioEventAccess(socket, eventId);
     socket.audioMatch = {
       eventId,
-      fingerprinter: new StreamingFingerprinter(Number(sampleRate)),
+      fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE),
       lastEmitAt: 0,
     };
     ackSuccess(callback, { eventId });
@@ -1034,21 +1155,65 @@ const handleAudioMatchStart = async (socket, io, data, callback) => {
 const handleAudioMatchChunk = async (socket, io, data, callback) => {
   try {
     if (!socket.audioMatch) throw new Error('Audio matcher has not started');
+
     const session = socket.audioMatch;
-    const hashes = session.fingerprinter.process(float32(data));
+
+    // Extract Float32 PCM from payload.
+    const rawSamples = extractFloat32Pcm(data?.pcm ?? data);
+
+    // Prefer per-chunk sampleRate. Fall back to session sampleRate.
+    const inputSampleRate = Number(data?.sampleRate ?? session.inputSampleRate);
+
+    if (!Number.isFinite(inputSampleRate) || inputSampleRate <= 0) {
+      throw new Error(
+        `Invalid audio chunk sampleRate: ${data?.sampleRate ?? session.inputSampleRate}`,
+      );
+    }
+
+    // Normalize browser/phone audio to the recognition sample rate.
+    const samples = resampleLinear(
+      rawSamples,
+      inputSampleRate,
+      TARGET_SAMPLE_RATE,
+    );
+
+    const hashes = session.fingerprinter.process(samples) ?? [];
+
     const now = Date.now();
+
     if (hashes.length && now - session.lastEmitAt > 700) {
       session.lastEmitAt = now;
-      const matches = await audioTracksService.matchHashes(session.eventId, hashes);
+
+      const matches = await audioTracksService.matchHashes(
+        session.eventId,
+        hashes,
+      );
+
       socket.emit('audio_match_update', {
         eventId: session.eventId,
         matches,
         timestamp: new Date().toISOString(),
       });
     }
-    ackSuccess(callback, { hashes: hashes.length });
+
+    ackSuccess(callback, {
+      hashes: hashes.length,
+      inputSamples: rawSamples.length,
+      normalizedSamples: samples.length,
+      inputSampleRate,
+      targetSampleRate: TARGET_SAMPLE_RATE,
+    });
   } catch (error) {
-    logger.error('Error matching audio chunk:', error);
+    logger.error('Error matching audio chunk:', {
+      message: error.message,
+      stack: error.stack,
+      dataType: data?.constructor?.name,
+      pcmType: data?.pcm?.constructor?.name,
+      isBuffer: Buffer.isBuffer(data?.pcm ?? data),
+      byteLength: data?.pcm?.byteLength ?? data?.byteLength,
+      length: data?.pcm?.length ?? data?.length,
+    });
+
     ackError(callback, error);
   }
 };
@@ -1057,7 +1222,10 @@ const handleAudioMatchStop = async (socket, io, data, callback) => {
   try {
     if (socket.audioMatch) {
       const { eventId, fingerprinter } = socket.audioMatch;
-      const matches = await audioTracksService.matchHashes(eventId, fingerprinter.flush());
+      const matches = await audioTracksService.matchHashes(
+        eventId,
+        fingerprinter.flush(),
+      );
       socket.emit('audio_match_update', {
         eventId,
         matches,
@@ -1087,7 +1255,6 @@ module.exports = {
   handleParticipantKicked,
   handleParticipantBanned,
   handleSongNowPlaying,
-  // Socket.IO Primary State Changes
   handleSuggestSong,
   handleApproveSong,
   handleRejectSong,
