@@ -131,7 +131,7 @@ describe('Socket.IO server integration', () => {
     const client = Client(serverUrl, {
       forceNew: true,
       reconnection: false,
-      transports: ['websocket'],
+      transports: ['polling','websocket'],
     });
     clients.push(client);
     await waitForEvent(client, 'connect');
