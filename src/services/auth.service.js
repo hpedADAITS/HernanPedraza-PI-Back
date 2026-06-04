@@ -284,7 +284,11 @@ class AuthService {
   }
 
   async verifyEmailToken(token) {
-    /* Detailed token inspection */
+    // First: Check environment/secret loading
+    logger.info('=== DEBUG CONFIG ===');
+    logger.info('config.jwtSecret exists:', !!config.jwtSecret);
+    logger.info('config.jwtSecret length:', config.jwtSecret ? config.jwtSecret.length : 'N/A');
+    logger.info('=====================');
     logger.info('Step 1: token received, checking type...');
     logger.info('  token is null:', token === null);
     logger.info('  token is undefined:', token === undefined);
