@@ -1,10 +1,14 @@
-const { VoteModel, SongModel } = require('../models/schema');
+const { VoteModel, SongModel, EventModel } = require('../models/schema');
 const { logger } = require('../utils');
 const { ValidationError, NotFoundError } = require('../errors');
 const participantsService = require('./participants.service');
 
 const AUTO_REJECT_SCORE = -8;
 const AUTO_REJECT_REASON = 'Rejected by downvotes';
+
+// Premium vote weights more
+const PREMIUM_VOTE_WEIGHT = 2;
+const REGULAR_VOTE_WEIGHT = 1;
 
 class VotesService {
   async castVote(songId, participantId, value, actorUser) {
@@ -25,21 +29,27 @@ class VotesService {
       { checkCooldown: true, actorUser },
     );
 
+    /* Get voter's premium status for vote weight */
+    const voter = await participantsService.getParticipantById(participantId);
+    const voteWeight = voter?.isPremium ? PREMIUM_VOTE_WEIGHT : REGULAR_VOTE_WEIGHT;
+
     /* Check if participant already voted */
     let existingVote = await VoteModel.findOne({ songId, participantId });
 
     if (existingVote) {
       /* Update existing vote */
       const oldValue = existingVote.value;
+      const oldWeightedValue = oldValue * (existingVote.isPremiumVote ? PREMIUM_VOTE_WEIGHT : REGULAR_VOTE_WEIGHT);
       existingVote.value = value;
+      existingVote.isPremiumVote = voter?.isPremium || false;
       await existingVote.save();
 
-      /* Update song vote score */
-      song.voteScore = song.voteScore - oldValue + value;
+      /* Update song vote score with weight difference */
+      song.voteScore = song.voteScore - oldWeightedValue + (value * voteWeight);
       await this._applyAutoReject(song);
       await song.save();
 
-      logger.info(`Vote updated for song ${songId}: ${oldValue} -> ${value}`);
+      logger.info(`Vote updated for song ${songId}: ${oldValue}(${oldWeightedValue}) -> ${value}(${voteWeight}), new score: ${song.voteScore}`);
       const formattedVote = this._formatVote(existingVote);
       return {
         ...formattedVote,
@@ -54,17 +64,18 @@ class VotesService {
       songId,
       participantId,
       value,
+      isPremiumVote: voter?.isPremium || false,
     });
 
     await vote.save();
 
-    /* Update song vote score */
-    song.voteScore += value;
+    /* Update song vote score with weight */
+    song.voteScore += value * voteWeight;
     song.voteCount += 1;
     await this._applyAutoReject(song);
     await song.save();
 
-    logger.info(`Vote cast for song ${songId}: ${value}`);
+    logger.info(`Vote cast for song ${songId}: ${value}(${voteWeight}), new score: ${song.voteScore}`);
     const formattedVote = this._formatVote(vote);
     return {
       ...formattedVote,
@@ -152,8 +163,12 @@ class VotesService {
   }
 
   async _applyAutoReject(song) {
+    // Fetch event settings to get custom skip threshold
+    const eventSettings = await EventModel.findById(song.eventId).select('settings').lean();
+    const threshold = eventSettings?.settings?.skipThreshold ?? AUTO_REJECT_SCORE;
+    
     if (
-      song.voteScore <= AUTO_REJECT_SCORE &&
+      song.voteScore <= threshold &&
       ['PENDING', 'APPROVED'].includes(song.status)
     ) {
       song.status = 'REJECTED';

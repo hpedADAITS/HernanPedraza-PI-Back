@@ -261,6 +261,41 @@ class SongsController {
       next(error);
     }
   }
+
+  async playNext(req, res, next) {
+    try {
+      const { eventId } = req.params;
+
+      const song = await songsService.playNextSong(eventId, req.user);
+
+      if (!song) {
+        return res.status(httpStatus.NOT_FOUND).json({
+          success: false,
+          error: 'No approved songs in queue',
+        });
+      }
+
+      this.emitSongEvent(eventId, 'song_now_playing', {
+        songId: getSongId(song),
+        title: song.title,
+        artist: song.artist,
+        recognitionMatch: song.recognitionMatch || null,
+        status: song.status,
+        totalDuration: song.totalDuration || 0,
+        duration: song.duration || 0,
+        playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
+      });
+      await this.emitQueueUpdated(eventId);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { song },
+      });
+    } catch (error) {
+      logger.error('Play next song error:', error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new SongsController();

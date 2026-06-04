@@ -59,14 +59,12 @@ class EmailService {
     user.emailVerificationTokenId = verificationTokenId;
     await user.save();
 
-    /* Debug mode: bypass email sending */
+    /* Debug mode: bypass email sending, always expose token */
     if (process.env.DEBUG_EMAIL === 'true') {
-      if (canExposeVerificationToken()) {
-        logger.info(`[DEBUG] Email verification token for ${email}: ${verificationToken}`);
-      }
+      logger.info(`[DEBUG] Email verification token for ${email}: ${verificationToken}`);
       return {
         success: true,
-        ...(canExposeVerificationToken() && { token: verificationToken }),
+        token: verificationToken,
       };
     }
 

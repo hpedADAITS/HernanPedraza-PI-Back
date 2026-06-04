@@ -38,6 +38,9 @@ const ParticipantSchema = new Schema(
 
     isPremium: { type: Boolean, default: false, index: true },
 
+    // Track how many songs this participant has had approved
+    approvalCount: { type: Number, default: 0 },
+
     leftAt: { type: Date },
   },
   { timestamps: true },

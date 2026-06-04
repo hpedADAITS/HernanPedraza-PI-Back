@@ -2,6 +2,7 @@ const {
   SongModel,
   EventModel,
   AudioTrackModel,
+  ParticipantModel,
 } = require('../models/schema');
 const crypto = require('crypto');
 const { logger } = require('../utils');
@@ -20,6 +21,10 @@ class SongsService {
       { checkCooldown: true },
     );
 
+    // Check if participant is premium for queue priority
+    const participant = await participantsService.getParticipantById(participantId);
+    const isPremiumSuggestion = participant?.isPremium || false;
+
     const recognitionMatch = await this._findRecognitionMatch(
       eventId,
       title,
@@ -37,6 +42,7 @@ class SongsService {
       recognitionMatch,
       requestedBy: participantId,
       status: 'PENDING',
+      isPremiumSuggestion,
       sortKey: `${Date.now()}_${crypto.randomUUID()}`,
       totalDuration: resolvedDuration,
     });
@@ -52,8 +58,13 @@ class SongsService {
       eventId,
       status: { $in: ['APPROVED', 'PLAYING'] },
     })
-      .populate('requestedBy', 'nickname profilePicture')
-      .sort({ pinned: -1, voteScore: -1, sortKey: 1 });
+      .populate('requestedBy', 'nickname profilePicture isPremium approvalCount')
+      .sort({
+        pinned: -1,
+        isPremiumSuggestion: -1,  // Premium songs first
+        voteScore: -1,            // Then by votes (within premium group)
+        sortKey: 1,
+      });
 
     return this._withQueuePositions(songs);
   }
@@ -71,8 +82,8 @@ class SongsService {
       eventId,
       status: 'PENDING',
     })
-      .populate('requestedBy', 'nickname profilePicture')
-      .sort({ createdAt: 1 });
+      .populate('requestedBy', 'nickname profilePicture isPremium approvalCount')
+      .sort({ isPremiumSuggestion: -1, createdAt: 1 });
 
     return songs.map((s) => this._formatSong(s));
   }
@@ -98,6 +109,14 @@ class SongsService {
     }
     song.status = 'APPROVED';
     await song.save();
+
+    // Increment approval count for the participant who suggested this song
+    const participantId = song.requestedBy;
+    if (participantId) {
+      await ParticipantModel.findByIdAndUpdate(participantId, {
+        $inc: { approvalCount: 1 },
+      });
+    }
 
     logger.info(`Song approved: ${song._id}`, {
       eventId,

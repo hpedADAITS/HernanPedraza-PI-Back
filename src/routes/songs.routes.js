@@ -42,4 +42,10 @@ router.get(
   songsController.getSongPosition.bind(songsController),
 );
 
+/* Quick actions */
+router.post(
+  '/:eventId/play-next',
+  songsController.playNext.bind(songsController),
+);
+
 module.exports = router;

@@ -169,7 +169,7 @@ class AudioTracksService {
 
     const song = await SongModel.findOne({
       eventId: eventObjectId,
-      status: { $in: ['APPROVED', 'QUEUED'] },
+      status: { $in: ['APPROVED', 'QUEUED', 'PLAYING'] },
       'recognitionMatch.trackId': track._id.toString(),
     })
       .sort({ queuePosition: 1, approvedAt: 1, createdAt: 1 })

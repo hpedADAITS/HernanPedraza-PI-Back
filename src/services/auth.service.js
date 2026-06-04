@@ -285,19 +285,6 @@ class AuthService {
   }
 
   async verifyEmailToken(token) {
-    // First: Check environment/secret loading
-    logger.info('=== DEBUG CONFIG ===');
-    logger.info('config.jwtSecret exists:', !!config.jwtSecret);
-    logger.info('config.jwtSecret length:', config.jwtSecret ? config.jwtSecret.length : 'N/A');
-    logger.info('=====================');
-    logger.info('Step 1: token received, checking type...');
-    logger.info('  token is null:', token === null);
-    logger.info('  token is undefined:', token === undefined);
-    logger.info('  token type:', typeof token);
-    if (token) {
-      logger.info('  token length:', token.length);
-    }
-
     /* Check 1: null check */
     if (!token) {
       throw new UnauthorizedError('Verification token is missing');
@@ -308,18 +295,11 @@ class AuthService {
       throw new UnauthorizedError('Invalid token format');
     }
 
-    logger.info('Step 2: About to call verifyToken...');
-
     let decoded;
     try {
       decoded = verifyToken(token);
-      logger.info('Step 3: verifyToken succeeded!');
-      logger.info('  decoded:', decoded);
     } catch (verifyError) {
-      logger.error('Step 3: verifyToken FAILED:', {
-        message: verifyError.message,
-        name: verifyError.name,
-      });
+      logger.error('Token verification failed:', { message: verifyError.message });
       throw new UnauthorizedError('Invalid or expired verification link');
     }
 

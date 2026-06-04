@@ -174,6 +174,13 @@ class ParticipantsService {
     return this._formatParticipant(participant);
   }
 
+  /**
+   * Get raw participant document (for internal use like premium checks)
+   */
+  async getParticipantById(participantId) {
+    return ParticipantModel.findById(participantId);
+  }
+
   async getEventParticipants(eventId) {
     const participants = await ParticipantModel.find(
       await this._activeParticipantQuery(eventId),

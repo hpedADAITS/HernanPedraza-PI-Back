@@ -42,6 +42,8 @@ const SongSchema = new Schema(
     voteCount: { type: Number, default: 0 },
 
     queuePosition: { type: Number, index: true },
+    isPremiumSuggestion: { type: Boolean, default: false, index: true },
+
     totalDuration: { type: Number, min: 0 },
 
     sortKey: { type: String, required: true, index: true },

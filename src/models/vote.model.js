@@ -17,6 +17,9 @@ const VoteSchema = new Schema(
       index: true,
     },
     value: { type: Number, required: true, enum: [-1, 1] },
+    
+    // Track if voter was premium at time of vote (for score calculation)
+    isPremiumVote: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
