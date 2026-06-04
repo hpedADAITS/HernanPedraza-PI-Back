@@ -285,7 +285,15 @@ class AuthService {
 
   async verifyEmailToken(token) {
     try {
+      logger.info('verifyEmailToken: starting verification');
+
       const decoded = verifyToken(token);
+
+      logger.info('verifyEmailToken: token verified, decoded:', {
+        userId: decoded.userId,
+        type: decoded.type,
+        verificationTokenId: decoded.verificationTokenId,
+      });
 
       /* Check token type */
       if (decoded.type !== 'email-verification') {
@@ -344,6 +352,12 @@ class AuthService {
         },
       };
     } catch (error) {
+      /* Log actual error for debugging */
+      logger.error('verifyEmailToken caught error:', {
+        message: error.message,
+        name: error.name,
+        cause: error.cause,
+      });
       if (
         error instanceof NotFoundError ||
         error instanceof UnauthorizedError ||
