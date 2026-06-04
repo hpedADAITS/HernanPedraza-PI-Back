@@ -252,5 +252,8 @@ async function insertManyChunked(model, rows) {
   }
 }
 
-module.exports = new AudioTracksService();
+const audioTracksServiceInstance = new AudioTracksService();
+
+module.exports = audioTracksServiceInstance;
+module.exports.audioTracksService = audioTracksServiceInstance;
 module.exports.sharedRamMatcher = sharedRamMatcher;
