@@ -38,16 +38,15 @@ const log = (level, message, meta = {}) => {
 
   const formatted = formatMessage(level, message, meta);
 
+  // Only log to console in development
   if (config.env === 'development') {
     console.log(`${colors[level]}${formatted}${colors.reset}`);
-  } else {
-    console.log(formatted);
   }
 
   try {
     fs.appendFileSync(config.logFile, formatted + '\n');
   } catch (err) {
-    console.error('Error al escribir en archivo de log:', err);
+    // Silent fail - file logging should not crash the app
   }
 };
 

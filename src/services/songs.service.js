@@ -3,6 +3,7 @@ const {
   EventModel,
   AudioTrackModel,
 } = require('../models/schema');
+const crypto = require('crypto');
 const { logger } = require('../utils');
 const { ForbiddenError, NotFoundError } = require('../errors');
 const { validateTransition } = require('../utils/song-state-machine');
@@ -36,7 +37,7 @@ class SongsService {
       recognitionMatch,
       requestedBy: participantId,
       status: 'PENDING',
-      sortKey: `${Date.now()}_${Math.random()}`,
+      sortKey: `${Date.now()}_${crypto.randomUUID()}`,
       totalDuration: resolvedDuration,
     });
 

@@ -1214,8 +1214,9 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
     const hashes = session.fingerprinter.process(samples) ?? [];
 
     const now = Date.now();
+    const AUDIO_MATCH_INTERVAL_MS = 700;
 
-    if (hashes.length && now - session.lastEmitAt > 700) {
+    if (hashes.length && now - session.lastEmitAt > AUDIO_MATCH_INTERVAL_MS) {
       session.lastEmitAt = now;
 
       // Use RAM-based matcher (in-memory lookup, no MongoDB query)

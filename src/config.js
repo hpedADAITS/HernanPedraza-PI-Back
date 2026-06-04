@@ -69,6 +69,10 @@ module.exports = {
   /* Socket.IO */
   socketCorsOrigin: process.env.SOCKET_CORS_ORIGIN || 'http://localhost:5173',
 
+  /* Socket client config constants */
+  socketReconnectDelay: 500,
+  socketTimeout: 20000,
+
   /* Logger */
   logLevel: process.env.LOG_LEVEL || 'info',
   logFile: process.env.LOG_FILE || 'logs/app.log',

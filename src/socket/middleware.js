@@ -23,6 +23,7 @@ const socketAuthMiddleware = async (socket, next) => {
     } catch (error) {
       decoded = verifyToken(token);
       if (decoded.type !== 'phone-microphone') throw error;
+      logger.warn('Auth fallback triggered for phone token', { userId: decoded.userId });
       role = 'DJ';
     }
 
