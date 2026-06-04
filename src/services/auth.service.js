@@ -284,101 +284,100 @@ class AuthService {
   }
 
   async verifyEmailToken(token) {
-    /* Explicit null check */
+    /* Detailed token inspection */
+    logger.info('Step 1: token received, checking type...');
+    logger.info('  token is null:', token === null);
+    logger.info('  token is undefined:', token === undefined);
+    logger.info('  token type:', typeof token);
+    if (token) {
+      logger.info('  token length:', token.length);
+    }
+
+    /* Check 1: null check */
     if (!token) {
-      logger.error('verifyEmailToken: token is null/undefined');
       throw new UnauthorizedError('Verification token is missing');
     }
 
+    /* Check 2: string type */
     if (typeof token !== 'string') {
-      logger.error('verifyEmailToken: token is not a string', { type: typeof token });
       throw new UnauthorizedError('Invalid token format');
     }
 
+    logger.info('Step 2: About to call verifyToken...');
+
     let decoded;
     try {
-      logger.info('verifyEmailToken: starting verification');
-
       decoded = verifyToken(token);
-
-      logger.info('verifyEmailToken: token verified, decoded:', {
-        userId: decoded.userId,
-        type: decoded.type,
-        verificationTokenId: decoded.verificationTokenId,
+      logger.info('Step 3: verifyToken succeeded!');
+      logger.info('  decoded:', decoded);
+    } catch (verifyError) {
+      logger.error('Step 3: verifyToken FAILED:', {
+        message: verifyError.message,
+        name: verifyError.name,
       });
-
-      /* Check token type */
-      if (decoded.type !== 'email-verification') {
-        throw new UnauthorizedError('Invalid token type');
-      }
-
-      if (!decoded.verificationTokenId) {
-        throw new UnauthorizedError('Invalid verification token');
-      }
-
-      const user = await UserModel.findById(decoded.userId);
-      if (!user) {
-        throw new NotFoundError(messages.AUTH.USER_NOT_FOUND);
-      }
-
-      if (user.role !== 'DJ') {
-        throw new ValidationError('Only DJ accounts require email verification');
-      }
-
-      if (!user.emailVerificationTokenId) {
-        throw new UnauthorizedError('Verification token already used or replaced');
-      }
-
-      if (decoded.verificationTokenId !== user.emailVerificationTokenId) {
-        throw new UnauthorizedError('Verification token already used or replaced');
-      }
-
-      if (user.emailRegistered) {
-        return {
-          id: user._id,
-          email: user.email,
-          displayName: user.displayName,
-          role: user.role,
-          emailRegistered: user.emailRegistered,
-        };
-      }
-
-      user.emailRegistered = true;
-      user.emailRegisteredAt = new Date();
-      user.emailVerificationTokenId = null;
-      await user.save();
-      logger.info(`Email verified via token for user: ${user.email}`);
-
-      // Generate new token with updated emailRegistered status
-      const token = this.buildAuthToken(user);
-
-      return {
-        token,
-        user: {
-          id: user._id,
-          email: user.email,
-          displayName: user.displayName,
-          profilePicture: user.profilePicture,
-          role: user.role,
-          emailRegistered: user.emailRegistered,
-        },
-      };
-    } catch (error) {
-      /* Log actual error for debugging */
-      logger.error('verifyEmailToken caught error:', {
-        message: error.message,
-        name: error.name,
-        cause: error.cause,
-      });
-      if (
-        error instanceof NotFoundError ||
-        error instanceof UnauthorizedError ||
-        error instanceof ValidationError
-      ) {
-        throw error;
-      }
       throw new UnauthorizedError('Invalid or expired verification link');
     }
+
+    if (!decoded) {
+      throw new UnauthorizedError('Invalid verification token');
+    }
+
+    /* Check token type */
+    if (decoded.type !== 'email-verification') {
+      throw new UnauthorizedError('Invalid token type');
+    }
+
+    if (!decoded.verificationTokenId) {
+      throw new UnauthorizedError('Invalid verification token');
+    }
+
+    const user = await UserModel.findById(decoded.userId);
+    if (!user) {
+      throw new NotFoundError(messages.AUTH.USER.USER_NOT_FOUND);
+    }
+
+    if (user.role !== 'DJ') {
+      throw new ValidationError('Only DJ accounts require email verification');
+    }
+
+    if (!user.emailVerificationTokenId) {
+      throw new UnauthorizedError('Verification token already used or replaced');
+    }
+
+    if (decoded.verificationTokenId !== user.emailVerificationTokenId) {
+      throw new UnauthorizedError('Verification token already used or replaced');
+    }
+
+    if (user.emailRegistered) {
+      return {
+        id: user._id,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+        emailRegistered: user.emailRegistered,
+      };
+    }
+
+    user.emailRegistered = true;
+    user.emailRegisteredAt = new Date();
+    user.emailVerificationTokenId = null;
+    await user.save();
+    logger.info(`Email verified via token for user: ${user.email}`);
+
+    // Generate new token with updated emailRegistered status
+    const newToken = this.buildAuthToken(user);
+
+    return {
+      token: newToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        displayName: user.displayName,
+        profilePicture: user.profilePicture,
+        role: user.role,
+        emailRegistered: user.emailRegistered,
+      },
+    };
   }
 
 }
