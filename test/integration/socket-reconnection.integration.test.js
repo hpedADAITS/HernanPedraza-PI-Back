@@ -3,8 +3,6 @@
  * Tests Socket.IO reconnection logic
  */
 
-const MockSocket = require('socket.io-client');
-
 describe('Socket Reconnection Integration', () => {
   let socket;
   let mockServer;
