@@ -8,7 +8,7 @@ const MIN_SCORE = 0.72;
 const MIN_REQUEST_INTERVAL_MS = 1500;
 const USER_AGENT =
   process.env.MUSICBRAINZ_USER_AGENT ||
-  'SyncRekuest/1.0 (github.com/hpedadaits/hernanpedraza-pi-back)';
+  'SyncRequest Student Project (github.com/hpedadaits/hernanpedraza-pi-back)';
 
 class MusicBrainzService {
   constructor() {

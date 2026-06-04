@@ -367,9 +367,19 @@ class SongsService {
   }
 
   async _findRecognitionMatch(eventId, title, artist, totalDuration) {
+    // Wrap MusicBrainz in its own try/catch to prevent network failures from crashing
+    const safeMusicBrainz = (async () => {
+      try {
+        return await musicBrainzService.findRecordingMatch(title, artist, totalDuration);
+      } catch (err) {
+        logger.warn('MusicBrainz lookup failed', { message: err.message });
+        return null;
+      }
+    })();
+
     const [localMatch, musicBrainzMatch] = await Promise.all([
       this._findLocalRecognitionMatch(eventId, title, artist),
-      musicBrainzService.findRecordingMatch(title, artist, totalDuration),
+      safeMusicBrainz,
     ]);
 
     if (!localMatch) return musicBrainzMatch;
