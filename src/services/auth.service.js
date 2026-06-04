@@ -284,10 +284,22 @@ class AuthService {
   }
 
   async verifyEmailToken(token) {
+    /* Explicit null check */
+    if (!token) {
+      logger.error('verifyEmailToken: token is null/undefined');
+      throw new UnauthorizedError('Verification token is missing');
+    }
+
+    if (typeof token !== 'string') {
+      logger.error('verifyEmailToken: token is not a string', { type: typeof token });
+      throw new UnauthorizedError('Invalid token format');
+    }
+
+    let decoded;
     try {
       logger.info('verifyEmailToken: starting verification');
 
-      const decoded = verifyToken(token);
+      decoded = verifyToken(token);
 
       logger.info('verifyEmailToken: token verified, decoded:', {
         userId: decoded.userId,
