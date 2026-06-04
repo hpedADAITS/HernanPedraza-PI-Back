@@ -13,6 +13,7 @@ const {
   songsService,
   votesService,
   participantsService,
+  sharedRamMatcher,
 } = require('../services');
 const { SongModel } = require('../models/schema');
 const {
@@ -1138,11 +1139,21 @@ const handleSetPremium = async (socket, io, data, callback) => {
 
 const handleAudioMatchStart = async (socket, io, data, callback) => {
   try {
-    const { eventId } = data || {};
+    const { eventId, sampleRate } = data || {};
+
+    // Log the incoming sample rate from phone
+    logger.info('Audio match start', { eventId, sampleRate: sampleRate ?? 'not provided' });
+
     await assertAudioEventAccess(socket, eventId);
+
+    // Preload fingerprints into RAM for this event
+    await sharedRamMatcher.loadEvent(eventId);
+
     socket.audioMatch = {
       eventId,
       fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE),
+      ramMatcher: sharedRamMatcher,
+      inputSampleRate: sampleRate,  // Store the sample rate from phone
       lastEmitAt: 0,
     };
     ackSuccess(callback, { eventId });
@@ -1162,14 +1173,16 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
     const rawSamples = extractFloat32Pcm(data?.pcm ?? data);
 
     // Prefer per-chunk sampleRate. Fall back to session sampleRate.
-    const inputSampleRate = Number(data?.sampleRate ?? session.inputSampleRate);
+    const chunkSampleRate = data?.sampleRate;
+    const inputSampleRate = Number.isFinite(chunkSampleRate) && chunkSampleRate > 0
+      ? chunkSampleRate
+      : (session.inputSampleRate || TARGET_SAMPLE_RATE);
 
     if (!Number.isFinite(inputSampleRate) || inputSampleRate <= 0) {
       throw new Error(
-        `Invalid audio chunk sampleRate: ${data?.sampleRate ?? session.inputSampleRate}`,
+        `Invalid audio chunk sampleRate: ${data?.sampleRate ?? session.inputSampleRate}`
       );
     }
-
     // Normalize browser/phone audio to the recognition sample rate.
     const samples = resampleLinear(
       rawSamples,
@@ -1184,10 +1197,8 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
     if (hashes.length && now - session.lastEmitAt > 700) {
       session.lastEmitAt = now;
 
-      const matches = await audioTracksService.matchHashes(
-        session.eventId,
-        hashes,
-      );
+      // Use RAM-based matcher (in-memory lookup, no MongoDB query)
+      const matches = session.ramMatcher.match(session.eventId, hashes);
 
       socket.emit('audio_match_update', {
         eventId: session.eventId,
@@ -1221,11 +1232,10 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
 const handleAudioMatchStop = async (socket, io, data, callback) => {
   try {
     if (socket.audioMatch) {
-      const { eventId, fingerprinter } = socket.audioMatch;
-      const matches = await audioTracksService.matchHashes(
-        eventId,
-        fingerprinter.flush(),
-      );
+      const { eventId, fingerprinter, ramMatcher } = socket.audioMatch;
+      const hashes = fingerprinter.flush();
+      // Use RAM-based matcher for final matching
+      const matches = ramMatcher.match(eventId, hashes);
       socket.emit('audio_match_update', {
         eventId,
         matches,

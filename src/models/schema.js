@@ -10,6 +10,7 @@ const { EventActionLogModel } = require('./event-action-log.model');
 const { AudioTrackModel } = require('./audio-track.model');
 const { AudioFingerprintPointModel } = require('./audio-fingerprint-point.model');
 const { AudioFingerprintHashModel } = require('./audio-fingerprint-hash.model');
+const { AudioFingerprintModel } = require('./audio-fingerprint.model');
 const {
   ALL_EVENT_PERMISSIONS,
   defaultPermissionsForRole,
@@ -45,6 +46,7 @@ module.exports = {
   AudioTrackModel,
   AudioFingerprintPointModel,
   AudioFingerprintHashModel,
+  AudioFingerprintModel,
   connectMongo,
   hasEventPermission,
   defaultPermissionsForRole,

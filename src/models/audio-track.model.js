@@ -10,6 +10,11 @@ const AudioTrackSchema = new Schema(
       required: true,
       index: true,
     },
+    audioSha256: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     title: { type: String, required: true, trim: true },
     artist: { type: String, required: true, trim: true },
     coverUrl: { type: String, trim: true, default: null },
@@ -28,6 +33,10 @@ const AudioTrackSchema = new Schema(
 );
 
 AudioTrackSchema.index({ eventId: 1, title: 1, artist: 1 });
+AudioTrackSchema.index(
+  { eventId: 1, audioSha256: 1 },
+  { unique: true, sparse: true }
+);
 
 const AudioTrackModel = model('AudioTrack', AudioTrackSchema, 'audio_tracks');
 
