@@ -1238,6 +1238,12 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
       // Use RAM-based matcher (in-memory lookup, no MongoDB query)
       const matches = session.ramMatcher.match(session.eventId, hashes);
 
+      logger.info('audio_match_update', {
+        eventId: session.eventId,
+        matchCount: matches?.length || 0,
+        topMatch: matches?.[0] ? { title: matches[0].title, artist: matches[0].artist, score: matches[0].score } : null,
+      });
+
       socket.emit('audio_match_update', {
         eventId: session.eventId,
         matches,

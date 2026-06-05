@@ -60,6 +60,7 @@ class AudioTracksController {
 
   async sendMatchedTrackNow(req, res, next) {
     try {
+      logger.info('sendMatchedTrackNow called', { eventId: req.params.eventId, trackId: req.params.trackId });
       const token = req.body?.token || req.query?.token || req.get('authorization')?.replace(/^Bearer\s+/i, '');
       const actor = req.user || verifyPhoneMicrophoneToken(token, req.params.eventId);
       const song = await audioTracksService.sendMatchedTrackNow(
@@ -67,6 +68,7 @@ class AudioTracksController {
         actor,
         req.params.trackId,
       );
+      logger.info('sendMatchedTrackNow success', { songId: song._id, title: song.title });
       const io = req.app.get('io');
       if (io) {
         io.to(`event:${req.params.eventId}`).emit('song_now_playing', {
