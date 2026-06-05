@@ -1186,7 +1186,23 @@ const handleAudioMatchStart = async (socket, io, data, callback) => {
 
 const handleAudioMatchChunk = async (socket, io, data, callback) => {
   try {
-    if (!socket.audioMatch) throw new Error('Audio matcher has not started');
+    // Auto-start audio matcher if not started (phone microphone may send chunks before start is processed)
+    if (!socket.audioMatch) {
+      const { eventId, sampleRate } = data || {};
+      if (socket.user?.type === 'phone-microphone' && eventId) {
+        logger.info('Auto-starting audio matcher for phone microphone', { eventId, sampleRate });
+        await sharedRamMatcher.loadEvent(eventId);
+        socket.audioMatch = {
+          eventId,
+          fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE),
+          ramMatcher: sharedRamMatcher,
+          inputSampleRate: sampleRate,
+          lastEmitAt: 0,
+        };
+      } else {
+        throw new Error('Audio matcher has not started');
+      }
+    }
 
     const session = socket.audioMatch;
 
@@ -1253,6 +1269,7 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
 
 const handleAudioMatchStop = async (socket, io, data, callback) => {
   try {
+    logger.info('Audio match stop requested', { hadAudioMatch: Boolean(socket.audioMatch) });
     if (socket.audioMatch) {
       const { eventId, fingerprinter, ramMatcher } = socket.audioMatch;
       const hashes = fingerprinter.flush();
