@@ -1232,6 +1232,18 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
     const now = Date.now();
     const AUDIO_MATCH_INTERVAL_MS = 700;
 
+    // Emit raw audio stream for waveform display (bifurcation: one stream for visualization)
+    const WAVEFORM_EMIT_INTERVAL_MS = 100;
+    if (now - (session.lastWaveformAt || 0) > WAVEFORM_EMIT_INTERVAL_MS) {
+      session.lastWaveformAt = now;
+      socket.to(`event:${session.eventId}`).emit('phone_audio_stream', {
+        eventId: session.eventId,
+        pcm: rawSamples,
+        sampleRate: inputSampleRate,
+        timestamp: Date.now(),
+      });
+    }
+
     if (hashes.length && now - session.lastEmitAt > AUDIO_MATCH_INTERVAL_MS) {
       session.lastEmitAt = now;
 
