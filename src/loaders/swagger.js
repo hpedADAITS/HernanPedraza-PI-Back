@@ -46,7 +46,7 @@ const swaggerDefinition = {
           _id: { type: 'string', example: '665a1b2c3d4e5f6a7b8c9d0e' },
           email: { type: 'string', format: 'email', example: 'dj@example.com' },
           displayName: { type: 'string', example: 'DJ Mike' },
-          role: { type: 'string', enum: ['ATTENDEE', 'DJ', 'ADMIN'] },
+          role: { type: 'string', enum: ['ATTENDEE', 'DJ'] },
           isActive: { type: 'boolean' },
           lastLoginAt: { type: 'string', format: 'date-time' },
           createdAt: { type: 'string', format: 'date-time' },

@@ -11,7 +11,13 @@ const {
   leaveEventRoom,
   toEventRoom,
 } = require('./rooms');
-const { assertEventRoomAccess, isSocketAuthOptional, socketActor, socketUserId } = require('./auth');
+const {
+  assertEventRoomAccess,
+  isEventMemberOrOwner,
+  isSocketAuthOptional,
+  socketActor,
+  socketUserId,
+} = require('./auth');
 const { participantsService, songsService } = require('../services');
 
 const eventActor = (socket, payloadUserId) => {
@@ -59,10 +65,24 @@ const handleJoinEvent = async (socket, io, data) => {
   const authorizedParticipant = await assertEventRoomAccess(socket, eventId, participantId);
   joinEventRoom(socket, eventId);
   socket.eventId = eventId;
-  socket.participantId = authorizedParticipant?._id?.toString() || participantId || null;
+  /* Track whether this socket is the DJ / event owner so the
+     participant_joined broadcast, leave, and disconnect paths can skip
+     announcing the owner as a regular attendee. The flag is set BEFORE
+     the participant record lookup so even when the owner has no
+     participant record (the normal case) we still know they are staff. */
+  socket.isEventStaff = await isEventMemberOrOwner(eventId, socket);
+  socket.participantId = socket.isEventStaff
+    ? null
+    : authorizedParticipant?._id?.toString() || participantId || null;
 
   let persistedParticipant = authorizedParticipant;
-  if (!persistedParticipant && nickname && eventId) {
+  /* The DJ / event owner joins the room as the owner — they are NOT a
+     participant and should not be recorded in the participants
+     collection. Skip the joinEvent call for them so the log line and
+     the persisted state reflect their actual role, and the
+     `participant_joined` broadcast below does not announce the owner
+     as a regular attendee. */
+  if (!persistedParticipant && !socket.isEventStaff && nickname && eventId) {
     try {
       const userId = socketUserId(socket);
       persistedParticipant = await participantsService.joinEvent(
@@ -78,10 +98,16 @@ const handleJoinEvent = async (socket, io, data) => {
     }
   }
 
-  logger.info(`Socket joined event ${eventId}`, {
-    participantId: socket.participantId,
-    userId: socketUserId(socket),
-  });
+  if (socket.isEventStaff) {
+    logger.info(`DJ joined event ${eventId}`, {
+      userId: socketUserId(socket),
+    });
+  } else {
+    logger.info(`Socket joined event ${eventId}`, {
+      participantId: socket.participantId,
+      userId: socketUserId(socket),
+    });
+  }
 
   let profilePicture = authorizedParticipant?.profilePicture || data.profilePicture || null;
   if (participantId && !profilePicture && !isSocketAuthOptional(socket)) {
@@ -93,7 +119,7 @@ const handleJoinEvent = async (socket, io, data) => {
     }
   }
 
-  if (participantId) {
+  if (participantId && !socket.isEventStaff) {
     toEventRoom(io, eventId).emit('participant_joined', {
       participantId,
       nickname,
@@ -110,6 +136,12 @@ const handleLeaveEvent = (socket, io, data) => {
     return;
   }
   leaveEventRoom(socket, eventId);
+  /* DJ sockets do not get a participant record; do not announce their
+     leave as a participant. */
+  if (socket.isEventStaff) {
+    logger.info(`DJ left event ${eventId}`);
+    return;
+  }
   logger.info(`Participant ${participantId} left event ${eventId}`);
   toEventRoom(io, eventId).emit('participant_left', {
     participantId,
@@ -118,7 +150,7 @@ const handleLeaveEvent = (socket, io, data) => {
 };
 
 const handleDisconnect = (socket, io) => {
-  if (socket.eventId && socket.participantId) {
+  if (socket.eventId && socket.participantId && !socket.isEventStaff) {
     toEventRoom(io, socket.eventId).emit('participant_disconnected', {
       participantId: socket.participantId,
     });
@@ -135,4 +167,8 @@ module.exports = {
   rejectLegacyCommand,
   emitQueueUpdated,
   isValidId,
+  /* Re-export toEventRoom from ./rooms so the pre-existing imports in
+     song.js / vote.js / audio.js / participant.js that read it from
+     './room' keep working. The canonical home is ./rooms.js. */
+  toEventRoom,
 };

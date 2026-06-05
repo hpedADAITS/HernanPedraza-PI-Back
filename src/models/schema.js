@@ -15,8 +15,38 @@ const {
   defaultPermissionsForRole,
 } = require('./shared');
 
+function stripMongoDbPath(uri) {
+  if (!uri || typeof uri !== 'string') return uri;
+  /* Find the host/path boundary: the first '/' after the scheme's '//'.
+     This is the slash that separates host (with optional credentials and
+     comma-separated replica set hosts) from the default auth db path.
+     The WHATWG URL parser does not handle comma-separated host lists, so
+     we parse it by hand. */
+  const schemeMatch = uri.match(/^([a-zA-Z][a-zA-Z0-9+.\-]*:\/\/)/);
+  if (!schemeMatch) return uri;
+  const afterScheme = schemeMatch[0].length;
+  const pathStart = uri.indexOf('/', afterScheme);
+  if (pathStart < 0) return uri;
+
+  const queryStart = uri.indexOf('?', afterScheme);
+  const pathEnd = queryStart < 0 ? uri.length : queryStart;
+
+  /* Keep an empty path ("/" or "") untouched. */
+  if (pathEnd === pathStart + 1 && uri[pathStart] === '/') return uri;
+  if (pathEnd === pathStart) return uri;
+
+  /* Replace the db portion with a single '/'. */
+  return uri.slice(0, pathStart + 1) + uri.slice(pathEnd);
+}
+
 async function connectMongo(uri, dbName) {
   mongoose.set('strictQuery', true);
+  /* When dbName is supplied we strip any path component from the URI.
+     Mongoose raises "db already exists with different case" if the URI's
+     embedded db and opts.dbName differ only in case — common when one is
+     set in .env and the other in the Render dashboard. Stripping the path
+     leaves opts.dbName as the single source of truth. */
+  const cleanUri = dbName ? stripMongoDbPath(uri) : uri;
   const opts = {
     autoIndex: true,
     // Render free tier: keep the connection pool small. Mongoose's default
@@ -28,8 +58,8 @@ async function connectMongo(uri, dbName) {
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
   };
-  if (dbName) opts.dbName = dbName;
-  await mongoose.connect(uri, opts);
+  if (dbName) opts.dbName = String(dbName).toLowerCase();
+  await mongoose.connect(cleanUri, opts);
   return mongoose.connection;
 }
 
@@ -45,6 +75,7 @@ module.exports = {
   AudioFingerprintPointModel,
   AudioFingerprintModel,
   connectMongo,
+  stripMongoDbPath,
   defaultPermissionsForRole,
   ALL_EVENT_PERMISSIONS,
 };

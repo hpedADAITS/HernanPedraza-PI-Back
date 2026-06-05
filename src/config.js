@@ -20,11 +20,20 @@ if (explicitEnv.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'productio
 const env = process.env.NODE_ENV || 'development';
 const DEVELOPMENT_JWT_SECRET = 'Syncrequest-local-development-secret';
 const MIN_PRODUCTION_JWT_SECRET_LENGTH = 32;
-const debugMode = process.env.DEBUG_MODE === 'true';
 
-if (env === 'production' && debugMode) {
-  throw new Error('DEBUG_MODE cannot be enabled in production');
+/* DEBUG_MODE is read live so tests can toggle it without re-requiring
+   the module. config.js still throws at startup if it is enabled in
+   production (see DEBUG_MODE_PRODUCTION_GUARD below). */
+function isDebugMode() {
+  return process.env.DEBUG_MODE === 'true';
 }
+
+const DEBUG_MODE_PRODUCTION_GUARD = (() => {
+  if (env === 'production' && isDebugMode()) {
+    throw new Error('DEBUG_MODE cannot be enabled in production');
+  }
+  return true;
+})();
 
 function readJwtSecret() {
   const secret = process.env.JWT_SECRET;
@@ -50,11 +59,15 @@ module.exports = {
   /* Servidor */
   port: process.env.PORT || 5000,
   env,
-  debugMode,
+  get debugMode() {
+    return isDebugMode();
+  },
 
-  /* DB */
-  mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/Syncrequest',
-  dbName: process.env.DB_NAME || 'Syncrequest',
+  /* DB — canonical lowercase name. Strip the path from MONGODB_URI in the
+     loader to avoid MongoDB's "db already exists with different case" error
+     when the URI and DB_NAME disagree on case. */
+  mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/syncrekuest',
+  dbName: (process.env.DB_NAME || 'syncrekuest').toLowerCase(),
 
   /* JWT */
   jwtSecret: readJwtSecret(),

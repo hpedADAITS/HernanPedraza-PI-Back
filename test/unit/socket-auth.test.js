@@ -156,7 +156,7 @@ describe('socket-auth.js', () => {
     });
 
     test('should allow admin access', async () => {
-      mockSocket.user = { userId: 'admin-user', role: 'ADMIN' };
+      mockSocket.user = { userId: 'dj-user', role: 'DJ' };
       
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnThis(),

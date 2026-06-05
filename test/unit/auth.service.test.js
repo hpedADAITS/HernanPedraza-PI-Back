@@ -3,6 +3,8 @@
  * Tests registration, login, token validation, and user updates using REAL implementations
  */
 
+process.env.JWT_SECRET = 'unit-test-jwt-secret-with-enough-entropy-for-checks';
+
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const bcrypt = require('bcryptjs');

@@ -69,7 +69,7 @@ class EventsService {
           actorUser?.id?.toString();
 
     if (!userId) {
-      throw new ForbiddenError('Only DJs and admins can create events');
+      throw new ForbiddenError('Only DJs can create events');
     }
 
     const user = await UserModel.findById(userId)

@@ -102,7 +102,7 @@ describe('EventsService - Real Implementation Tests', () => {
         'Event',
         'Desc',
         new Date()
-      )).rejects.toThrow('Only DJs and admins can create events');
+      )).rejects.toThrow('Only DJs can create events');
     });
 
     test('should require email verification for DJ', async () => {
@@ -114,19 +114,6 @@ describe('EventsService - Real Implementation Tests', () => {
         'Desc',
         new Date()
       )).rejects.toThrow('Please confirm your email');
-    });
-
-    test('should allow ADMIN role without email verification', async () => {
-      const user = await createTestUser({ role: 'ADMIN', emailRegistered: false });
-
-      const result = await eventsService.createEvent(
-        { userId: user._id.toString(), role: 'ADMIN' },
-        'Admin Event',
-        'Desc',
-        new Date()
-      );
-
-      expect(result).toBeDefined();
     });
   });
 

@@ -20,7 +20,7 @@ class AuthService {
     return generateToken({
       userId: user._id,
       email: user.email,
-      role: user.role === 'ADMIN' ? 'DJ' : user.role,
+      role: user.role,
       type: 'default',
       tokenVersion: user.authTokenVersion || 0,
     });
@@ -48,10 +48,7 @@ class AuthService {
       throw new UnauthorizedError(messages.AUTH.INVALID_TOKEN);
     }
 
-    const normalizedUser = { ...user };
-    if (normalizedUser.role === 'ADMIN') {
-      normalizedUser.role = 'DJ';
-    }
+    const normalizedUser = user.toObject ? user.toObject() : { ...user };
 
     return { decoded, user: normalizedUser };
   }
@@ -60,17 +57,16 @@ class AuthService {
     /* Validate input */
     validateRegistration({ email, password, displayName, role });
 
-    /* Role assignment: the server decides. Public registration always
-       creates an ATTENDEE — the only way to escalate is DEBUG_MODE=true
-       (development only; config.js refuses to start the server with
-       DEBUG_MODE=true in production). This closes the self-registration
-       privilege escalation where a client could POST role:'ADMIN' and
-       become an admin. */
-    const callerRole = config.debugMode ? role : 'ATTENDEE';
-    if (callerRole !== role) {
+    /* Role assignment: public register accepts ATTENDEE or DJ from the
+       body. ADMIN is reserved for the database / debug service and is
+       always downgraded to ATTENDEE here so a client can never escalate
+       to admin by self-registering. */
+    let callerRole = role;
+    if (callerRole !== 'ATTENDEE' && callerRole !== 'DJ') {
       logger.warn(
-        `Register: client supplied role=${role} but DEBUG_MODE is off; forcing ATTENDEE for ${email}`,
+        `Register: client supplied role=${role} for ${email}; downgrading to ATTENDEE`,
       );
+      callerRole = 'ATTENDEE';
     }
 
     /* Check if user exists */
@@ -120,7 +116,7 @@ class AuthService {
         email: user.email,
         displayName: user.displayName,
         profilePicture: user.profilePicture,
-        role: user.role,
+        role: callerRole,
         emailRegistered: user.emailRegistered,
       },
     };

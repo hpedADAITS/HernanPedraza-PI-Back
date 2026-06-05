@@ -64,8 +64,10 @@ function validateRegistration(data) {
   validatePassword(password);
   validateDisplayName(displayName);
 
-  /* Validate role if provided */
-  if (data.role && !['ATTENDEE', 'DJ', 'ADMIN'].includes(data.role)) {
+  /* Public register accepts ATTENDEE or DJ only. ADMIN is reserved for
+     out-of-band provisioning (debug service / direct DB) and is rejected
+     at the validator so it never reaches the service layer. */
+  if (data.role && !['ATTENDEE', 'DJ'].includes(data.role)) {
     throw new ValidationError(messages.VALIDATION.INVALID_ROLE);
   }
 }

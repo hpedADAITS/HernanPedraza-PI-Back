@@ -129,8 +129,8 @@ describe('EventPermissionsService', () => {
       });
 
       const result = await eventPermissionsService.getContext('event-1', {
-        userId: 'admin-user',
-        role: 'ADMIN',
+        userId: 'dj-user',
+        role: 'DJ',
       });
 
       expect(result.isAdmin).toBe(true);
@@ -495,8 +495,8 @@ describe('EventPermissionsService', () => {
       });
 
       const result = await eventPermissionsService.assertOwner('event-1', {
-        userId: 'admin-user',
-        role: 'ADMIN',
+        userId: 'dj-user',
+        role: 'DJ',
       });
 
       expect(result).toBeDefined();

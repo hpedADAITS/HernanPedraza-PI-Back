@@ -80,14 +80,23 @@ describe('config', () => {
       return {};
     });
     dotenv.parse.mockReturnValue({
-      MONGODB_URI: 'mongodb://localhost:27017/Syncrequest',
-      DB_NAME: 'Syncrequest',
+      MONGODB_URI: 'mongodb://localhost:27017/syncrekuest',
+      DB_NAME: 'syncrekuest',
     });
 
     const config = loadConfig();
 
-    expect(config.mongoUri).toBe('mongodb://localhost:27017/Syncrequest');
-    expect(config.dbName).toBe('Syncrequest');
+    expect(config.mongoUri).toBe('mongodb://localhost:27017/syncrekuest');
+    expect(config.dbName).toBe('syncrekuest');
+  });
+
+  test('lowercases DB_NAME so mixed-case env values cannot trigger the MongoDB case-mismatch error', () => {
+    delete process.env.MONGODB_URI;
+    process.env.DB_NAME = 'SyncRekuest';
+
+    const config = loadConfig();
+
+    expect(config.dbName).toBe('syncrekuest');
   });
 
   test('keeps explicit shell MongoDB variables above .env.local', () => {
@@ -97,7 +106,7 @@ describe('config', () => {
 
     fs.existsSync.mockReturnValue(true);
     dotenv.parse.mockReturnValue({
-      MONGODB_URI: 'mongodb://localhost:27017/Syncrequest',
+      MONGODB_URI: 'mongodb://localhost:27017/syncrekuest',
     });
 
     const config = loadConfig();

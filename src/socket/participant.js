@@ -3,7 +3,8 @@
 const { logger } = require('../utils');
 const { ackSuccess, ackError } = require('./ack');
 const { participantsService } = require('../services');
-const { assertJoinedEvent, eventActor, toEventRoom } = require('./room');
+const { assertJoinedEvent, eventActor } = require('./room');
+const { toEventRoom } = require('./rooms');
 const { isValidId } = require('./shared-validators');
 
 const handleSetCooldown = async (socket, io, data, callback) => {

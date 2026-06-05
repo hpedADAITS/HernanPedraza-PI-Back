@@ -8,7 +8,7 @@ const config = require('../../src/config');
 describe('JWT Utils', () => {
   const testUserId = '507f1f77bcf86cd799439011';
   const testEmail = 'test@example.com';
-  const testRole = 'ADMIN';
+  const testRole = 'DJ';
 
   describe('generateToken', () => {
     test('should generate valid token from userId string', () => {
