@@ -42,7 +42,17 @@ module.exports = {
   VALIDATION: {
     REQUIRED_FIELD: 'This field is required',
     INVALID_EMAIL: 'Invalid email format',
+    EMAIL_REQUIRED: 'Email is required',
+    PASSWORD_REQUIRED: 'Password is required',
     PASSWORD_TOO_SHORT: 'Password must be at least 8 characters',
+    PASSWORD_TOO_LONG: 'Password must be less than 128 characters',
+    INVALID_PASSWORD: 'Invalid password',
+    DISPLAY_NAME_REQUIRED: 'Display name is required',
+    DISPLAY_NAME_TOO_SHORT: 'Display name must be at least 2 characters',
+    DISPLAY_NAME_TOO_LONG: 'Display name must be less than 50 characters',
+    INVALID_ROLE: 'Invalid role. Must be ATTENDEE, DJ, or ADMIN',
+    TOKEN_REQUIRED: 'Token is required',
+    INVALID_TOKEN: 'Invalid token format',
     INVALID_ACCESS_CODE: 'Access code must be alphanumeric',
   },
 
