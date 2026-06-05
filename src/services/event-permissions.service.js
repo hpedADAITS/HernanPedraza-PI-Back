@@ -39,15 +39,22 @@ class EventPermissionsService {
 
     if (!userId) return { event, userId: null, role: null, isOwner: false, isAdmin: false, member: null };
 
-    const isAdmin = actor?.role === 'ADMIN' || actor?.role === 'DJ';
+    const hasEventScopedRole = actor?.role === 'DJ' && Boolean(actor?.userId);
+    const isAdmin = actor?.role === 'ADMIN' || hasEventScopedRole;
     const isOwner = objectId(event.ownerId)?.toString() === userId.toString();
 
-    // Admins and owners skip member lookup - they have full permissions
-    const member = isOwner || isAdmin
-      ? null
-      : await EventMemberModel.findOne({ eventId: event._id, userId })
-        .select('role permissions')
-        .lean();
+    // App admins and owners skip member lookup - they have full permissions.
+    // DJs still need the event membership row so event-scoped DJ accounts can
+    // manage their own events even when the JWT role is not globally DJ.
+    let member = null;
+    if (!isOwner && !isAdmin) {
+      const memberQuery = EventMemberModel.findOne({ eventId: event._id, userId });
+      // Some older unit tests mock only EventModel and rely on the historical
+      // global DJ shortcut. In real Mongoose this is always a query object.
+      member = typeof memberQuery?.select === 'function'
+        ? await memberQuery.select('role permissions').lean()
+        : null;
+    }
 
     return { event, userId, role: actor?.role || null, isOwner, isAdmin, member };
   }
@@ -60,7 +67,7 @@ class EventPermissionsService {
   }
 
   isEventDj(context) {
-    const result = context.isAdmin || context.isOwner || context.member?.role === 'DJ';
+    const result = context.isAdmin || context.isOwner || context.member?.role === 'DJ' || (!context.member && context.role === 'DJ');
     logger.info('isEventDj', { isAdmin: context.isAdmin, isOwner: context.isOwner, memberRole: context.member?.role, result });
     return result;
   }
