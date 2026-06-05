@@ -114,9 +114,9 @@ class RamMatcher {
       }
     }
 
-    const scored = [...bestByTrack.values()]
-      .sort((a, b) => b.score - a.score)
-      .filter((match, index) => isConfidentMatch(match, index, scored.length))
+    const sorted = [...bestByTrack.values()].sort((a, b) => b.score - a.score);
+    const scored = sorted
+      .filter((match, index) => isConfidentMatch(match, index, sorted.length))
       .slice(0, 5);
 
     return scored.map((match) => {
