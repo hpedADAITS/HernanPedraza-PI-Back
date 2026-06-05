@@ -1238,7 +1238,7 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
       session.lastWaveformAt = now;
       socket.to(`event:${session.eventId}`).emit('phone_audio_stream', {
         eventId: session.eventId,
-        pcm: rawSamples,
+        pcm: Array.from(rawSamples),
         sampleRate: inputSampleRate,
         timestamp: Date.now(),
       });
