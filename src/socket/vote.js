@@ -9,7 +9,7 @@ const { requireFields } = require('./middleware');
 
 const handleCastVote = async (socket, io, data, callback) => {
   try {
-    const { eventId, songId, participantId, value, userId } = data;
+    const { eventId, songId, participantId, value } = data;
     if (!eventId || !songId || !participantId) {
       throw new Error('Missing required fields: eventId, songId, participantId, value');
     }
@@ -20,7 +20,7 @@ const handleCastVote = async (socket, io, data, callback) => {
       throw new Error('Vote value must be 1 or -1');
     }
     await assertJoinedEvent(socket, eventId, participantId);
-    const result = await votesService.castVote(songId, participantId, value, eventActor(socket, userId));
+    const result = await votesService.castVote(songId, participantId, value, eventActor(socket));
     const vote = result.vote;
     const song = result.song;
     toEventRoom(io, eventId).emit('votes_updated', {
@@ -46,7 +46,7 @@ const handleCastVote = async (socket, io, data, callback) => {
 
 const handleRemoveVote = async (socket, io, data, callback) => {
   try {
-    const { eventId, songId, participantId, userId } = data;
+    const { eventId, songId, participantId } = data;
     if (!eventId || !songId || !participantId) {
       throw new Error('Missing required fields: eventId, songId, participantId');
     }
@@ -54,7 +54,7 @@ const handleRemoveVote = async (socket, io, data, callback) => {
       throw new Error('Invalid ID format');
     }
     await assertJoinedEvent(socket, eventId, participantId);
-    const vote = await votesService.removeVote(songId, participantId, eventActor(socket, userId));
+    const vote = await votesService.removeVote(songId, participantId, eventActor(socket));
     toEventRoom(io, eventId).emit('vote_removed', {
       songId, participantId, timestamp: new Date().toISOString(),
     });

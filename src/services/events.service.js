@@ -79,8 +79,8 @@ class EventsService {
       throw new NotFoundError('User not found');
     }
 
-    if (user.role !== 'DJ' && user.role !== 'ADMIN') {
-      throw new ForbiddenError('Only DJs and admins can create events');
+    if (user.role !== 'DJ') {
+      throw new ForbiddenError('Only DJs can create events');
     }
 
     if (user.role === 'DJ' && !user.emailRegistered) {

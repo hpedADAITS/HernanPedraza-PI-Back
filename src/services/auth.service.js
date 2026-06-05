@@ -20,7 +20,7 @@ class AuthService {
     return generateToken({
       userId: user._id,
       email: user.email,
-      role: user.role,
+      role: user.role === 'ADMIN' ? 'DJ' : user.role,
       type: 'default',
       tokenVersion: user.authTokenVersion || 0,
     });
@@ -48,12 +48,30 @@ class AuthService {
       throw new UnauthorizedError(messages.AUTH.INVALID_TOKEN);
     }
 
-    return { decoded, user };
+    const normalizedUser = { ...user };
+    if (normalizedUser.role === 'ADMIN') {
+      normalizedUser.role = 'DJ';
+    }
+
+    return { decoded, user: normalizedUser };
   }
 
   async register(email, password, displayName, role = 'ATTENDEE') {
     /* Validate input */
     validateRegistration({ email, password, displayName, role });
+
+    /* Role assignment: the server decides. Public registration always
+       creates an ATTENDEE — the only way to escalate is DEBUG_MODE=true
+       (development only; config.js refuses to start the server with
+       DEBUG_MODE=true in production). This closes the self-registration
+       privilege escalation where a client could POST role:'ADMIN' and
+       become an admin. */
+    const callerRole = config.debugMode ? role : 'ATTENDEE';
+    if (callerRole !== role) {
+      logger.warn(
+        `Register: client supplied role=${role} but DEBUG_MODE is off; forcing ATTENDEE for ${email}`,
+      );
+    }
 
     /* Check if user exists */
     const existingUser = await UserModel.findOne({
@@ -71,7 +89,7 @@ class AuthService {
       email,
       passwordHash,
       displayName,
-      role,
+      role: callerRole,
     });
 
     await user.save();
@@ -81,7 +99,9 @@ class AuthService {
     const token = this.buildAuthToken(user);
 
     let emailVerificationToken;
-    if (role === 'DJ') {
+    /* Only DJ accounts need email verification; ATTENDEEs are unverified
+       by design and are gated by the EventMember model per-event. */
+    if (callerRole === 'DJ') {
       try {
         const emailResult = await emailService.sendWelcomeEmail(user, displayName);
         if (emailResult?.token) {

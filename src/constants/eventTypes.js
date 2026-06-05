@@ -16,7 +16,7 @@ const EVENT_ROLES = {
 };
 
 const USER_ROLES = {
-  ADMIN: 'ADMIN',
+  ADMIN: 'DJ',
   DJ: 'DJ',
   ATTENDEE: 'ATTENDEE',
 };

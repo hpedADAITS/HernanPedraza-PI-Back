@@ -42,7 +42,6 @@ const findAuthorizedParticipant = async (participantId, eventId, userId) => {
 const isEventMemberOrOwner = async (eventId, socket) => {
   const userId = socketUserId(socket);
   if (!userId) return false;
-  if (socket.user?.role === 'ADMIN') return true;
 
   const event = await EventModel.findById(eventId).select('ownerId').lean();
   if (!event) {
@@ -83,6 +82,7 @@ const assertEventRoomAccess = async (socket, eventId, participantId) => {
 
 module.exports = {
   assertEventRoomAccess,
+  isEventMemberOrOwner,
   isSocketAuthOptional,
   socketActor,
   socketUserId,
