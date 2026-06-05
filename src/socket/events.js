@@ -218,15 +218,6 @@ const handleDisconnect = (socket, io) => {
       participantId: socket.participantId,
     });
   }
-
-  // Clean up audio match session and free RAM index if phone microphone disconnected
-  if (socket.audioMatch) {
-    const { eventId } = socket.audioMatch;
-    sharedRamMatcher.clearEvent(eventId);
-    socket.audioMatch = null;
-    logger.info('Audio match session and RAM index cleaned up on disconnect', { eventId, socketId: socket.id });
-  }
-
   logger.info(`Socket ${socket.id} disconnected`);
 };
 

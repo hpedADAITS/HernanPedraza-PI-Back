@@ -4,7 +4,7 @@ const fs = require("fs");
 
 const PCM = 1;
 const FLOAT = 3;
-const TARGET_SAMPLE_RATE = 16000;
+const TARGET_SAMPLE_RATE = 32000;
 
 function readWav(file) {
   const buf = fs.readFileSync(file);

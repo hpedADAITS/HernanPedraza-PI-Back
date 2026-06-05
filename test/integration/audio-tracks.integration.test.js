@@ -238,12 +238,11 @@ test('matches stored WAV against simulated streaming phone PCM chunks', async ()
     samples[i] = pcm16.readInt16LE(i * 2) / 32768;
   }
 
-  const chunkSize = 16000; // 1 second if your target rate is 16k
+  const chunkSize = 32000; // 1 second at 32kHz target rate
   const allHashes = [];
 
-  const fingerprinter = createStreamingFingerprinter({
-    sampleRate: 16000,
-  });
+  const { StreamingFingerprinter } = require('../../src/services/audio-recognition/streaming');
+  const fingerprinter = new StreamingFingerprinter(32000);
 
   for (let offset = 0; offset < samples.length; offset += chunkSize) {
     const chunk = samples.subarray(offset, offset + chunkSize);

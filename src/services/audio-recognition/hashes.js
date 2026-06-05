@@ -2,7 +2,7 @@
 const { TARGET_SAMPLE_RATE } = require("./wav");
 
 
-const UPPER_FREQUENCY = 23000;
+const UPPER_FREQUENCY = 14000;
 const FREQUENCY_BITS = 10;
 const FAN_OUT = 100;
 function createHashes(constellation, songId = null) {
