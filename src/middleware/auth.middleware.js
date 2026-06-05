@@ -27,9 +27,12 @@ const authMiddleware = async (req, res, next) => {
       });
     }
 
-    const { decoded } = await authService.validateDefaultToken(token);
+    const { decoded, user } = await authService.validateDefaultToken(token);
 
-    req.user = decoded;
+    req.user = {
+      ...decoded,
+      role: user.role,
+    };
     req.token = token;
 
     next();
