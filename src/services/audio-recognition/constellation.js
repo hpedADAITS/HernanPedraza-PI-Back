@@ -5,7 +5,7 @@ const { fft, nextPow2 } = require("./fft");
 const WINDOW_SECONDS = 0.5;
 const PEAKS_PER_WINDOW = 15;
 const MIN_PEAK_DISTANCE = 200;
-const UPPER_FREQUENCY = 14000;
+const UPPER_FREQUENCY = 7000;
 const MAX_UINT16 = 65535;
 
 function createConstellation(samples, sampleRate) {
@@ -23,13 +23,13 @@ function createConstellation(samples, sampleRate) {
 }
 
 function windowPeaks(samples, start, sampleRate, windowSize, fftSize, window = hann(windowSize), time = 0) {
-  const real = new Float32Array(fftSize);
-  const imag = new Float32Array(fftSize);
+  const real = new Float64Array(fftSize);
+  const imag = new Float64Array(fftSize);
   for (let i = 0; i < windowSize; i++) real[i] = (samples[start + i] || 0) * window[i];
   fft(real, imag);
 
   const bins = (fftSize >>> 1) + 1;
-  const spectrum = new Float32Array(bins);
+  const spectrum = new Float64Array(bins);
   for (let i = 0; i < bins; i++) spectrum[i] = Math.hypot(real[i], imag[i]);
   return topPeaks(spectrum, PEAKS_PER_WINDOW, MIN_PEAK_DISTANCE)
     .map((peak) => {

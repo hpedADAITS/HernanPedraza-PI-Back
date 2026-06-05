@@ -1,12 +1,11 @@
 const path = require('path');
-const { createConstellation } = require('../../src/services/audio-recognition/constellation');
+const { createConstellation, UPPER_FREQUENCY } = require('../../src/services/audio-recognition/constellation');
 const { createHashes } = require('../../src/services/audio-recognition/hashes');
 const { readWavNormalized, TARGET_SAMPLE_RATE } = require('../../src/services/audio-recognition/wav');
 
 const __root = path.resolve(__dirname, '../../../..');
 const fixture = path.join(__root, 'repo', 'simple_house_140bpm_60s.wav');
 
-const UPPER_FREQUENCY = 14000;
 const MAX_UINT16 = 65535;
 
 function createConstellationFloat(samples, sampleRate) {

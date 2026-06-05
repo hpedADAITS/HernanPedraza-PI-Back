@@ -5,7 +5,6 @@ const crypto = require('crypto');
 
 const {
   AudioFingerprintModel,
-  AudioFingerprintHashModel,
   AudioTrackModel,
   EventModel,
   SongModel,
@@ -96,15 +95,6 @@ class AudioTracksService {
             { trackId: track._id },
             { $push: { hashes: { $each: batch.map(({ hash, time }) => ({ h: hash, t: time })) } } }
           );
-          await AudioFingerprintHashModel.insertMany(
-            batch.map(({ hash, time }) => ({
-              eventId: eventObjectId,
-              trackId: track._id,
-              hash,
-              sourceTime: time,
-            })),
-            { ordered: false }
-          );
         },
       });
 
@@ -156,7 +146,6 @@ class AudioTracksService {
 
     await Promise.all([
       AudioFingerprintModel.deleteMany({ eventId: eventObjectId, trackId }),
-      AudioFingerprintHashModel.deleteMany({ eventId: eventObjectId, trackId }),
       AudioTrackModel.deleteOne({ _id: trackId, eventId: eventObjectId }),
     ]);
 

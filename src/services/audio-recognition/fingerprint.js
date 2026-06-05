@@ -14,6 +14,10 @@ const { StreamingFingerprinter } = require("./streaming");
 
 const STREAM_READ_CHUNK_BYTES = 64 * 1024;
 const MAX_FINGERPRINT_HASHES = 80_000;
+// Hard cap on the audio length we'll fingerprint. 10 minutes produces
+// ~1200 windows at 0.5 s/window. Beyond that, RAM and CPU costs scale
+// linearly and the match quality gain is negligible for this use case.
+const MAX_AUDIO_SECONDS = 600;
 
 async function fingerprintWav(file, songId = null) {
   const { sampleRate, samples, originalSampleRate } = await readWavNormalized(
@@ -55,17 +59,44 @@ async function fingerprintWavStreamed(file, options = {}) {
   const totalFrames = Math.floor(dataSize / bytesPerFrame);
   const duration = totalFrames / fmt.sampleRate;
 
+  if (duration > MAX_AUDIO_SECONDS) {
+    throw new Error(`Audio too long: ${duration.toFixed(1)}s exceeds ${MAX_AUDIO_SECONDS}s limit`);
+  }
+
   const fingerprinter = new StreamingFingerprinter(targetSampleRate);
 
   let hashesCount = 0;
   let pointsCount = 0;
   let pending = [];
+  let capReached = false;
+
+  const takeFromPending = (max) => {
+    if (pending.length === 0) return [];
+    if (max >= pending.length) {
+      const all = pending;
+      pending = [];
+      return all;
+    }
+    const slice = pending.splice(0, max);
+    return slice;
+  };
 
   const flushFullBatches = async () => {
-    while (pending.length >= batchSize) {
-      const slice = pending.splice(0, batchSize);
+    while (!capReached && pending.length >= batchSize) {
+      const remainingCap = MAX_FINGERPRINT_HASHES - hashesCount;
+      if (remainingCap <= 0) {
+        pending = [];
+        capReached = true;
+        break;
+      }
+      const sliceSize = Math.min(batchSize, remainingCap);
+      const slice = takeFromPending(sliceSize);
       hashesCount += slice.length;
       if (onBatch) await onBatch(slice);
+      if (hashesCount >= MAX_FINGERPRINT_HASHES) {
+        pending = [];
+        capReached = true;
+      }
     }
   };
 
@@ -74,6 +105,7 @@ async function fingerprintWavStreamed(file, options = {}) {
     let offset = dataOffset;
     const end = dataOffset + dataSize;
     while (offset < end) {
+      if (capReached) break;
       const bytesToRead = Math.min(STREAM_READ_CHUNK_BYTES, end - offset);
       const buf = Buffer.alloc(bytesToRead);
       await fd.read(buf, 0, bytesToRead, offset);
@@ -92,13 +124,19 @@ async function fingerprintWavStreamed(file, options = {}) {
     await fd.close();
   }
 
-  const tail = fingerprinter.flush();
-  if (tail.length) pending.push(...tail);
-  hashesCount += pending.length;
-  if (pending.length && onBatch) {
-    const finalBatch = pending;
+  if (!capReached) {
+    const tail = fingerprinter.flush();
+    if (tail.length) pending.push(...tail);
+    const remainingCap = MAX_FINGERPRINT_HASHES - hashesCount;
+    if (remainingCap > 0 && pending.length > 0) {
+      const slice = takeFromPending(remainingCap);
+      hashesCount += slice.length;
+      if (onBatch) await onBatch(slice);
+    }
+  }
+
+  if (pending.length > 0) {
     pending = [];
-    await onBatch(finalBatch);
   }
 
   pointsCount = fingerprinter.points.length;

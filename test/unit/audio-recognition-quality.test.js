@@ -24,7 +24,7 @@ const {
 } = require('../../src/services/audio-recognition/wav');
 const { fingerprintWav } = require('../../src/services/audio-recognition/fingerprint');
 
-function synthTonePcm({ sampleRate = 32000, duration = 5, frequency = 440, amplitude = 0.5 } = {}) {
+function synthTonePcm({ sampleRate = TARGET_SAMPLE_RATE, duration = 5, frequency = 440, amplitude = 0.5 } = {}) {
   const length = Math.floor(sampleRate * duration);
   const out = new Float32Array(length);
   for (let i = 0; i < length; i += 1) {
@@ -33,11 +33,11 @@ function synthTonePcm({ sampleRate = 32000, duration = 5, frequency = 440, ampli
   return out;
 }
 
-function synthSilencePcm({ sampleRate = 32000, duration = 5 } = {}) {
+function synthSilencePcm({ sampleRate = TARGET_SAMPLE_RATE, duration = 5 } = {}) {
   return new Float32Array(Math.floor(sampleRate * duration));
 }
 
-function synthWavBuffer({ sampleRate = 32000, samples }) {
+function synthWavBuffer({ sampleRate = TARGET_SAMPLE_RATE, samples }) {
   const pcm16 = Buffer.alloc(samples.length * 2);
   for (let i = 0; i < samples.length; i += 1) {
     const v = Math.max(-1, Math.min(1, samples[i]));
@@ -59,7 +59,7 @@ function synthWavBuffer({ sampleRate = 32000, samples }) {
   return Buffer.concat([header, pcm16]);
 }
 
-async function writeTempWav(name, pcm, sampleRate = 32000) {
+async function writeTempWav(name, pcm, sampleRate = TARGET_SAMPLE_RATE) {
   const fs = require('fs');
   const os = require('os');
   const path = require('path');
@@ -86,7 +86,7 @@ describe('hashPair', () => {
   });
 
   test('produces distinct hashes for frequency pairs that span the bin width', () => {
-    // With UPPER_FREQUENCY=14000 and 1024 bins, the bin width is ~13.7 Hz.
+    // With UPPER_FREQUENCY=7000 and 1024 bins, the bin width is ~6.84 Hz.
     // Frequencies must differ by more than half a bin to be quantised to
     // different bins. Pairs separated by ≥ 100 Hz are well above that.
     const a = hashPair(0, 100, 5, 200);
@@ -117,12 +117,12 @@ describe('createConstellation', () => {
 
   test('documents the constellation overflow above UPPER_FREQUENCY', () => {
     // Known limitation: when a peak lands in a bin above UPPER_FREQUENCY
-    // (14 kHz at 32 kHz sample rate), the quantized freq exceeds 65535.
-    // At the Nyquist limit (16 kHz at 32 kHz sample rate) the upper bound
-    // is roughly (16000/14000) * 65535 ≈ 74897. The right fix is to filter
+    // (7 kHz at 16 kHz sample rate), the quantized freq exceeds 65535.
+    // At the Nyquist limit (8 kHz at 16 kHz sample rate) the upper bound
+    // is roughly (8000/7000) * 65535 ≈ 74897. The right fix is to filter
     // high-frequency peaks before quantization; until then, this test pins
     // the current behaviour so any future change is intentional.
-    const samples = synthTonePcm({ duration: 1, frequency: 15500 });
+    const samples = synthTonePcm({ duration: 1, frequency: 7500 });
     const points = createConstellation(samples, TARGET_SAMPLE_RATE);
     const maxFreq = points.reduce((m, [, f]) => Math.max(m, f), 0);
     if (maxFreq > 65535) {

@@ -1,23 +1,31 @@
 // RAM-based matcher for live audio recognition.
 // Loads fingerprints from MongoDB once per event, then performs in-memory lookups.
+//
+// Resource budgets (512 MB Render deployment):
+//   MongoDB document: 16 MB hard limit per document.
+//   Per-track hashes:   3-7 min of audio → ~30-100k hashes → ~2-3 MB.
+//   Per-event hashes:   cap at 200k → ~6 MB, well under the 16 MB limit.
+//   In-memory index:    ~50 bytes per (hash → {trackId, sourceTime}) entry.
+//                       200k entries ≈ 10 MB. MAX_CACHED_EVENTS=2 → ~20 MB.
+//   Available heap:     ~260 MB after Node + Mongoose + app. Audio is a small share.
 
 const { AudioFingerprintModel, AudioTrackModel } = require('../../models/schema');
 const { logger } = require('../../utils');
 
-const MAX_MATCH_HASHES = 1200;
-const MIN_ALIGNED_HASHES = 4;
-const MIN_BEST_SCORE_GAP = 2;
+const MIN_MATCH_SCORE = 4;
 
-// Safety limits tuned for 512MB deployment
-const MAX_INDEXED_HASHES_PER_EVENT = 40_000;
-const MAX_TRACK_HASHES = 40_000;
+// Caps below keep AudioFingerprintModel.hashes under MongoDB's 16 MB document
+// limit (3 tracks * 200k ≈ 6 MB JSON, comfortably under) and keep the in-memory
+// index bounded per the budget above.
+const MAX_TRACK_HASHES = 100_000;
+const MAX_INDEXED_HASHES_PER_EVENT = 200_000;
 
 // In-memory fingerprint storage keyed by eventId
 // Format: Map<eventId, { tracks: Map<trackId, TrackInfo>, index: Map<hash, Array<{trackId, sourceTime}>> }>
 const eventIndex = new Map();
 
-// Maximum events to keep in memory - evict LRU when limit reached
-// Tuned for 512MB memory budget
+// Maximum events to keep in memory. At MAX_INDEXED_HASHES_PER_EVENT each,
+// this caps the matcher cache at ~20 MB. Realistic for a 512 MB deployment.
 const MAX_CACHED_EVENTS = 2;
 
 class RamMatcher {
@@ -154,28 +162,32 @@ class RamMatcher {
 
       for (const { trackId, sourceTime } of candidates) {
         const offset = sourceTime - sampleTime;
-        const bucketKey = `${trackId}:${offset}`;
-        buckets.set(bucketKey, (buckets.get(bucketKey) || 0) + 1);
+        let byOffset = buckets.get(trackId);
+        if (!byOffset) {
+          byOffset = new Map();
+          buckets.set(trackId, byOffset);
+        }
+        byOffset.set(offset, (byOffset.get(offset) || 0) + 1);
       }
     }
 
-    const bestByTrack = new Map();
-    for (const [key, score] of buckets) {
-      const split = key.lastIndexOf(':');
-      const trackId = key.slice(0, split);
-      const offset = Number(key.slice(split + 1));
-      const current = bestByTrack.get(trackId);
-      if (!current || score > current.score) {
-        bestByTrack.set(trackId, { trackId, offset, score });
+    const scored = [];
+    for (const [trackId, byOffset] of buckets) {
+      let bestOffset = 0;
+      let bestScore = 0;
+      for (const [offset, count] of byOffset) {
+        if (count > bestScore) {
+          bestScore = count;
+          bestOffset = offset;
+        }
       }
+      if (bestScore < MIN_MATCH_SCORE) continue;
+      scored.push({ trackId, offset: bestOffset, score: bestScore });
     }
 
-    const sorted = [...bestByTrack.values()].sort((a, b) => b.score - a.score);
-    const scored = sorted
-      .filter((match, index) => isConfidentMatch(match, index, sorted))
-      .slice(0, 5);
+    scored.sort((a, b) => b.score - a.score);
 
-    return scored.map((match) => {
+    return scored.slice(0, 5).map((match) => {
       const track = tracks.get(match.trackId);
       return {
         trackId: match.trackId,
@@ -215,10 +227,11 @@ function normalizeHashRows(hashes) {
   for (const item of hashes || []) {
     const hash = Number(item.hash);
     const time = Number(item.time);
-    if (!Number.isFinite(hash) || !Number.isFinite(time) || seen.has(hash)) continue;
-    seen.add(hash);
+    if (!Number.isFinite(hash) || !Number.isFinite(time)) continue;
+    const key = `${hash}:${time}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     rows.push({ hash, time });
-    if (rows.length >= MAX_MATCH_HASHES) break;
   }
 
   return rows;
@@ -234,12 +247,4 @@ async function matchHashes(eventId, hashes) {
   return matcher.match(eventId, rows);
 }
 
-function isConfidentMatch(match, index, sortedMatches) {
-  if (match.score < MIN_ALIGNED_HASHES) return false;
-  if (index === 0 && sortedMatches[1] && match.score - sortedMatches[1].score < MIN_BEST_SCORE_GAP) {
-    return false;
-  }
-  return true;
-}
-
-module.exports = { RamMatcher, matchHashes, normalizeHashRows, isConfidentMatch };
+module.exports = { RamMatcher, matchHashes, normalizeHashRows };

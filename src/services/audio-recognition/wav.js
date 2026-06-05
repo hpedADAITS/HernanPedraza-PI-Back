@@ -4,7 +4,7 @@ const fs = require("fs");
 
 const PCM = 1;
 const FLOAT = 3;
-const TARGET_SAMPLE_RATE = 32000;
+const TARGET_SAMPLE_RATE = 16000;
 
 function sample(data, off, fmt) {
   if (fmt.format === FLOAT) {

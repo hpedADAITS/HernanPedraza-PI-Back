@@ -3,8 +3,18 @@
 const { WINDOW_SECONDS, hann, windowPeaks } = require("./constellation");
 const { FAN_OUT, createHashes, hashPair } = require("./hashes");
 
-const MAX_POINTS_MEMORY_BYTES = 10 * 1024 * 1024;
-const MAX_HASH_ENTRIES = 50_000;
+// Resource budgets (512 MB Render deployment).
+// These caps apply to a single StreamingFingerprinter instance — typically one
+// per in-flight upload or one per live phone-mic socket. At TARGET_SAMPLE_RATE
+// = 16 kHz with a 0.5 s window each window produces ~15 peaks and ~50 hashes;
+// 100k hashes is ~7 minutes of audio.
+const MAX_POINTS_MEMORY_BYTES = 5 * 1024 * 1024;
+const MAX_HASH_ENTRIES = 100_000;
+
+// Backpressure for the live phone-mic path. If a chunk arrives while the
+// previous chunk is still in the input buffer, we drop the oldest buffer
+// samples (up to this many) instead of letting the buffer grow unbounded.
+const MAX_BUFFER_SAMPLES = 5 * 16000;
 
 class StreamingFingerprinter {
   constructor(sampleRate) {
@@ -13,11 +23,11 @@ class StreamingFingerprinter {
     this.windowSize = Math.max(2, Math.floor(WINDOW_SECONDS * sampleRate));
     this.fftSize = 1 << Math.ceil(Math.log2(Math.max(1, this.windowSize)));
     this.window = hann(this.windowSize);
-    this.buffer = new Float32Array(0);
+    this.buffer = new Float64Array(0);
     this.time = 0;
     this.points = [];
     this.hashes = new Map();
-    this.maxTime = 0;
+    this.droppedWindows = 0;
   }
 
   _maybeCompact() {
@@ -36,6 +46,15 @@ class StreamingFingerprinter {
     this.buffer = append(this.buffer, samples);
     const out = [];
 
+    // Backpressure: if the buffer is way over budget, drop the oldest
+    // window-aligned samples so the live path can't OOM under network jitter.
+    if (this.buffer.length > MAX_BUFFER_SAMPLES) {
+      const drop = this.buffer.length - MAX_BUFFER_SAMPLES + this.windowSize;
+      const dropAligned = drop - (drop % this.windowSize);
+      this.buffer = this.buffer.subarray(dropAligned);
+      this.droppedWindows += Math.floor(dropAligned / this.windowSize);
+    }
+
     while (this.buffer.length >= this.windowSize) {
       this._window(this.buffer, 0, out);
       this.buffer = this.buffer.subarray(this.windowSize);
@@ -46,9 +65,9 @@ class StreamingFingerprinter {
 
   flush() {
     if (!this.buffer.length) return [];
-    const padded = new Float32Array(this.windowSize);
+    const padded = new Float64Array(this.windowSize);
     padded.set(this.buffer);
-    this.buffer = new Float32Array(0);
+    this.buffer = new Float64Array(0);
     const out = [];
     this._window(padded, 0, out);
     return out;
@@ -83,7 +102,7 @@ class StreamingFingerprinter {
 }
 
 function append(a, b) {
-  const out = new Float32Array(a.length + b.length);
+  const out = new Float64Array(a.length + b.length);
   out.set(a);
   out.set(b, a.length);
   return out;

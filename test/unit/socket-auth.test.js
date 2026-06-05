@@ -25,6 +25,9 @@ const {
   socketUserId,
 } = require('../../src/socket/auth');
 
+const eventId = '64b7f8f8f8f8f8f8f8f8f8f8';
+const participantId = '64b7f8f8f8f8f8f8f8f8f8f9';
+
 describe('socket-auth.js', () => {
   let mockSocket;
 
@@ -140,24 +143,30 @@ describe('socket-auth.js', () => {
     test('should allow owner access', async () => {
       mockSocket.user = { userId: 'owner-user', role: 'DJ' };
       
-      EventModel.findById.mockResolvedValue({
-        _id: 'event-1',
-        ownerId: 'owner-user',
+      EventModel.findById.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue({
+          _id: eventId,
+          ownerId: 'owner-user',
+        }),
       });
 
-      await expect(assertEventRoomAccess(mockSocket, 'event-1', null))
+      await expect(assertEventRoomAccess(mockSocket, eventId, null))
         .resolves.toBeNull();
     });
 
     test('should allow admin access', async () => {
       mockSocket.user = { userId: 'admin-user', role: 'ADMIN' };
       
-      EventModel.findById.mockResolvedValue({
-        _id: 'event-1',
-        ownerId: 'other-user',
+      EventModel.findById.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue({
+          _id: eventId,
+          ownerId: 'other-user',
+        }),
       });
 
-      const result = await assertEventRoomAccess(mockSocket, 'event-1', null);
+      const result = await assertEventRoomAccess(mockSocket, eventId, null);
       
       expect(result).toBeNull();
     });
@@ -165,30 +174,36 @@ describe('socket-auth.js', () => {
     test('should check ownership via database', async () => {
       mockSocket.user = { userId: 'db-owner', role: 'DJ' };
       
-      EventModel.findById.mockResolvedValue({
-        _id: 'event-1',
-        ownerId: 'db-owner',
+      EventModel.findById.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue({
+          _id: eventId,
+          ownerId: 'db-owner',
+        }),
       });
 
-      await assertEventRoomAccess(mockSocket, 'event-1', null);
+      await assertEventRoomAccess(mockSocket, eventId, null);
       
-      expect(EventModel.findById).toHaveBeenCalledWith('event-1');
+      expect(EventModel.findById).toHaveBeenCalledWith(eventId);
     });
 
     test('should check event membership via database', async () => {
       mockSocket.user = { userId: 'member-user', role: 'ATTENDEE' };
       
-      EventModel.findById.mockResolvedValue({
-        _id: 'event-1',
-        ownerId: 'owner-user',
+      EventModel.findById.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue({
+          _id: eventId,
+          ownerId: 'owner-user',
+        }),
       });
       EventMemberModel.exists.mockResolvedValue({ _id: 'member-1' });
 
-      const result = await assertEventRoomAccess(mockSocket, 'event-1', null);
+      const result = await assertEventRoomAccess(mockSocket, eventId, null);
       
       expect(result).toBeNull();
       expect(EventMemberModel.exists).toHaveBeenCalledWith({
-        eventId: 'event-1',
+        eventId,
         userId: 'member-user',
       });
     });
@@ -196,22 +211,28 @@ describe('socket-auth.js', () => {
     test('should fallback to participant check', async () => {
       mockSocket.user = { userId: 'user-with-participant', role: 'ATTENDEE' };
       
-      EventModel.findById.mockResolvedValue({
-        _id: 'event-1',
-        ownerId: 'owner-user',
+      EventModel.findById.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue({
+          _id: eventId,
+          ownerId: 'owner-user',
+        }),
       });
       EventMemberModel.exists.mockResolvedValue(null);
       
-      ParticipantModel.findOne.mockResolvedValue({
-        _id: 'participant-1',
-        eventId: 'event-1',
-        userId: 'user-with-participant',
+      ParticipantModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue({
+          _id: participantId,
+          eventId,
+          userId: 'user-with-participant',
+        }),
       });
 
       const result = await assertEventRoomAccess(
         mockSocket,
-        'event-1',
-        'participant-1'
+        eventId,
+        participantId
       );
       
       expect(result).toBeDefined();
@@ -220,43 +241,58 @@ describe('socket-auth.js', () => {
     test('should reject unauthorized participant', async () => {
       mockSocket.user = { userId: 'user-1', role: 'ATTENDEE' };
       
-      EventModel.findById.mockResolvedValue({
-        _id: 'event-1',
-        ownerId: 'other-owner',
+      EventModel.findById.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue({
+          _id: eventId,
+          ownerId: 'other-owner',
+        }),
       });
       EventMemberModel.exists.mockResolvedValue(null);
-      ParticipantModel.findOne.mockResolvedValue(null);
+      ParticipantModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue(null),
+      });
 
       await expect(
-        assertEventRoomAccess(mockSocket, 'event-1', 'fake-participant')
+        assertEventRoomAccess(mockSocket, eventId, participantId)
       ).rejects.toThrow('cannot join this event');
     });
 
     test('should throw when participant access required but not provided', async () => {
       mockSocket.user = { userId: 'user-new', role: 'ATTENDEE' };
       
-      EventModel.findById.mockResolvedValue({
-        _id: 'event-1',
-        ownerId: 'owner-user',
+      EventModel.findById.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue({
+          _id: eventId,
+          ownerId: 'owner-user',
+        }),
       });
       EventMemberModel.exists.mockResolvedValue(null);
 
-      await expect(assertEventRoomAccess(mockSocket, 'event-1', null))
+      await expect(assertEventRoomAccess(mockSocket, eventId, null))
         .rejects.toThrow('Participant access is required');
     });
 
     test('should require participant ID for non-member', async () => {
       mockSocket.user = { userId: 'new-user', role: 'ATTENDEE' };
       
-      EventModel.findById.mockResolvedValue({
-        _id: 'event-1',
-        ownerId: 'owner-user',
+      EventModel.findById.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue({
+          _id: eventId,
+          ownerId: 'owner-user',
+        }),
       });
       EventMemberModel.exists.mockResolvedValue(null);
-      ParticipantModel.findOne.mockResolvedValue(null);
+      ParticipantModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue(null),
+      });
 
       await expect(
-        assertEventRoomAccess(mockSocket, 'event-1', 'invalid-id')
+        assertEventRoomAccess(mockSocket, eventId, 'invalid-id')
       ).rejects.toThrow('Participant access is required');
     });
   });

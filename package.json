@@ -8,6 +8,7 @@
     "dev": "nodemon src/index.js",
     "seed": "node scripts/populate.js",
     "populate": "node scripts/populate.js",
+    "refingerprint": "node scripts/refingerprint-audio-tracks.js",
     "test": "jest --detectOpenHandles",
     "test:unit": "jest test/unit --detectOpenHandles",
     "test:integration": "jest test/integration --detectOpenHandles",

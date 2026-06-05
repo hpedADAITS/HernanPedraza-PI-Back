@@ -1,6 +1,5 @@
 const bcrypt = require('bcryptjs');
 const {
-  AudioFingerprintHashModel,
   AudioFingerprintPointModel,
   AudioTrackModel,
   EventMemberModel,
@@ -66,7 +65,6 @@ class DebugService {
       fingerprintedSongs,
       indexedSongs,
       fingerprintPoints,
-      fingerprintHashes,
     ] = await Promise.all([
       AudioTrackModel.countDocuments(),
       AudioTrackModel.countDocuments({
@@ -74,7 +72,6 @@ class DebugService {
       }),
       AudioTrackModel.countDocuments({ hashesCount: { $gt: 0 } }),
       AudioFingerprintPointModel.countDocuments(),
-      AudioFingerprintHashModel.countDocuments(),
     ]);
 
     return {
@@ -82,7 +79,6 @@ class DebugService {
       fingerprintedSongs,
       indexedSongs,
       fingerprintPoints,
-      fingerprintHashes,
       countedAt: new Date().toISOString(),
     };
   }
