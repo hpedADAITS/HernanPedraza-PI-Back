@@ -1246,6 +1246,19 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
     const now = Date.now();
     const AUDIO_MATCH_INTERVAL_MS = 700;
 
+    // Debug: log audio processing details every 5 seconds
+    if (!session._lastDebugLogAt || now - session._lastDebugLogAt > 5000) {
+      session._lastDebugLogAt = now;
+      logger.info('Audio match debug', {
+        eventId: session.eventId,
+        inputSampleRate,
+        targetSampleRate: TARGET_SAMPLE_RATE,
+        rawSamplesLength: rawSamples.length,
+        resampledSamplesLength: samples.length,
+        hashesGenerated: hashes.length,
+      });
+    }
+
     // Emit raw audio stream for waveform display (bifurcation: one stream for visualization)
     const WAVEFORM_EMIT_INTERVAL_MS = 100;
     if (now - (session.lastWaveformAt || 0) > WAVEFORM_EMIT_INTERVAL_MS) {

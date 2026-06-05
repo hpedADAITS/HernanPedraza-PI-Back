@@ -2,6 +2,7 @@
 // Loads fingerprints from MongoDB once per event, then performs in-memory lookups.
 
 const { AudioFingerprintModel, AudioTrackModel } = require('../../models/schema');
+const { logger } = require('../../utils');
 
 const MAX_MATCH_HASHES = 1200;
 const MIN_ALIGNED_HASHES = 4;
@@ -44,6 +45,7 @@ class RamMatcher {
       .lean();
 
     if (!fingerprints.length) {
+      logger.info('RAM matcher loaded event - no fingerprints', { eventId });
       return { tracks: new Map(), index: new Map() };
     }
 
@@ -56,10 +58,12 @@ class RamMatcher {
 
     // Build in-memory hash index
     const index = new Map();
+    let totalHashes = 0;
 
     for (const fp of fingerprints) {
       const trackId = fp.trackId.toString();
       const hashes = fp.hashes || [];
+      totalHashes += hashes.length;
 
       for (const { h, t } of hashes) {
         const key = Number(h);
@@ -72,6 +76,14 @@ class RamMatcher {
         entries.push({ trackId, sourceTime: Number(t) });
       }
     }
+
+    logger.info('RAM matcher loaded event fingerprints', {
+      eventId,
+      fingerprintCount: fingerprints.length,
+      totalHashes,
+      indexSize: index.size,
+      trackCount: tracks.length,
+    });
 
     // Convert arrays to reduce memory overhead
     // (already done in array form for simplicity)
