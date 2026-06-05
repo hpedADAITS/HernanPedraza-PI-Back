@@ -31,7 +31,7 @@ class EventPermissionsService {
       : await this.getEvent(eventOrId);
     const userId = actorId(actor);
 
-    logger.debug('getContext', {
+    logger.info('getContext', {
       actorRole: actor?.role,
       actorUserId: userId,
       actorKeys: actor ? Object.keys(actor) : null,
@@ -61,7 +61,7 @@ class EventPermissionsService {
 
   isEventDj(context) {
     const result = context.isAdmin || context.isOwner || context.member?.role === 'DJ';
-    logger.debug('isEventDj', { isAdmin: context.isAdmin, isOwner: context.isOwner, memberRole: context.member?.role, result });
+    logger.info('isEventDj', { isAdmin: context.isAdmin, isOwner: context.isOwner, memberRole: context.member?.role, result });
     return result;
   }
 
@@ -73,7 +73,7 @@ class EventPermissionsService {
 
   async assertAnyPermission(eventId, actor, permissions, message = 'You do not have permission to perform this action') {
     const context = await this.getContext(eventId, actor);
-    logger.debug('assertAnyPermission context', {
+    logger.info('assertAnyPermission context', {
       isAdmin: context.isAdmin,
       isOwner: context.isOwner,
       memberRole: context.member?.role,
