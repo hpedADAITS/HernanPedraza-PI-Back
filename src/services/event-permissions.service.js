@@ -31,6 +31,12 @@ class EventPermissionsService {
       : await this.getEvent(eventOrId);
     const userId = actorId(actor);
 
+    logger.debug('getContext', {
+      actorRole: actor?.role,
+      actorUserId: userId,
+      actorKeys: actor ? Object.keys(actor) : null,
+    });
+
     if (!userId) return { event, userId: null, role: null, isOwner: false, isAdmin: false, member: null };
 
     const isAdmin = actor?.role === 'ADMIN' || actor?.role === 'DJ';
@@ -54,7 +60,9 @@ class EventPermissionsService {
   }
 
   isEventDj(context) {
-    return context.isAdmin || context.isOwner || context.member?.role === 'DJ';
+    const result = context.isAdmin || context.isOwner || context.member?.role === 'DJ';
+    logger.debug('isEventDj', { isAdmin: context.isAdmin, isOwner: context.isOwner, memberRole: context.member?.role, result });
+    return result;
   }
 
   async assertEventDj(eventId, actor, message = 'You do not have permission to manage this event') {
@@ -65,6 +73,12 @@ class EventPermissionsService {
 
   async assertAnyPermission(eventId, actor, permissions, message = 'You do not have permission to perform this action') {
     const context = await this.getContext(eventId, actor);
+    logger.debug('assertAnyPermission context', {
+      isAdmin: context.isAdmin,
+      isOwner: context.isOwner,
+      memberRole: context.member?.role,
+      memberPermissions: context.member?.permissions,
+    });
     if (this.isEventDj(context) || this.hasAnyPermission(context, permissions)) return context;
     throw new ForbiddenError(message);
   }
