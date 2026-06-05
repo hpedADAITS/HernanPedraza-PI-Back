@@ -1188,19 +1188,33 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
   try {
     // Auto-start audio matcher if not started (phone microphone may send chunks before start is processed)
     if (!socket.audioMatch) {
-      const { eventId, sampleRate } = data || {};
-      if (socket.user?.type === 'phone-microphone' && eventId) {
-        logger.info('Auto-starting audio matcher for phone microphone', { eventId, sampleRate });
-        await sharedRamMatcher.loadEvent(eventId);
-        socket.audioMatch = {
-          eventId,
-          fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE),
-          ramMatcher: sharedRamMatcher,
-          inputSampleRate: sampleRate,
-          lastEmitAt: 0,
-        };
+      // Use mutex to prevent race condition with multiple chunks arriving simultaneously
+      if (socket._audioMatchLoading) {
+        // Another chunk is already loading, wait and retry
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        if (!socket.audioMatch) {
+          throw new Error('Audio matcher failed to start');
+        }
       } else {
-        throw new Error('Audio matcher has not started');
+        socket._audioMatchLoading = true;
+        try {
+          const { eventId, sampleRate } = data || {};
+          if (socket.user?.type === 'phone-microphone' && eventId) {
+            logger.info('Auto-starting audio matcher for phone microphone', { eventId, sampleRate });
+            await sharedRamMatcher.loadEvent(eventId);
+            socket.audioMatch = {
+              eventId,
+              fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE),
+              ramMatcher: sharedRamMatcher,
+              inputSampleRate: sampleRate,
+              lastEmitAt: 0,
+            };
+          } else {
+            throw new Error('Audio matcher has not started');
+          }
+        } finally {
+          socket._audioMatchLoading = false;
+        }
       }
     }
 
