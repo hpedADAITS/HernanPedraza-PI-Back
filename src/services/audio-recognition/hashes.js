@@ -2,9 +2,10 @@
 const { TARGET_SAMPLE_RATE } = require("./wav");
 
 
-const UPPER_FREQUENCY = 14000;
 const FREQUENCY_BITS = 10;
 const FAN_OUT = 100;
+const MAX_UINT16 = 65535;
+
 function createHashes(constellation, songId = null) {
   const hashes = new Map();
 
@@ -25,8 +26,8 @@ function hashPair(time, freq, otherTime, otherFreq) {
   if (diff <= 1 || diff > 10) return null;
 
   const bins = 1 << FREQUENCY_BITS;
-  const a = Math.trunc((freq / UPPER_FREQUENCY) * bins);
-  const b = Math.trunc((otherFreq / UPPER_FREQUENCY) * bins);
+  const a = Math.trunc((freq / MAX_UINT16) * bins);
+  const b = Math.trunc((otherFreq / MAX_UINT16) * bins);
   return a | (b << 10) | (diff << 20);
 }
 

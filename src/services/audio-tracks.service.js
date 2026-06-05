@@ -6,7 +6,6 @@ const crypto = require('crypto');
 const {
   AudioFingerprintModel,
   AudioFingerprintHashModel,
-  AudioFingerprintPointModel,
   AudioTrackModel,
   EventModel,
   SongModel,
@@ -14,10 +13,9 @@ const {
 const { ForbiddenError, NotFoundError, ValidationError } = require('../errors');
 const eventPermissionsService = require('./event-permissions.service');
 const songsService = require('./songs.service');
-const { createConstellation } = require('./audio-recognition/constellation');
-const { createHashes } = require('./audio-recognition/hashes');
-const { readWavNormalized } = require('./audio-recognition/wav');
+const { fingerprintWavStreamed } = require('./audio-recognition/fingerprint');
 const { matchHashes, RamMatcher } = require('./audio-recognition/ram-matcher');
+const { parseWavHeader, TARGET_SAMPLE_RATE } = require('./audio-recognition/wav');
 
 // Shared RamMatcher instance for socket-level matching
 const sharedRamMatcher = new RamMatcher();
@@ -61,9 +59,10 @@ class AudioTracksService {
         );
       }
 
-      const { sampleRate, samples } = await readWavNormalized(tmpFile);
-      const points = createConstellation(samples, sampleRate);
-      const hashRows = [...createHashes(points)];
+      const header = await parseWavHeader(tmpFile);
+      const bytesPerFrame = (header.fmt.bits >>> 3) * header.fmt.channels;
+      const totalFrames = Math.floor(header.dataSize / bytesPerFrame);
+      const expectedDuration = totalFrames / header.fmt.sampleRate;
 
       const track = await AudioTrackModel.create({
         eventId: eventObjectId,
@@ -72,44 +71,66 @@ class AudioTracksService {
         artist,
         coverUrl,
         uploadedBy: userId,
-        duration: samples.length / sampleRate,
-        sampleRate,
-        pointsCount: points.length,
-        hashesCount: hashRows.length,
+        duration: expectedDuration,
+        sampleRate: TARGET_SAMPLE_RATE,
+        pointsCount: 0,
+        hashesCount: 0,
       });
 
-      // Store as bundled fingerprint document (FIX.md design)
+      // Seed the bundled fingerprint document with an empty hashes array
+      // and stream $push batches in to bound memory.
       await AudioFingerprintModel.create({
         eventId: eventObjectId,
         trackId: track._id,
-        sampleRate,
-        duration: samples.length / sampleRate,
-        pointsCount: points.length,
-        hashesCount: hashRows.length,
-        hashes: hashRows.map(([h, [t]]) => ({ h, t })),
+        sampleRate: TARGET_SAMPLE_RATE,
+        duration: expectedDuration,
+        pointsCount: 0,
+        hashesCount: 0,
+        hashes: [],
       });
 
-      // Also keep legacy documents for backward compatibility during transition
-      await insertManyChunked(
-        AudioFingerprintPointModel,
-        points.map(([time, frequency]) => ({
-          eventId: eventObjectId,
-          trackId: track._id,
-          time,
-          frequency,
-        })),
-      );
-      await insertManyChunked(
-        AudioFingerprintHashModel,
-        hashRows.map(([hash, [sourceTime]]) => ({
-          eventId: eventObjectId,
-          trackId: track._id,
-          hash,
-          sourceTime,
-        })),
-      );
+      const totals = await fingerprintWavStreamed(tmpFile, {
+        batchSize: INSERT_CHUNK,
+        onBatch: async (batch) => {
+          await AudioFingerprintModel.updateOne(
+            { trackId: track._id },
+            { $push: { hashes: { $each: batch.map(({ hash, time }) => ({ h: hash, t: time })) } } }
+          );
+          await AudioFingerprintHashModel.insertMany(
+            batch.map(({ hash, time }) => ({
+              eventId: eventObjectId,
+              trackId: track._id,
+              hash,
+              sourceTime: time,
+            })),
+            { ordered: false }
+          );
+        },
+      });
 
-      return this._formatTrack(track);
+      await Promise.all([
+        AudioTrackModel.updateOne(
+          { _id: track._id },
+          {
+            duration: totals.duration,
+            sampleRate: totals.sampleRate,
+            pointsCount: totals.pointsCount,
+            hashesCount: totals.hashesCount,
+          }
+        ),
+        AudioFingerprintModel.updateOne(
+          { trackId: track._id },
+          {
+            sampleRate: totals.sampleRate,
+            duration: totals.duration,
+            pointsCount: totals.pointsCount,
+            hashesCount: totals.hashesCount,
+          }
+        ),
+      ]);
+
+      const updated = await AudioTrackModel.findById(track._id).lean();
+      return this._formatTrack(updated);
     } catch (error) {
       throw error instanceof ValidationError
         ? error
@@ -136,7 +157,6 @@ class AudioTracksService {
     await Promise.all([
       AudioFingerprintModel.deleteMany({ eventId: eventObjectId, trackId }),
       AudioFingerprintHashModel.deleteMany({ eventId: eventObjectId, trackId }),
-      AudioFingerprintPointModel.deleteMany({ eventId: eventObjectId, trackId }),
       AudioTrackModel.deleteOne({ _id: trackId, eventId: eventObjectId }),
     ]);
 
@@ -149,9 +169,13 @@ class AudioTracksService {
     const tmpFile = await writeTempFile(file);
 
     try {
-      const { sampleRate, samples } = await readWavNormalized(tmpFile);
-      const points = createConstellation(samples, sampleRate);
-      const hashes = [...createHashes(points)].map(([hash, [time]]) => ({ hash, time }));
+      const collected = [];
+      await fingerprintWavStreamed(tmpFile, {
+        onBatch: async (batch) => {
+          collected.push(...batch);
+        },
+      });
+      const hashes = collected.map(({ hash, time }) => ({ hash, time }));
       return matchHashes(eventObjectId, hashes);
     } finally {
       fs.promises.rm(tmpFile, { force: true }).catch(() => {});
@@ -244,12 +268,6 @@ async function writeTempFile(file) {
   const tmpFile = path.join(dir, `${Date.now()}-${path.basename(file.filename || 'audio.wav')}`);
   await fs.promises.writeFile(tmpFile, file.buffer);
   return tmpFile;
-}
-
-async function insertManyChunked(model, rows) {
-  for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
-    await model.insertMany(rows.slice(i, i + INSERT_CHUNK), { ordered: false });
-  }
 }
 
 const audioTracksServiceInstance = new AudioTracksService();

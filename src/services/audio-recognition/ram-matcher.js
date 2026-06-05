@@ -172,7 +172,7 @@ class RamMatcher {
 
     const sorted = [...bestByTrack.values()].sort((a, b) => b.score - a.score);
     const scored = sorted
-      .filter((match, index) => isConfidentMatch(match, index, sorted.length))
+      .filter((match, index) => isConfidentMatch(match, index, sorted))
       .slice(0, 5);
 
     return scored.map((match) => {
@@ -234,10 +234,12 @@ async function matchHashes(eventId, hashes) {
   return matcher.match(eventId, rows);
 }
 
-function isConfidentMatch(match, index, matchCount) {
+function isConfidentMatch(match, index, sortedMatches) {
   if (match.score < MIN_ALIGNED_HASHES) return false;
-  if (index === 0 && matchCount > 1 && match.score - matchCount < MIN_BEST_SCORE_GAP) return false;
+  if (index === 0 && sortedMatches[1] && match.score - sortedMatches[1].score < MIN_BEST_SCORE_GAP) {
+    return false;
+  }
   return true;
 }
 
-module.exports = { RamMatcher, matchHashes, normalizeHashRows };
+module.exports = { RamMatcher, matchHashes, normalizeHashRows, isConfidentMatch };

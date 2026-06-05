@@ -10,7 +10,6 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = require('../../src/app');
 const {
   AudioFingerprintHashModel,
-  AudioFingerprintPointModel,
   AudioTrackModel,
   EventMemberModel,
   EventModel,
@@ -21,11 +20,17 @@ const {
 } = require('../../src/models');
 
 const { audioTracksService } = require('../../src/services/audio-tracks.service');
+const { AudioFingerprintModel } = require('../../src/models/schema');
 
 jest.setTimeout(60000);
 
 let mongoServer;
 let fixture;
+let phoneStreamFixture;
+
+const __root = path.resolve(__dirname, '../../../..');
+const houseTrackWav = path.join(__root, 'repo', 'simple_house_140bpm_60s.wav');
+const phoneStreamWav = path.join(__root, 'repo', 'phone_stream_reverb_32kHz.wav');
 
 const authHeader = (token) => ({ Authorization: `Bearer ${token}` });
 const futureDate = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -74,12 +79,14 @@ function uploadTrack(eventId, token, overrides = {}) {
     .field('title', overrides.title || 'Fixture Track')
     .field('artist', overrides.artist || 'Fixture Artist')
     .field('coverUrl', overrides.coverUrl || 'https://example.com/cover.jpg')
-    .attach('audio', fixture);
+    .attach('audio', overrides.audio || fixture);
 }
 
 beforeAll(async () => {
   fixture = path.join(os.tmpdir(), `audio-track-fixture-${process.pid}.wav`);
   await fs.promises.writeFile(fixture, createWavFixture());
+  phoneStreamFixture = path.join(os.tmpdir(), `phone-stream-fixture-${process.pid}.wav`);
+  await fs.promises.copyFile(phoneStreamWav, phoneStreamFixture);
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri());
 });
@@ -88,12 +95,12 @@ afterAll(async () => {
   await mongoose.disconnect();
   await mongoServer.stop();
   await fs.promises.rm(fixture, { force: true });
+  await fs.promises.rm(phoneStreamFixture, { force: true });
 });
 
 beforeEach(async () => {
   await Promise.all([
     AudioFingerprintHashModel.deleteMany({}),
-    AudioFingerprintPointModel.deleteMany({}),
     AudioTrackModel.deleteMany({}),
     EventMemberModel.deleteMany({}),
     EventModel.deleteMany({}),
@@ -124,9 +131,9 @@ describe('Audio track REST integration', () => {
 
     const trackId = res.body.data.track.id;
     await expect(AudioTrackModel.countDocuments({ eventId: event.id })).resolves.toBe(1);
-    await expect(AudioFingerprintPointModel.countDocuments({ eventId: event.id, trackId })).resolves.toBe(
-      res.body.data.track.pointsCount,
-    );
+    const bundled = await AudioFingerprintModel.findOne({ eventId: event.id, trackId }).select('hashes hashesCount');
+    expect(bundled.hashes.length).toBe(res.body.data.track.hashesCount);
+    expect(bundled.hashesCount).toBe(res.body.data.track.hashesCount);
     await expect(AudioFingerprintHashModel.countDocuments({ eventId: event.id, trackId })).resolves.toBe(
       res.body.data.track.hashesCount,
     );
@@ -186,7 +193,6 @@ describe('Audio track REST integration', () => {
       .expect(200);
 
     await expect(AudioTrackModel.countDocuments({ _id: trackId })).resolves.toBe(0);
-    await expect(AudioFingerprintPointModel.countDocuments({ trackId })).resolves.toBe(0);
     await expect(AudioFingerprintHashModel.countDocuments({ trackId })).resolves.toBe(0);
   });
 });
@@ -258,6 +264,50 @@ test('matches stored WAV against simulated streaming phone PCM chunks', async ()
     trackId,
     title: 'Fixture Track',
     artist: 'Fixture Artist',
+  });
+
+  expect(matches[0].score).toBeGreaterThan(0);
+});
+
+test('matches original house track against reverb phone stream', async () => {
+  const dj = await createVerifiedDj();
+  const event = await createEvent(dj.token);
+
+  const uploaded = await uploadTrack(event.id, dj.token, {
+    title: 'House Track 140BPM',
+    artist: 'Generator',
+    audio: houseTrackWav,
+  }).expect(201);
+  const trackId = uploaded.body.data.track.id;
+
+  // Use the reverb phone stream (32kHz) to match against original
+  const phoneWav = await fs.promises.readFile(phoneStreamFixture);
+  const pcm16 = phoneWav.subarray(44);
+
+  const samples = new Float32Array(pcm16.length / 2);
+
+  for (let i = 0; i < samples.length; i += 1) {
+    samples[i] = pcm16.readInt16LE(i * 2) / 32768;
+  }
+
+  const chunkSize = 32000;
+  const allHashes = [];
+
+  const { StreamingFingerprinter } = require('../../src/services/audio-recognition/streaming');
+  const fingerprinter = new StreamingFingerprinter(32000);
+
+  for (let offset = 0; offset < samples.length; offset += chunkSize) {
+    const chunk = samples.subarray(offset, offset + chunkSize);
+    const hashes = fingerprinter.process(chunk) ?? [];
+    allHashes.push(...hashes);
+  }
+
+  const matches = await audioTracksService.matchHashes(event.id, allHashes);
+
+  expect(matches[0]).toMatchObject({
+    trackId,
+    title: 'House Track 140BPM',
+    artist: 'Generator',
   });
 
   expect(matches[0].score).toBeGreaterThan(0);

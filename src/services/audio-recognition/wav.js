@@ -193,4 +193,6 @@ module.exports = {
   readWavNormalized,
   readWavNormalizedChunked,
   resampleLinear,
+  decodePcm,
+  parseWavHeader,
 };
