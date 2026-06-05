@@ -14,7 +14,7 @@ const SONG_STATES = {
     roles: ['DJ'],
   },
   PLAYING: {
-    canTransitionTo: ['PLAYED', 'SKIPPED'],
+    canTransitionTo: ['PLAYED', 'SKIPPED', 'REJECTED'],
     roles: ['DJ'],
   },
   PLAYED: {
