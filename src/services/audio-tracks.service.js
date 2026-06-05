@@ -61,7 +61,7 @@ class AudioTracksService {
         );
       }
 
-      const { sampleRate, samples } = readWavNormalized(tmpFile);
+      const { sampleRate, samples } = await readWavNormalized(tmpFile);
       const points = createConstellation(samples, sampleRate);
       const hashRows = [...createHashes(points)];
 
@@ -149,7 +149,7 @@ class AudioTracksService {
     const tmpFile = await writeTempFile(file);
 
     try {
-      const { sampleRate, samples } = readWavNormalized(tmpFile);
+      const { sampleRate, samples } = await readWavNormalized(tmpFile);
       const points = createConstellation(samples, sampleRate);
       const hashes = [...createHashes(points)].map(([hash, [time]]) => ({ hash, time }));
       return matchHashes(eventObjectId, hashes);

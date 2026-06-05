@@ -13,7 +13,7 @@ class StreamingFingerprinter {
     this.windowSize = Math.max(2, Math.floor(WINDOW_SECONDS * sampleRate));
     this.fftSize = 1 << Math.ceil(Math.log2(Math.max(1, this.windowSize)));
     this.window = hann(this.windowSize);
-    this.buffer = new Float64Array(0);
+    this.buffer = new Float32Array(0);
     this.time = 0;
     this.points = [];
     this.hashes = new Map();
@@ -46,9 +46,9 @@ class StreamingFingerprinter {
 
   flush() {
     if (!this.buffer.length) return [];
-    const padded = new Float64Array(this.windowSize);
+    const padded = new Float32Array(this.windowSize);
     padded.set(this.buffer);
-    this.buffer = new Float64Array(0);
+    this.buffer = new Float32Array(0);
     const out = [];
     this._window(padded, 0, out);
     return out;
@@ -83,7 +83,7 @@ class StreamingFingerprinter {
 }
 
 function append(a, b) {
-  const out = new Float64Array(a.length + b.length);
+  const out = new Float32Array(a.length + b.length);
   out.set(a);
   out.set(b, a.length);
   return out;

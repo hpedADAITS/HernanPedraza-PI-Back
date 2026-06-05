@@ -4,9 +4,9 @@ const __root = path.resolve(__dirname, '../../../..');
 const fixture = path.join(__root, 'audio-recognition-service-node/data/recording1.wav');
 
 describe('audio recognition', () => {
-  test('backend produces valid fingerprints at 32kHz', () => {
+  test('backend produces valid fingerprints at 32kHz', async () => {
     const backend = require('../../src/services/audio-recognition/fingerprint.js');
-    const result = backend.fingerprintWav(fixture);
+    const result = await backend.fingerprintWav(fixture);
 
     expect(result.hashes.length).toBeGreaterThan(20000);
     expect(result.sampleRate).toBe(32000);

@@ -21,20 +21,20 @@ function createConstellation(samples, sampleRate) {
 }
 
 function windowPeaks(samples, start, sampleRate, windowSize, fftSize, window = hann(windowSize), time = 0) {
-  const real = new Float64Array(fftSize);
-  const imag = new Float64Array(fftSize);
+  const real = new Float32Array(fftSize);
+  const imag = new Float32Array(fftSize);
   for (let i = 0; i < windowSize; i++) real[i] = (samples[start + i] || 0) * window[i];
   fft(real, imag);
 
   const bins = (fftSize >>> 1) + 1;
-  const spectrum = new Float64Array(bins);
+  const spectrum = new Float32Array(bins);
   for (let i = 0; i < bins; i++) spectrum[i] = Math.hypot(real[i], imag[i]);
   return topPeaks(spectrum, PEAKS_PER_WINDOW, MIN_PEAK_DISTANCE)
     .map((peak) => [time, (peak * sampleRate) / fftSize]);
 }
 
 function hann(n) {
-  const w = new Float64Array(n);
+  const w = new Float32Array(n);
   for (let i = 0; i < n; i++) w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1));
   return w;
 }

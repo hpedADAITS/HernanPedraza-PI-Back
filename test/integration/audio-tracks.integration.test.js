@@ -20,6 +20,8 @@ const {
   VoteModel,
 } = require('../../src/models');
 
+const { audioTracksService } = require('../../src/services/audio-tracks.service');
+
 jest.setTimeout(60000);
 
 let mongoServer;

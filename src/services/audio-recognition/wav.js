@@ -6,111 +6,6 @@ const PCM = 1;
 const FLOAT = 3;
 const TARGET_SAMPLE_RATE = 32000;
 
-function readWav(file) {
-  const buf = fs.readFileSync(file);
-
-  if (
-    buf.toString("ascii", 0, 4) !== "RIFF" ||
-    buf.toString("ascii", 8, 12) !== "WAVE"
-  ) {
-    throw new Error(`Not a RIFF/WAVE file: ${file}`);
-  }
-
-  let fmt;
-  let data;
-
-  for (let off = 12; off + 8 <= buf.length;) {
-    const id = buf.toString("ascii", off, off + 4);
-    const size = buf.readUInt32LE(off + 4);
-    const start = off + 8;
-
-    if (id === "fmt ") {
-      fmt = {
-        format: buf.readUInt16LE(start),
-        channels: buf.readUInt16LE(start + 2),
-        sampleRate: buf.readUInt32LE(start + 4),
-        bits: buf.readUInt16LE(start + 14),
-      };
-    } else if (id === "data") {
-      data = buf.subarray(start, start + size);
-    }
-
-    off = start + size + (size & 1);
-  }
-
-  if (!fmt || !data) {
-    throw new Error(`Missing fmt/data chunk: ${file}`);
-  }
-
-  return {
-    sampleRate: fmt.sampleRate,
-    samples: decode(data, fmt),
-  };
-}
-
-function readWavNormalized(file, targetSampleRate = TARGET_SAMPLE_RATE) {
-  const { sampleRate, samples } = readWav(file);
-
-  return {
-    sampleRate: targetSampleRate,
-    samples: resampleLinear(samples, sampleRate, targetSampleRate),
-    originalSampleRate: sampleRate,
-  };
-}
-
-function resampleLinear(input, fromRate, toRate = TARGET_SAMPLE_RATE) {
-  if (!Number.isFinite(fromRate) || fromRate <= 0) {
-    throw new Error(`Invalid source sample rate: ${fromRate}`);
-  }
-
-  if (!Number.isFinite(toRate) || toRate <= 0) {
-    throw new Error(`Invalid target sample rate: ${toRate}`);
-  }
-
-  if (!(input instanceof Float32Array)) {
-    input = Float32Array.from(input);
-  }
-
-  if (input.length === 0 || fromRate === toRate) {
-    return input;
-  }
-
-  const outputLength = Math.round(input.length * toRate / fromRate);
-  const output = new Float32Array(outputLength);
-  const ratio = fromRate / toRate;
-
-  for (let i = 0; i < outputLength; i += 1) {
-    const sourceIndex = i * ratio;
-    const index = Math.floor(sourceIndex);
-    const fraction = sourceIndex - index;
-
-    const a = input[index];
-    const b = index + 1 < input.length ? input[index + 1] : a;
-
-    output[i] = a + (b - a) * fraction;
-  }
-
-  return output;
-}
-
-function decode(data, fmt) {
-  const bytes = fmt.bits >>> 3;
-  const frames = Math.floor(data.length / (bytes * fmt.channels));
-  const out = new Float32Array(frames);
-
-  for (let i = 0; i < frames; i += 1) {
-    let sum = 0;
-
-    for (let ch = 0; ch < fmt.channels; ch += 1) {
-      sum += sample(data, (i * fmt.channels + ch) * bytes, fmt);
-    }
-
-    out[i] = sum / fmt.channels;
-  }
-
-  return out;
-}
-
 function sample(data, off, fmt) {
   if (fmt.format === FLOAT) {
     if (fmt.bits === 32) return data.readFloatLE(off);
@@ -135,9 +30,167 @@ function readInt24LE(data, off) {
   return x & 0x800000 ? x | 0xff000000 : x;
 }
 
+async function parseWavHeader(filePath) {
+  const fd = await fs.promises.open(filePath, "r");
+  try {
+    const headerSize = 1024;
+    const header = Buffer.alloc(headerSize);
+    const { bytesRead } = await fd.read(header, 0, headerSize, 0);
+
+    if (
+      header.toString("ascii", 0, 4) !== "RIFF" ||
+      header.toString("ascii", 8, 12) !== "WAVE"
+    ) {
+      throw new Error("Not a RIFF/WAVE file");
+    }
+
+    let fmt = null;
+    let dataChunkStart = 0;
+    let dataSize = 0;
+
+    let off = 12;
+    while (off + 8 <= bytesRead) {
+      const id = header.toString("ascii", off, off + 4);
+      const size = header.readUInt32LE(off + 4);
+      const start = off + 8;
+
+      if (id === "fmt ") {
+        fmt = {
+          format: header.readUInt16LE(start),
+          channels: header.readUInt16LE(start + 2),
+          sampleRate: header.readUInt32LE(start + 4),
+          bits: header.readUInt16LE(start + 14),
+        };
+      } else if (id === "data") {
+        dataChunkStart = start;
+        dataSize = size;
+        break;
+      }
+
+      off = start + size + (size & 1);
+    }
+
+    if (!fmt || !dataSize) {
+      throw new Error("Missing fmt/data chunk");
+    }
+
+    return { fmt, dataOffset: dataChunkStart, dataSize };
+  } finally {
+    await fd.close();
+  }
+}
+
+function decodePcm(data, fmt) {
+  const bytes = fmt.bits >>> 3;
+  const channels = fmt.channels;
+  const frames = Math.floor(data.length / (bytes * channels));
+  const out = new Float32Array(frames);
+
+  for (let i = 0; i < frames; i++) {
+    let sum = 0;
+    const offset = i * bytes * channels;
+    for (let ch = 0; ch < channels; ch++) {
+      sum += sample(data, offset + ch * bytes, fmt);
+    }
+    out[i] = sum / channels;
+  }
+
+  return out;
+}
+
+function resampleLinear(input, fromRate, toRate) {
+  if (input.length === 0 || fromRate === toRate) {
+    return input;
+  }
+
+  const outputLength = Math.round(input.length * toRate / fromRate);
+  const output = new Float32Array(outputLength);
+  const ratio = fromRate / toRate;
+
+  for (let i = 0; i < outputLength; i++) {
+    const sourceIndex = i * ratio;
+    const index = Math.floor(sourceIndex);
+    const fraction = sourceIndex - index;
+
+    const a = input[index];
+    const b = index + 1 < input.length ? input[index + 1] : a;
+
+    output[i] = a + (b - a) * fraction;
+  }
+
+  return output;
+}
+
+async function readWavNormalized(filePath, targetSampleRate = TARGET_SAMPLE_RATE) {
+  const { fmt, dataOffset, dataSize } = await parseWavHeader(filePath);
+
+  const bytesPerFrame = (fmt.bits >>> 3) * fmt.channels;
+  const totalFrames = Math.floor(dataSize / bytesPerFrame);
+
+  const decodedSamples = new Float32Array(totalFrames);
+
+  const fd = await fs.promises.open(filePath, "r");
+  try {
+    let offset = dataOffset;
+    let decodedOffset = 0;
+    const chunkSize = 64 * 1024;
+
+    while (decodedOffset < totalFrames) {
+      const bytesToRead = Math.min(chunkSize, (totalFrames - decodedOffset) * bytesPerFrame);
+      const buf = Buffer.alloc(bytesToRead);
+      await fd.read(buf, 0, bytesToRead, offset);
+
+      const chunkDecoded = decodePcm(buf, fmt);
+      decodedSamples.set(chunkDecoded, decodedOffset);
+      decodedOffset += chunkDecoded.length;
+      offset += bytesToRead;
+    }
+  } finally {
+    await fd.close();
+  }
+
+  const resampled = resampleLinear(decodedSamples, fmt.sampleRate, targetSampleRate);
+
+  return {
+    sampleRate: targetSampleRate,
+    samples: resampled,
+    originalSampleRate: fmt.sampleRate,
+  };
+}
+
+async function readWavNormalizedChunked(filePath, targetSampleRate = TARGET_SAMPLE_RATE, onChunk) {
+  const { fmt, dataOffset, dataSize } = await parseWavHeader(filePath);
+
+  const bytesPerFrame = (fmt.bits >>> 3) * fmt.channels;
+  const totalFrames = Math.floor(dataSize / bytesPerFrame);
+
+  let frameOffset = 0;
+
+  const fd = await fs.promises.open(filePath, "r");
+  try {
+    let offset = dataOffset;
+    const chunkSize = 64 * 1024;
+
+    while (frameOffset < totalFrames) {
+      const bytesToRead = Math.min(chunkSize, (totalFrames - frameOffset) * bytesPerFrame);
+      const buf = Buffer.alloc(bytesToRead);
+      await fd.read(buf, 0, bytesToRead, offset);
+
+      const decoded = decodePcm(buf, fmt);
+      const resampled = resampleLinear(decoded, fmt.sampleRate, targetSampleRate);
+
+      onChunk(resampled, frameOffset, totalFrames);
+      frameOffset += decoded.length;
+      offset += bytesToRead;
+    }
+  } finally {
+    await fd.close();
+  }
+}
+
 module.exports = {
   TARGET_SAMPLE_RATE,
-  readWav,
   readWavNormalized,
+  readWavNormalizedChunked,
   resampleLinear,
 };

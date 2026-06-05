@@ -5,8 +5,8 @@ const { createConstellation } = require("./constellation");
 const { createHashes } = require("./hashes");
 const { readWavNormalized, TARGET_SAMPLE_RATE } = require("./wav");
 
-function fingerprintWav(file, songId = null) {
-  const { sampleRate, samples, originalSampleRate } = readWavNormalized(
+async function fingerprintWav(file, songId = null) {
+  const { sampleRate, samples, originalSampleRate } = await readWavNormalized(
     file,
     TARGET_SAMPLE_RATE
   );
