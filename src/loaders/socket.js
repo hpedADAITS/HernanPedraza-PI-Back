@@ -20,7 +20,7 @@ const initSocketIO = (app) => {
 
     io = new Server(httpServer, {
       path: '/socket.io',
-      transports: ['polling'],  // Mobile-friendly: use polling only (skip WebSocket upgrade)
+      transports: ['polling', 'websocket'],
       cors: {
         origin: config.allowedOrigins,
         credentials: true,
