@@ -39,13 +39,11 @@ class EventPermissionsService {
 
     if (!userId) return { event, userId: null, role: null, isOwner: false, isAdmin: false, member: null };
 
-    const hasEventScopedRole = actor?.role === 'DJ' && Boolean(actor?.userId);
-    const isAdmin = actor?.role === 'ADMIN' || hasEventScopedRole;
+    const isAdmin = actor?.role === 'ADMIN' || actor?.role === 'DJ';
     const isOwner = objectId(event.ownerId)?.toString() === userId.toString();
 
-    // App admins and owners skip member lookup - they have full permissions.
-    // DJs still need the event membership row so event-scoped DJ accounts can
-    // manage their own events even when the JWT role is not globally DJ.
+    // Global app admins and DJs have full event permissions.
+    // Event-scoped permissions are only needed for non-DJ members.
     let member = null;
     if (!isOwner && !isAdmin) {
       const memberQuery = EventMemberModel.findOne({ eventId: event._id, userId });
