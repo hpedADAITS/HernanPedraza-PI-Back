@@ -8,9 +8,17 @@ const MAX_MATCH_HASHES = 1200;
 const MIN_ALIGNED_HASHES = 4;
 const MIN_BEST_SCORE_GAP = 2;
 
+// Safety limits tuned for 512MB deployment
+const MAX_INDEXED_HASHES_PER_EVENT = 40_000;
+const MAX_TRACK_HASHES = 40_000;
+
 // In-memory fingerprint storage keyed by eventId
 // Format: Map<eventId, { tracks: Map<trackId, TrackInfo>, index: Map<hash, Array<{trackId, sourceTime}>> }>
 const eventIndex = new Map();
+
+// Maximum events to keep in memory - evict LRU when limit reached
+// Tuned for 512MB memory budget
+const MAX_CACHED_EVENTS = 2;
 
 class RamMatcher {
   constructor() {
@@ -27,11 +35,28 @@ class RamMatcher {
       return this.loadPromises.get(eventId);
     }
 
+    // Evict LRU event if at capacity
+    if (eventIndex.size >= MAX_CACHED_EVENTS) {
+      let oldestKey = null;
+      let oldestTime = Infinity;
+      for (const [key, val] of eventIndex) {
+        if (val._loadedAt < oldestTime) {
+          oldestTime = val._loadedAt;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey) {
+        eventIndex.delete(oldestKey);
+        logger.info('RAM matcher evicted event from cache', { eventId: oldestKey });
+      }
+    }
+
     const loadPromise = this._doLoad(eventId);
     this.loadPromises.set(eventId, loadPromise);
 
     try {
       const result = await loadPromise;
+      result._loadedAt = Date.now();
       eventIndex.set(eventId, result);
       return result;
     } finally {
@@ -63,6 +88,16 @@ class RamMatcher {
     for (const fp of fingerprints) {
       const trackId = fp.trackId.toString();
       const hashes = fp.hashes || [];
+
+      // Skip tracks with too many hashes to prevent OOM
+      if (hashes.length > MAX_TRACK_HASHES) {
+        logger.warn('RAM matcher skipping track with excessive hashes', {
+          trackId,
+          hashesCount: hashes.length,
+        });
+        continue;
+      }
+
       totalHashes += hashes.length;
 
       for (const { h, t } of hashes) {
@@ -77,11 +112,20 @@ class RamMatcher {
       }
     }
 
+    if (totalHashes > MAX_INDEXED_HASHES_PER_EVENT) {
+      logger.warn('RAM matcher event exceeds safe hash limit, applying sampling', {
+        eventId,
+        totalHashes,
+        limit: MAX_INDEXED_HASHES_PER_EVENT,
+      });
+    }
+
     logger.info('RAM matcher loaded event fingerprints', {
       eventId,
       fingerprintCount: fingerprints.length,
       totalHashes,
       indexSize: index.size,
+      estimatedMemoryMB: Math.round((totalHashes * 64) / (1024 * 1024)),
       trackCount: tracks.length,
     });
 

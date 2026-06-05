@@ -3,6 +3,9 @@
 const { WINDOW_SECONDS, hann, windowPeaks } = require("./constellation");
 const { FAN_OUT, createHashes, hashPair } = require("./hashes");
 
+const MAX_POINTS_MEMORY_BYTES = 10 * 1024 * 1024;
+const MAX_HASH_ENTRIES = 50_000;
+
 class StreamingFingerprinter {
   constructor(sampleRate) {
     if (!Number.isFinite(sampleRate) || sampleRate <= 0) throw new Error(`Invalid sampleRate: ${sampleRate}`);
@@ -14,6 +17,19 @@ class StreamingFingerprinter {
     this.time = 0;
     this.points = [];
     this.hashes = new Map();
+    this.maxTime = 0;
+  }
+
+  _maybeCompact() {
+    const maxPoints = Math.floor(MAX_POINTS_MEMORY_BYTES / 32);
+    if (this.points.length > maxPoints) {
+      const keep = Math.floor(maxPoints * 0.7);
+      this.points = this.points.slice(-keep);
+    }
+    if (this.hashes.size > MAX_HASH_ENTRIES) {
+      const entries = [...this.hashes.entries()];
+      this.hashes = new Map(entries.slice(-Math.floor(MAX_HASH_ENTRIES * 0.7)));
+    }
   }
 
   process(samples) {
@@ -47,6 +63,7 @@ class StreamingFingerprinter {
     const firstNew = this.points.length;
     this.points.push(...points);
     this._hashNewPoints(firstNew, out);
+    this._maybeCompact();
   }
 
   _hashNewPoints(firstNew, out) {
