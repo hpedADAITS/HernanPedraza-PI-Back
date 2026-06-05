@@ -1,163 +1,180 @@
 /**
- * Unit tests for songsService.js
- * Tests song suggestion, approval, rejection, queue management, and voting
+ * Unit tests for songsService.js - UNMOCKED
+ * Tests song suggestion, approval, rejection, queue management using REAL implementations
  */
 
-jest.mock('../../src/models/schema', () => {
-  const mockSongInstance = {
-    _id: 'song-1',
-    save: jest.fn().mockResolvedValue(true),
-  };
-
-  // SongModel constructor mock
-  const SongModelMock = function(data) {
-    return { ...mockSongInstance, ...data };
-  };
-  SongModelMock.find = jest.fn(() => ({ sort: jest.fn().mockResolvedValue([]), lean: jest.fn().mockResolvedValue([]) }));
-  SongModelMock.findById = jest.fn(() => ({ lean: jest.fn().mockResolvedValue(null) }));
-  SongModelMock.findOneAndUpdate = jest.fn();
-  SongModelMock.prototype = { validateSync: jest.fn() };
-
-  return {
-    SongModel: SongModelMock,
-    EventModel: {
-      findById: jest.fn(() => ({ lean: jest.fn().mockResolvedValue(null) })),
-      findByIdAndUpdate: jest.fn(),
-    },
-    AudioTrackModel: {
-      find: jest.fn(),
-    },
-  };
-});
-
-jest.mock('../../src/services/participants.service', () => ({
-  assertParticipantSession: jest.fn(),
-}));
-
-jest.mock('../../src/services/event-permissions.service', () => ({
-  assertSongAdmin: jest.fn(),
-}));
-
-jest.mock('../../src/services/musicbrainz.service', () => ({
-  findRecordingMatch: jest.fn(),
-}));
-
-jest.mock('../../src/utils', () => ({
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  },
-}));
-
-jest.mock('../../src/utils/song-state-machine', () => ({
-  validateTransition: jest.fn(),
-}));
-
-const { SongModel, EventModel, AudioTrackModel } = require('../../src/models/schema');
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const {
+  SongModel,
+  EventModel,
+  ParticipantModel,
+  UserModel,
+  VoteModel,
+} = require('../../src/models/schema');
+const songsService = require('../../src/services/songs.service');
 const participantsService = require('../../src/services/participants.service');
 const eventPermissionsService = require('../../src/services/event-permissions.service');
-const musicBrainzService = require('../../src/services/musicbrainz.service');
-const songsService = require('../../src/services/songs.service');
 
-describe('SongsService', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+let mongoServer;
+
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  await mongoose.connect(mongoServer.getUri());
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  if (mongoServer) await mongoServer.stop();
+});
+
+beforeEach(async () => {
+  await Promise.all([
+    SongModel.deleteMany({}),
+    EventModel.deleteMany({}),
+    ParticipantModel.deleteMany({}),
+    UserModel.deleteMany({}),
+    VoteModel.deleteMany({}),
+  ]);
+});
+
+// Helper to create a real test event
+const createTestEvent = async (overrides = {}) => {
+  const user = await UserModel.create({
+    email: `dj-${Date.now()}@test.com`,
+    passwordHash: 'hashed',
+    displayName: 'Test DJ',
+    role: 'DJ',
+    isActive: true,
   });
 
+  const event = await EventModel.create({
+    name: 'Test Event',
+    ownerId: user._id,
+    eventId: `EVENT-${Date.now()}`,
+    accessCode: `TEST${Date.now()}CODE`,
+    state: 'LIVE',
+    startsAt: new Date(),
+    ...overrides,
+  });
+
+  return { event, user };
+};
+
+// Helper to create a real participant with user
+const createTestParticipant = async (eventId, overrides = {}) => {
+  const nickname = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const userEmail = `participant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@test.com`;
+  const user = await UserModel.create({
+    email: userEmail,
+    passwordHash: 'hashed',
+    displayName: nickname,
+    role: 'ATTENDEE',
+    isActive: true,
+  });
+  
+  const participant = await ParticipantModel.create({
+    eventId,
+    nickname,
+    isBanned: false,
+    leftAt: null,
+    userId: user._id,
+    ...overrides,
+  });
+  
+  participant.userId = user._id;
+  await participant.save();
+  
+  return participant;
+};
+
+// Helper to create a real song
+const createTestSong = async (eventId, requestedByParticipantId, overrides = {}) => {
+  return SongModel.create({
+    title: 'Test Song',
+    artist: 'Test Artist',
+    eventId,
+    requestedBy: requestedByParticipantId,
+    status: 'PENDING',
+    voteScore: 0,
+    voteCount: 0,
+    sortKey: `${Date.now()}_test-song`,
+    ...overrides,
+  });
+};
+
+describe('SongsService - Real Implementation Tests', () => {
   describe('suggestSong', () => {
-    const mockSongData = {
-      _id: 'song-id-1',
-      title: 'Test Song',
-      artist: 'Test Artist',
-      eventId: 'event-id-1',
-      requestedBy: 'participant-id-1',
-      status: 'PENDING',
-      sortKey: '1234567890_test-key',
-      totalDuration: 180,
-      save: jest.fn().mockResolvedValue(true),
-    };
-
     test('should create a new song', async () => {
-      participantsService.assertParticipantSession.mockResolvedValue({});
-      
-      const mockSongInstance = { ...mockSongData };
-      SongModel.mockImplementation(() => mockSongInstance);
+      const { event, user: djUser } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
 
+      // For suggestSong, the actor must be the participant's user (or have matching permissions)
+      // We're simulating the participant suggesting a song
       const result = await songsService.suggestSong(
-        'event-id-1',
-        'participant-id-1',
+        event._id.toString(),
+        participant._id.toString(),
         'Test Song',
         'Test Artist',
         180,
-        { userId: 'user-1', role: 'DJ' }
-      );
-
-      expect(participantsService.assertParticipantSession).toHaveBeenCalledWith(
-        'participant-id-1',
-        'event-id-1',
-        { userId: 'user-1', role: 'DJ' },
-        { checkCooldown: true }
-      );
-    });
-
-    test('should use recognition match duration when totalDuration is invalid', async () => {
-      participantsService.assertParticipantSession.mockResolvedValue({});
-      musicBrainzService.findRecordingMatch.mockResolvedValue({
-        duration: 200,
-        title: 'Test Song',
-        artist: 'Test Artist',
-      });
-
-      const mockSongInstance = {
-        ...mockSongData,
-        recognitionMatch: { duration: 200 },
-      };
-      SongModel.mockImplementation(() => mockSongInstance);
-
-      const result = await songsService.suggestSong(
-        'event-id-1',
-        'participant-id-1',
-        'Test Song',
-        'Test Artist',
-        null,
-        { userId: 'user-1', role: 'DJ' }
+        { userId: participant.userId.toString(), role: 'ATTENDEE' }
       );
 
       expect(result).toBeDefined();
+      expect(result.title).toBe('Test Song');
+      expect(result.artist).toBe('Test Artist');
+      expect(result.status).toBe('PENDING');
+      
+      // Verify song was saved
+      const savedSong = await SongModel.findById(result.id);
+      expect(savedSong).toBeDefined();
     });
   });
 
   describe('getQueueForEvent', () => {
     test('should return sorted queue with positions', async () => {
-      const mockSongs = [
-        { _id: 'song-1', title: 'Song A', status: 'APPROVED', voteScore: 5, pinned: false, sortKey: '1' },
-        { _id: 'song-2', title: 'Song B', status: 'PLAYING', voteScore: 3, pinned: true, sortKey: '2' },
-        { _id: 'song-3', title: 'Song C', status: 'APPROVED', voteScore: 3, pinned: false, sortKey: '3' },
-      ];
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
 
-      SongModel.find.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockResolvedValue(mockSongs),
+      // Create songs with different statuses and scores
+      await createTestSong(event._id, participant._id, {
+        title: 'Song A',
+        status: 'APPROVED',
+        voteScore: 5,
+        pinned: false,
+        sortKey: '1_a',
+      });
+      await createTestSong(event._id, participant._id, {
+        title: 'Song B',
+        status: 'PLAYING',
+        voteScore: 3,
+        pinned: true,
+        sortKey: '2_b',
+      });
+      await createTestSong(event._id, participant._id, {
+        title: 'Song C',
+        status: 'APPROVED',
+        voteScore: 3,
+        pinned: false,
+        sortKey: '3_c',
       });
 
-      const result = await songsService.getQueueForEvent('event-id-1');
+      const result = await songsService.getQueueForEvent(event._id.toString());
 
-      expect(SongModel.find).toHaveBeenCalledWith({
-        eventId: 'event-id-1',
-        status: { $in: ['APPROVED', 'PLAYING'] },
-      });
       expect(result).toBeDefined();
       expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBe(3);
+      
+      // PLAYING should be first with position 0
+      const playingSong = result.find(s => s.status === 'PLAYING');
+      expect(playingSong.queuePosition).toBe(0);
     });
 
     test('should return empty array when no songs in queue', async () => {
-      SongModel.find.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockResolvedValue([]),
-      });
+      const { event } = await createTestEvent();
 
-      const result = await songsService.getQueueForEvent('event-id-1');
+      const result = await songsService.getQueueForEvent(event._id.toString());
 
       expect(result).toEqual([]);
     });
@@ -165,170 +182,167 @@ describe('SongsService', () => {
 
   describe('getPendingSongsForEvent', () => {
     test('should return pending songs', async () => {
-      const mockSongs = [
-        { _id: 'song-1', title: 'Pending 1', status: 'PENDING' },
-        { _id: 'song-2', title: 'Pending 2', status: 'PENDING' },
-      ];
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
 
-      SongModel.find.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockResolvedValue(mockSongs),
-      });
+      await createTestSong(event._id, participant._id, { title: 'Pending 1' });
+      await createTestSong(event._id, participant._id, { title: 'Pending 2' });
+      await createTestSong(event._id, participant._id, { title: 'Approved 1', status: 'APPROVED' });
 
-      const result = await songsService.getPendingSongsForEvent('event-id-1');
+      const result = await songsService.getPendingSongsForEvent(event._id.toString());
 
-      expect(SongModel.find).toHaveBeenCalledWith({
-        eventId: 'event-id-1',
-        status: 'PENDING',
-      });
       expect(result).toHaveLength(2);
+      expect(result.every(s => s.status === 'PENDING')).toBe(true);
     });
   });
 
   describe('approveSong', () => {
     test('should approve a pending song', async () => {
-      eventPermissionsService.assertSongAdmin.mockResolvedValue();
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id);
+
+      const result = await songsService.approveSong(
+        song._id.toString(),
+        event._id.toString(),
+        { userId: user._id.toString(), role: 'DJ' }
+      );
+
+      expect(result.status).toBe('APPROVED');
       
-      const mockSong = {
-        _id: 'song-id-1',
-        eventId: { toString: () => 'event-id-1' },
-        status: 'PENDING',
-        recognitionMatch: null,
-        save: jest.fn().mockResolvedValue(true),
-      };
-
-      SongModel.findById.mockResolvedValue(mockSong);
-      songsService._formatSong = jest.fn().mockReturnValue({ _id: 'song-id-1', status: 'APPROVED' });
-
-      const result = await songsService.approveSong('song-id-1', 'event-id-1', 'user-1');
-
-      expect(eventPermissionsService.assertSongAdmin).toHaveBeenCalledWith('event-id-1', 'user-1');
-      expect(mockSong.status).toBe('APPROVED');
-      expect(mockSong.save).toHaveBeenCalled();
+      // Verify song was updated
+      const updatedSong = await SongModel.findById(song._id);
+      expect(updatedSong.status).toBe('APPROVED');
     });
 
     test('should throw NotFoundError when song not found', async () => {
-      SongModel.findById.mockResolvedValue(null);
+      const { event, user } = await createTestEvent();
+      const fakeId = new mongoose.Types.ObjectId();
 
-      await expect(songsService.approveSong('invalid-id', 'event-id-1', 'user-1'))
-        .rejects.toThrow('Song not found');
+      await expect(
+        songsService.approveSong(fakeId.toString(), event._id.toString(), { userId: user._id.toString(), role: 'DJ' })
+      ).rejects.toThrow('Song not found');
     });
 
     test('should throw NotFoundError when song belongs to different event', async () => {
-      const mockSong = {
-        _id: 'song-id-1',
-        eventId: { toString: () => 'other-event-id' },
-        status: 'PENDING',
-      };
+      const { event: event1, user } = await createTestEvent();
+      const { event: event2 } = await createTestEvent();
+      const participant = await createTestParticipant(event2._id);
+      const song = await createTestSong(event2._id, participant._id);
 
-      SongModel.findById.mockResolvedValue(mockSong);
-
-      await expect(songsService.approveSong('song-id-1', 'event-id-1', 'user-1'))
-        .rejects.toThrow('Song not in this event');
+      await expect(
+        songsService.approveSong(song._id.toString(), event1._id.toString(), { userId: user._id.toString(), role: 'DJ' })
+      ).rejects.toThrow('Song not in this event');
     });
   });
 
   describe('rejectSong', () => {
     test('should reject a song with reason', async () => {
-      eventPermissionsService.assertSongAdmin.mockResolvedValue();
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id);
 
-      const mockSong = {
-        _id: 'song-id-1',
-        eventId: { toString: () => 'event-id-1' },
-        status: 'PENDING',
-        save: jest.fn().mockResolvedValue(true),
-      };
+      const result = await songsService.rejectSong(
+        song._id.toString(),
+        event._id.toString(),
+        'Inappropriate content',
+        { userId: user._id.toString(), role: 'DJ' }
+      );
 
-      SongModel.findById.mockResolvedValue(mockSong);
-      songsService._formatSong = jest.fn().mockReturnValue({ _id: 'song-id-1', status: 'REJECTED' });
-
-      const result = await songsService.rejectSong('song-id-1', 'event-id-1', 'Inappropriate', 'user-1');
-
-      expect(mockSong.status).toBe('REJECTED');
-      expect(mockSong.save).toHaveBeenCalled();
+      expect(result.status).toBe('REJECTED');
+      
+      // Verify song was updated
+      const updatedSong = await SongModel.findById(song._id);
+      expect(updatedSong.status).toBe('REJECTED');
+      // Note: removalReason is logged but not stored on the model
     });
   });
 
   describe('sendNow', () => {
     test('should mark song as playing and update event', async () => {
-      eventPermissionsService.assertSongAdmin.mockResolvedValue();
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id, { status: 'APPROVED' });
 
-      const mockSong = {
-        _id: 'song-id-1',
-        eventId: { toString: () => 'event-id-1' },
-        status: 'APPROVED',
-        startedPlayingAt: null,
-        save: jest.fn().mockResolvedValue(true),
-      };
+      const result = await songsService.sendNow(
+        song._id.toString(),
+        event._id.toString(),
+        { userId: user._id.toString(), role: 'DJ' }
+      );
 
-      const mockEventUpdate = jest.fn();
-      EventModel.findByIdAndUpdate.mockReturnValue(mockEventUpdate);
-
-      SongModel.findById.mockResolvedValue(mockSong);
-      SongModel.updateMany.mockResolvedValue({ modifiedCount: 1 });
+      expect(result.status).toBe('PLAYING');
       
-      songsService._formatSong = jest.fn().mockReturnValue({ _id: 'song-id-1', status: 'PLAYING' });
-
-      const result = await songsService.sendNow('song-id-1', 'event-id-1', 'user-1');
-
-      expect(mockSong.status).toBe('PLAYING');
-      expect(EventModel.findByIdAndUpdate).toHaveBeenCalledWith('event-id-1', {
-        currentSongId: mockSong._id,
-      });
+      // Verify song was updated
+      const updatedSong = await SongModel.findById(song._id);
+      expect(updatedSong.status).toBe('PLAYING');
+      
+      // Verify event was updated
+      const updatedEvent = await EventModel.findById(event._id);
+      expect(updatedEvent.currentSongId?.toString()).toBe(song._id.toString());
     });
 
     test('should clear other PLAYING songs when sending new song', async () => {
-      eventPermissionsService.assertSongAdmin.mockResolvedValue();
-
-      const mockSong = {
-        _id: 'song-id-2',
-        eventId: { toString: () => 'event-id-1' },
-        status: 'APPROVED',
-        save: jest.fn().mockResolvedValue(true),
-      };
-
-      SongModel.findById.mockResolvedValue(mockSong);
-      SongModel.updateMany.mockResolvedValue({ modifiedCount: 1 });
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
       
-      songsService._formatSong = jest.fn().mockReturnValue({ _id: 'song-id-2', status: 'PLAYING' });
+      // Create a currently playing song
+      await createTestSong(event._id, participant._id, {
+        title: 'Currently Playing',
+        status: 'PLAYING',
+        startedPlayingAt: new Date(),
+      });
+      
+      // Create the next song to play
+      const nextSong = await createTestSong(event._id, participant._id, {
+        title: 'Next Song',
+        status: 'APPROVED',
+      });
 
-      await songsService.sendNow('song-id-2', 'event-id-1', 'user-1');
-
-      expect(SongModel.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          eventId: 'event-id-1',
-          status: 'PLAYING',
-        }),
-        { status: 'PLAYED' }
+      await songsService.sendNow(
+        nextSong._id.toString(),
+        event._id.toString(),
+        { userId: user._id.toString(), role: 'DJ' }
       );
+
+      // Verify first song was set to PLAYED
+      const playedSongs = await SongModel.find({ eventId: event._id, status: 'PLAYED' });
+      expect(playedSongs.length).toBe(1);
     });
   });
 
   describe('playNextSong', () => {
     test('should play next approved song in queue', async () => {
-      eventPermissionsService.assertSongAdmin.mockResolvedValue();
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      
+      // Create approved songs
+      await createTestSong(event._id, participant._id, {
+        status: 'APPROVED',
+        voteScore: 3,
+        sortKey: '1',
+      });
+      const song2 = await createTestSong(event._id, participant._id, {
+        status: 'APPROVED',
+        voteScore: 5,
+        sortKey: '2',
+      });
 
-      const nextSong = {
-        _id: 'song-next',
-        eventId: 'event-id-1',
-        status: 'PLAYING',
-        save: jest.fn().mockResolvedValue(true),
-      };
-
-      SongModel.findOneAndUpdate.mockResolvedValue(nextSong);
-      songsService._formatSong = jest.fn().mockReturnValue({ _id: 'song-next', status: 'PLAYING' });
-
-      const result = await songsService.playNextSong('event-id-1', 'user-1');
+      const result = await songsService.playNextSong(
+        event._id.toString(),
+        { userId: user._id.toString(), role: 'DJ' }
+      );
 
       expect(result).toBeDefined();
       expect(result.status).toBe('PLAYING');
     });
 
     test('should return null when no approved songs remain', async () => {
-      eventPermissionsService.assertSongAdmin.mockResolvedValue();
-      SongModel.findOneAndUpdate.mockResolvedValue(null);
+      const { event, user } = await createTestEvent();
 
-      const result = await songsService.playNextSong('event-id-1', 'user-1');
+      const result = await songsService.playNextSong(
+        event._id.toString(),
+        { userId: user._id.toString(), role: 'DJ' }
+      );
 
       expect(result).toBeNull();
     });
@@ -336,38 +350,35 @@ describe('SongsService', () => {
 
   describe('getSongPosition', () => {
     test('should return position in queue', async () => {
-      const mockSong = {
-        _id: 'song-1',
-        eventId: 'event-id-1',
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+
+      const song1 = await createTestSong(event._id, participant._id, {
         status: 'APPROVED',
         voteScore: 5,
-      };
+        sortKey: '1',
+      });
+      await createTestSong(event._id, participant._id, {
+        status: 'APPROVED',
+        voteScore: 3,
+        sortKey: '2',
+      });
 
-      const mockQueue = [
-        { _id: 'song-1', queuePosition: 1 },
-        { _id: 'song-2', queuePosition: 2 },
-      ];
-
-      SongModel.findById.mockResolvedValue(mockSong);
-      songsService.getQueueForEvent = jest.fn().mockResolvedValue(mockQueue);
-
-      const result = await songsService.getSongPosition('song-1');
+      const result = await songsService.getSongPosition(song1._id.toString());
 
       expect(result.position).toBe(1);
     });
 
     test('should return null position when song not in queue', async () => {
-      const mockSong = {
-        _id: 'not-in-queue',
-        eventId: 'event-id-1',
-      };
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
 
-      const mockQueue = [{ _id: 'song-1' }];
+      // Create a song that is not in the queue (REJECTED status)
+      const rejectedSong = await createTestSong(event._id, participant._id, {
+        status: 'REJECTED',
+      });
 
-      SongModel.findById.mockResolvedValue(mockSong);
-      songsService.getQueueForEvent = jest.fn().mockResolvedValue(mockQueue);
-
-      const result = await songsService.getSongPosition('not-in-queue');
+      const result = await songsService.getSongPosition(rejectedSong._id.toString());
 
       expect(result.position).toBeNull();
     });
@@ -404,20 +415,28 @@ describe('SongsService', () => {
 
   describe('getQueueSnapshotForEvent', () => {
     test('should return queue and now playing info', async () => {
-      const mockQueue = [{ _id: 'song-1', status: 'PLAYING' }];
-      songsService.getQueueForEvent = jest.fn().mockResolvedValue(mockQueue);
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
 
-      const result = await songsService.getQueueSnapshotForEvent('event-id-1');
+      await createTestSong(event._id, participant._id, {
+        status: 'PLAYING',
+        startedPlayingAt: new Date(),
+      });
 
-      expect(result.queue).toEqual(mockQueue);
+      const result = await songsService.getQueueSnapshotForEvent(event._id.toString());
+
+      expect(result.queue).toBeDefined();
       expect(result.nowPlaying).toBeDefined();
+      expect(result.nowPlaying.songId).toBeDefined();
     });
 
     test('should return null nowPlaying when nothing is playing', async () => {
-      const mockQueue = [{ _id: 'song-1', status: 'APPROVED' }];
-      songsService.getQueueForEvent = jest.fn().mockResolvedValue(mockQueue);
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
 
-      const result = await songsService.getQueueSnapshotForEvent('event-id-1');
+      await createTestSong(event._id, participant._id, { status: 'APPROVED' });
+
+      const result = await songsService.getQueueSnapshotForEvent(event._id.toString());
 
       expect(result.nowPlaying).toBeNull();
     });

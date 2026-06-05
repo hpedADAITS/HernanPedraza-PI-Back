@@ -90,15 +90,7 @@ class SongsService {
 
   async approveSong(songId, eventId, userId) {
     await this._assertSongAdmin(eventId, userId);
-
-    const song = await SongModel.findById(songId);
-    if (!song) {
-      throw new NotFoundError('Song not found');
-    }
-
-    if (song.eventId.toString() !== eventId.toString()) {
-      throw new NotFoundError('Song not in this event');
-    }
+    const song = await this._getSongForEvent(songId, eventId);
 
     /* Validate state transition using state machine */
     validateTransition(song.status, 'APPROVED', 'DJ');
@@ -129,15 +121,7 @@ class SongsService {
 
   async rejectSong(songId, eventId, reason, userId) {
     await this._assertSongAdmin(eventId, userId);
-
-    const song = await SongModel.findById(songId);
-    if (!song) {
-      throw new NotFoundError('Song not found');
-    }
-
-    if (song.eventId.toString() !== eventId.toString()) {
-      throw new NotFoundError('Song not in this event');
-    }
+    const song = await this._getSongForEvent(songId, eventId);
 
     /* Validate state transition using state machine */
     validateTransition(song.status, 'REJECTED', 'DJ');
@@ -157,15 +141,7 @@ class SongsService {
 
   async sendNow(songId, eventId, userId) {
     await this._assertSongAdmin(eventId, userId);
-
-    const song = await SongModel.findById(songId);
-    if (!song) {
-      throw new NotFoundError('Song not found');
-    }
-
-    if (song.eventId.toString() !== eventId.toString()) {
-      throw new NotFoundError('Song not in this event');
-    }
+    const song = await this._getSongForEvent(songId, eventId);
 
     /* Validate state transition using state machine */
     validateTransition(song.status, 'PLAYING', 'DJ');
@@ -199,15 +175,7 @@ class SongsService {
 
   async skipSong(songId, eventId, reason, userId) {
     await this._assertSongAdmin(eventId, userId);
-
-    const song = await SongModel.findById(songId);
-    if (!song) {
-      throw new NotFoundError('Song not found');
-    }
-
-    if (song.eventId.toString() !== eventId.toString()) {
-      throw new NotFoundError('Song not in this event');
-    }
+    const song = await this._getSongForEvent(songId, eventId);
 
     /* Validate state transition using state machine */
     validateTransition(song.status, 'SKIPPED', 'DJ');
@@ -261,15 +229,7 @@ class SongsService {
 
   async markSongAsPlayed(songId, eventId, userId) {
     await this._assertSongAdmin(eventId, userId);
-
-    const song = await SongModel.findById(songId);
-    if (!song) {
-      throw new NotFoundError('Song not found');
-    }
-
-    if (song.eventId.toString() !== eventId.toString()) {
-      throw new NotFoundError('Song not in this event');
-    }
+    const song = await this._getSongForEvent(songId, eventId);
 
     /* Validate state transition using state machine */
     validateTransition(song.status, 'PLAYED', 'DJ');
@@ -447,6 +407,18 @@ class SongsService {
 
   async _assertSongAdmin(eventId, actorUser) {
     await eventPermissionsService.assertSongAdmin(eventId, actorUser);
+  }
+
+  // Helper: Get song and validate ownership for a specific event
+  async _getSongForEvent(songId, eventId) {
+    const song = await SongModel.findById(songId);
+    if (!song) {
+      throw new NotFoundError('Song not found');
+    }
+    if (song.eventId.toString() !== eventId.toString()) {
+      throw new NotFoundError('Song not in this event');
+    }
+    return song;
   }
 }
 

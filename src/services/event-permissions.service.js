@@ -1,5 +1,6 @@
 const { EventModel, EventMemberModel } = require('../models/schema');
 const { ForbiddenError, NotFoundError, UnauthorizedError } = require('../errors');
+const { logger } = require('../utils');
 
 const PARTICIPANT_MANAGE_PERMISSIONS = ['PARTICIPANT_KICK', 'PARTICIPANT_BAN'];
 const PHONE_MICROPHONE_PERMISSIONS = [
@@ -29,10 +30,13 @@ class EventPermissionsService {
       ? eventOrId
       : await this.getEvent(eventOrId);
     const userId = actorId(actor);
+
     if (!userId) return { event, userId: null, role: null, isOwner: false, isAdmin: false, member: null };
 
     const isAdmin = actor?.role === 'ADMIN' || actor?.role === 'DJ';
     const isOwner = objectId(event.ownerId)?.toString() === userId.toString();
+
+    // Admins and owners skip member lookup - they have full permissions
     const member = isOwner || isAdmin
       ? null
       : await EventMemberModel.findOne({ eventId: event._id, userId })

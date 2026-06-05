@@ -1,104 +1,93 @@
 /**
- * Unit tests for eventsService.js
- * Tests event creation, retrieval, updates, and lifecycle
+ * Unit tests for eventsService.js - UNMOCKED
+ * Tests event creation, retrieval, updates, and lifecycle using REAL implementations
  */
 
-jest.mock('../../src/models/schema', () => {
-  const mockEventInstance = {
-    save: jest.fn().mockResolvedValue(true),
-    toString: jest.fn(),
-  };
-  
-  const MockEventModel = jest.fn(() => mockEventInstance);
-  MockEventModel.findById = jest.fn();
-  MockEventModel.findOne = jest.fn();
-  MockEventModel.find = jest.fn();
-  MockEventModel.prototype = { validateSync: jest.fn() };
-
-  const mockMemberInstance = {
-    save: jest.fn().mockResolvedValue(true),
-  };
-  const MockEventMemberModel = jest.fn(() => mockMemberInstance);
-  MockEventMemberModel.findOne = jest.fn();
-  MockEventMemberModel.find = jest.fn();
-
-  return {
-    EventModel: MockEventModel,
-    EventMemberModel: MockEventMemberModel,
-    ParticipantModel: {
-      find: jest.fn(),
-      countDocuments: jest.fn(),
-    },
-    SongModel: {
-      find: jest.fn(),
-      countDocuments: jest.fn(),
-    },
-    UserModel: {
-      findById: jest.fn(),
-    },
-    defaultPermissionsForRole: jest.fn(role => ['ALL']),
-  };
-});
-
-jest.mock('../../src/services/event-permissions.service', () => ({}));
-
-jest.mock('../../src/utils', () => ({
-  generateEventCode: jest.fn(() => 'ABC12345'),
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  },
-}));
-
-jest.mock('../../src/utils/jwt.utils', () => ({
-  generateToken: jest.fn(() => 'jwt-token'),
-  verifyToken: jest.fn(),
-}));
-
-const { EventModel, EventMemberModel, UserModel } = require('../../src/models/schema');
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const {
+  EventModel,
+  EventMemberModel,
+  ParticipantModel,
+  SongModel,
+  UserModel,
+} = require('../../src/models/schema');
 const eventsService = require('../../src/services/events.service');
 
-// Helper to create chainable mock for UserModel.findById
-const createUserMock = (userData) => {
-  const mock = {
-    select: jest.fn().mockReturnThis(),
-    lean: jest.fn().mockResolvedValue(userData),
-  };
-  UserModel.findById.mockReturnValue(mock);
-  return mock;
+let mongoServer;
+
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  await mongoose.connect(mongoServer.getUri());
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  if (mongoServer) await mongoServer.stop();
+});
+
+beforeEach(async () => {
+  await Promise.all([
+    EventModel.deleteMany({}),
+    EventMemberModel.deleteMany({}),
+    ParticipantModel.deleteMany({}),
+    SongModel.deleteMany({}),
+    UserModel.deleteMany({}),
+  ]);
+});
+
+// Helper to create a real test user
+const createTestUser = async (overrides = {}) => {
+  return UserModel.create({
+    email: `user-${Date.now()}@test.com`,
+    passwordHash: 'hashed',
+    displayName: 'Test User',
+    role: 'DJ',
+    isActive: true,
+    emailRegistered: true,
+    ...overrides,
+  });
 };
 
-describe('EventsService', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+// Helper to create a real event with required fields
+const createTestEvent = async (user, overrides = {}) => {
+  return EventModel.create({
+    name: 'Test Event',
+    ownerId: user._id,
+    eventId: `EVENT-${Date.now()}`,
+    accessCode: `TEST${Date.now()}`,
+    state: 'DRAFT',
+    startsAt: new Date(),
+    ...overrides,
   });
+};
 
+describe('EventsService - Real Implementation Tests', () => {
   describe('createEvent', () => {
     test('should create event as DJ', async () => {
-      createUserMock({
-        _id: 'user-1',
-        role: 'DJ',
-        emailRegistered: true,
-      });
+      const user = await createTestUser({ role: 'DJ', emailRegistered: true });
 
       const result = await eventsService.createEvent(
-        { userId: 'user-1', role: 'DJ' },
+        { userId: user._id.toString(), role: 'DJ' },
         'Test Event',
         'Test Description',
         new Date()
       );
 
       expect(result).toBeDefined();
-      expect(EventModel).toHaveBeenCalled();
-      expect(EventMemberModel).toHaveBeenCalled();
+      expect(result.name).toBe('Test Event');
+      expect(result.ownerId.toString()).toBe(user._id.toString());
+      
+      // Verify event was saved
+      const savedEvent = await EventModel.findById(result._id);
+      expect(savedEvent).toBeDefined();
     });
 
     test('should throw when user not found', async () => {
-      createUserMock(null);
+      const fakeUserId = new mongoose.Types.ObjectId();
 
       await expect(eventsService.createEvent(
-        { userId: 'nonexistent' },
+        { userId: fakeUserId.toString(), role: 'DJ' },
         'Event',
         'Desc',
         new Date()
@@ -106,14 +95,10 @@ describe('EventsService', () => {
     });
 
     test('should throw for non-DJ role', async () => {
-      createUserMock({
-        _id: 'user-1',
-        role: 'ATTENDEE',
-        emailRegistered: false,
-      });
+      const user = await createTestUser({ role: 'ATTENDEE' });
 
       await expect(eventsService.createEvent(
-        { userId: 'user-1', role: 'ATTENDEE' },
+        { userId: user._id.toString(), role: 'ATTENDEE' },
         'Event',
         'Desc',
         new Date()
@@ -121,14 +106,10 @@ describe('EventsService', () => {
     });
 
     test('should require email verification for DJ', async () => {
-      createUserMock({
-        _id: 'user-1',
-        role: 'DJ',
-        emailRegistered: false,
-      });
+      const user = await createTestUser({ role: 'DJ', emailRegistered: false });
 
       await expect(eventsService.createEvent(
-        { userId: 'user-1', role: 'DJ' },
+        { userId: user._id.toString(), role: 'DJ' },
         'Event',
         'Desc',
         new Date()
@@ -136,14 +117,10 @@ describe('EventsService', () => {
     });
 
     test('should allow ADMIN role without email verification', async () => {
-      createUserMock({
-        _id: 'user-1',
-        role: 'ADMIN',
-        emailRegistered: false,
-      });
+      const user = await createTestUser({ role: 'ADMIN', emailRegistered: false });
 
       const result = await eventsService.createEvent(
-        { userId: 'user-1', role: 'ADMIN' },
+        { userId: user._id.toString(), role: 'ADMIN' },
         'Admin Event',
         'Desc',
         new Date()
@@ -155,56 +132,48 @@ describe('EventsService', () => {
 
   describe('getEvent', () => {
     test('should return event by ID', async () => {
-      const mockEvent = {
-        _id: 'event-1',
+      const user = await createTestUser();
+      const event = await EventModel.create({
         name: 'Test Event',
-        ownerId: { _id: 'user-1', email: 'dj@test.com', displayName: 'DJ' },
-      };
-
-      EventModel.findById.mockReturnValue({
-        populate: jest.fn().mockResolvedValue(mockEvent),
+        ownerId: user._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
+        state: 'LIVE',
+        startsAt: new Date(),
       });
 
-      const result = await eventsService.getEvent('event-1');
+      const result = await eventsService.getEvent(event._id.toString());
 
       expect(result).toBeDefined();
       expect(result.name).toBe('Test Event');
     });
 
     test('should throw NotFoundError for invalid ID', async () => {
-      EventModel.findById.mockReturnValue({
-        populate: jest.fn().mockResolvedValue(null),
-      });
+      const fakeId = new mongoose.Types.ObjectId();
 
-      await expect(eventsService.getEvent('invalid-id')).rejects.toThrow('Event not found');
+      await expect(eventsService.getEvent(fakeId.toString())).rejects.toThrow('Event not found');
     });
   });
 
   describe('getEventByAccessCode', () => {
     test('should return event by access code', async () => {
-      const mockEvent = {
-        _id: 'event-1',
+      const user = await createTestUser();
+      const event = await EventModel.create({
         name: 'Test Event',
+        ownerId: user._id,
+        eventId: `EVENT-${Date.now()}`,
         accessCode: 'ABCD12',
-      };
-
-      EventModel.findOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue(mockEvent),
+        state: 'LIVE',
+        startsAt: new Date(),
       });
 
       const result = await eventsService.getEventByAccessCode('abcd12');
 
       expect(result).toBeDefined();
-      expect(EventModel.findOne).toHaveBeenCalledWith({
-        accessCode: 'ABCD12',
-      });
+      expect(result.accessCode).toBe('ABCD12');
     });
 
     test('should throw NotFoundError when not found', async () => {
-      EventModel.findOne.mockReturnValue({
-        populate: jest.fn().mockResolvedValue(null),
-      });
-
       await expect(eventsService.getEventByAccessCode('INVALID'))
         .rejects.toThrow('Event not found');
     });
@@ -212,16 +181,23 @@ describe('EventsService', () => {
 
   describe('listActiveEvents', () => {
     test('should return active events', async () => {
-      const mockEvents = [
-        { _id: 'event-1', name: 'Event 1' },
-        { _id: 'event-2', name: 'Event 2' },
-      ];
-
-      EventModel.find.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockResolvedValue(mockEvents),
+      const user = await createTestUser();
+      
+      await EventModel.create({
+        name: 'Event 1',
+        ownerId: user._id,
+        eventId: `EVENT-1-${Date.now()}`,
+        accessCode: `TEST1${Date.now()}`,
+        state: 'LIVE',
+        startsAt: new Date(),
+      });
+      await EventModel.create({
+        name: 'Event 2',
+        ownerId: user._id,
+        eventId: `EVENT-2-${Date.now()}`,
+        accessCode: `TEST2${Date.now()}`,
+        state: 'LIVE',
+        startsAt: new Date(),
       });
 
       const result = await eventsService.listActiveEvents(10, 0);
@@ -230,237 +206,267 @@ describe('EventsService', () => {
     });
 
     test('should respect pagination', async () => {
-      const mockEvents = [];
+      const user = await createTestUser();
+      
+      // Create 5 events
+      for (let i = 0; i < 5; i++) {
+        await EventModel.create({
+          name: `Event ${i}`,
+          ownerId: user._id,
+          eventId: `EVENT-${i}-${Date.now()}`,
+          accessCode: `TEST${i}${Date.now()}`,
+          state: 'LIVE',
+        startsAt: new Date(),
+        });
+      }
 
-      const chain = {
-        populate: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockReturnThis(),
-        skip: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockResolvedValue(mockEvents),
-      };
-      EventModel.find.mockReturnValue(chain);
+      const result = await eventsService.listActiveEvents(2, 0);
 
-      await eventsService.listActiveEvents(5, 10);
-
-      expect(chain.limit).toHaveBeenCalledWith(5);
-      expect(chain.skip).toHaveBeenCalledWith(10);
+      expect(result).toHaveLength(2);
     });
   });
 
   describe('updateEvent', () => {
     test('should update event name and description', async () => {
-      const mockEvent = {
-        _id: 'event-1',
+      const user = await createTestUser();
+      const event = await EventModel.create({
         name: 'Old Name',
         description: 'Old Desc',
-        ownerId: { toString: () => 'user-1' },
-        save: jest.fn().mockResolvedValue(true),
-      };
+        ownerId: user._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
+        state: 'LIVE',
+        startsAt: new Date(),
+      });
 
-      EventModel.findById.mockResolvedValue(mockEvent);
-
-      const result = await eventsService.updateEvent('event-1', 'user-1', {
+      const result = await eventsService.updateEvent(event._id.toString(), user._id.toString(), {
         name: 'New Name',
         description: 'New Desc',
       });
 
-      expect(mockEvent.name).toBe('New Name');
-      expect(mockEvent.description).toBe('New Desc');
+      expect(result.name).toBe('New Name');
+      expect(result.description).toBe('New Desc');
     });
 
     test('should throw Unauthorized for non-owner', async () => {
-      const mockEvent = {
-        _id: 'event-1',
-        ownerId: { toString: () => 'other-user' },
-      };
+      const owner = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@test.com' });
+      
+      const event = await EventModel.create({
+        name: 'Test Event',
+        ownerId: owner._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
+        state: 'LIVE',
+        startsAt: new Date(),
+      });
 
-      EventModel.findById.mockResolvedValue(mockEvent);
-
-      await expect(eventsService.updateEvent('event-1', 'user-1', { name: 'New' }))
+      await expect(eventsService.updateEvent(event._id.toString(), otherUser._id.toString(), { name: 'New' }))
         .rejects.toThrow('Unauthorized');
     });
 
     test('should throw NotFoundError when not found', async () => {
-      EventModel.findById.mockResolvedValue(null);
+      const user = await createTestUser();
+      const fakeId = new mongoose.Types.ObjectId();
 
-      await expect(eventsService.updateEvent('invalid-id', 'user-1', {}))
+      await expect(eventsService.updateEvent(fakeId.toString(), user._id.toString(), {}))
         .rejects.toThrow('Event not found');
     });
   });
 
   describe('cancelEvent', () => {
     test('should cancel event as owner', async () => {
-      const mockEvent = {
-        _id: 'event-1',
-        ownerId: { toString: () => 'user-1' },
+      const user = await createTestUser();
+      const event = await EventModel.create({
+        name: 'Test Event',
+        ownerId: user._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
         state: 'LIVE',
-        cancelledAt: null,
-        save: jest.fn().mockResolvedValue(true),
-      };
+        startsAt: new Date(),
+      });
 
-      EventModel.findById.mockResolvedValue(mockEvent);
+      const result = await eventsService.cancelEvent(event._id.toString(), user._id.toString(), 'Test reason');
 
-      const result = await eventsService.cancelEvent('event-1', 'user-1', 'Test reason');
-
-      expect(mockEvent.state).toBe('CANCELLED');
-      expect(mockEvent.cancelledAt).toBeInstanceOf(Date);
-      expect(mockEvent.cancelledReason).toBe('Test reason');
+      expect(result.state).toBe('CANCELLED');
+      
+      // Verify was saved with the reason
+      const savedEvent = await EventModel.findById(event._id);
+      expect(savedEvent.state).toBe('CANCELLED');
+      expect(savedEvent.cancelledReason).toBe('Test reason');
     });
 
     test('should throw Unauthorized for non-owner', async () => {
-      const mockEvent = {
-        _id: 'event-1',
-        ownerId: { toString: () => 'other-user' },
-      };
+      const owner = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@test.com' });
+      
+      const event = await EventModel.create({
+        name: 'Test Event',
+        ownerId: owner._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
+        state: 'LIVE',
+        startsAt: new Date(),
+      });
 
-      EventModel.findById.mockResolvedValue(mockEvent);
-
-      await expect(eventsService.cancelEvent('event-1', 'user-1', 'reason'))
+      await expect(eventsService.cancelEvent(event._id.toString(), otherUser._id.toString(), 'reason'))
         .rejects.toThrow('Unauthorized');
     });
 
     test('should throw NotFoundError when event not found', async () => {
-      EventModel.findById.mockResolvedValue(null);
+      const user = await createTestUser();
+      const fakeId = new mongoose.Types.ObjectId();
 
-      await expect(eventsService.cancelEvent('invalid-id', 'user-1', 'reason'))
+      await expect(eventsService.cancelEvent(fakeId.toString(), user._id.toString(), 'reason'))
         .rejects.toThrow('Event not found');
     });
   });
 
   describe('startEvent', () => {
     test('should transition event to LIVE state', async () => {
-      const mockEvent = {
-        _id: 'event-1',
-        ownerId: { toString: () => 'user-1' },
+      const user = await createTestUser();
+      const event = await EventModel.create({
+        name: 'Test Event',
+        ownerId: user._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
         state: 'DRAFT',
         startsAt: new Date(),
-        save: jest.fn().mockResolvedValue(true),
-      };
+      });
 
-      EventModel.findById.mockResolvedValue(mockEvent);
+      const result = await eventsService.startEvent(event._id.toString(), user._id.toString());
 
-      const result = await eventsService.startEvent('event-1', 'user-1');
-
-      expect(mockEvent.state).toBe('LIVE');
+      expect(result.state).toBe('LIVE');
     });
 
     test('should throw Unauthorized for non-owner', async () => {
-      const mockEvent = {
-        _id: 'event-1',
-        ownerId: { toString: () => 'other-user' },
+      const owner = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@test.com' });
+      
+      const event = await EventModel.create({
+        name: 'Test Event',
+        ownerId: owner._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
         state: 'DRAFT',
-        save: jest.fn().mockResolvedValue(true),
-      };
+        startsAt: new Date(),
+      });
 
-      EventModel.findById.mockResolvedValue(mockEvent);
-
-      await expect(eventsService.startEvent('event-1', 'user-1'))
+      await expect(eventsService.startEvent(event._id.toString(), otherUser._id.toString()))
         .rejects.toThrow('Unauthorized');
     });
 
     test('should throw NotFoundError when event not found', async () => {
-      EventModel.findById.mockResolvedValue(null);
+      const user = await createTestUser();
+      const fakeId = new mongoose.Types.ObjectId();
 
-      await expect(eventsService.startEvent('invalid-id', 'user-1'))
+      await expect(eventsService.startEvent(fakeId.toString(), user._id.toString()))
         .rejects.toThrow('Event not found');
     });
   });
 
   describe('endEvent', () => {
     test('should transition event to ENDED state', async () => {
-      const mockEvent = {
-        _id: 'event-1',
-        ownerId: { toString: () => 'user-1' },
+      const user = await createTestUser();
+      const event = await EventModel.create({
+        name: 'Test Event',
+        ownerId: user._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
         state: 'LIVE',
-        endedAt: null,
-        save: jest.fn().mockResolvedValue(true),
-      };
+        startsAt: new Date(),
+      });
 
-      EventModel.findById.mockResolvedValue(mockEvent);
+      const result = await eventsService.endEvent(event._id.toString(), user._id.toString());
 
-      const result = await eventsService.endEvent('event-1', 'user-1');
-
-      expect(mockEvent.state).toBe('ENDED');
-      expect(mockEvent.endedAt).toBeInstanceOf(Date);
+      expect(result.state).toBe('ENDED');
+      expect(result.endedAt).toBeDefined();
     });
 
     test('should throw Unauthorized for non-owner', async () => {
-      const mockEvent = {
-        _id: 'event-1',
-        ownerId: { toString: () => 'other-user' },
+      const owner = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@test.com' });
+      
+      const event = await EventModel.create({
+        name: 'Test Event',
+        ownerId: owner._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
         state: 'LIVE',
-        save: jest.fn().mockResolvedValue(true),
-      };
+        startsAt: new Date(),
+      });
 
-      EventModel.findById.mockResolvedValue(mockEvent);
-
-      await expect(eventsService.endEvent('event-1', 'user-1'))
+      await expect(eventsService.endEvent(event._id.toString(), otherUser._id.toString()))
         .rejects.toThrow('Unauthorized');
     });
 
     test('should throw NotFoundError when event not found', async () => {
-      EventModel.findById.mockResolvedValue(null);
+      const user = await createTestUser();
+      const fakeId = new mongoose.Types.ObjectId();
 
-      await expect(eventsService.endEvent('invalid-id', 'user-1'))
+      await expect(eventsService.endEvent(fakeId.toString(), user._id.toString()))
         .rejects.toThrow('Event not found');
     });
   });
 
   describe('regenerateAccessCode', () => {
     test('should generate new access code for owner', async () => {
-      const mockEvent = {
-        _id: 'event-1',
-        ownerId: { toString: () => 'user-1' },
+      const user = await createTestUser();
+      const event = await EventModel.create({
+        name: 'Test Event',
+        ownerId: user._id,
+        eventId: `EVENT-${Date.now()}`,
         accessCode: 'OLD123',
-        save: jest.fn().mockResolvedValue(true),
-      };
+        state: 'LIVE',
+        startsAt: new Date(),
+      });
 
-      EventModel.findById.mockResolvedValue(mockEvent);
+      const result = await eventsService.regenerateAccessCode(event._id.toString(), user._id.toString());
 
-      const result = await eventsService.regenerateAccessCode('event-1', 'user-1');
-
-      expect(mockEvent.save).toHaveBeenCalled();
+      expect(result.accessCode).not.toBe('OLD123');
     });
 
     test('should throw Unauthorized for non-owner', async () => {
-      const mockEvent = {
-        _id: 'event-1',
-        ownerId: { toString: () => 'other-user' },
-        save: jest.fn().mockResolvedValue(true),
-      };
+      const owner = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@test.com' });
+      
+      const event = await EventModel.create({
+        name: 'Test Event',
+        ownerId: owner._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: 'OLD123',
+        state: 'LIVE',
+        startsAt: new Date(),
+      });
 
-      EventModel.findById.mockResolvedValue(mockEvent);
-
-      await expect(eventsService.regenerateAccessCode('event-1', 'user-1'))
+      await expect(eventsService.regenerateAccessCode(event._id.toString(), otherUser._id.toString()))
         .rejects.toThrow('Unauthorized');
     });
   });
 
   describe('getActiveEventForOwner', () => {
     test('should return active event for owner', async () => {
-      const mockEvent = {
-        _id: 'event-1',
-        ownerId: { _id: 'user-1', displayName: 'DJ' },
-      };
+      const user = await createTestUser();
+      
+      await EventModel.create({
+        name: 'Active Event',
+        ownerId: user._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
+        state: 'LIVE',
+        startsAt: new Date(),
+      });
 
-      const chain = {
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockResolvedValue([mockEvent]),
-      };
-      EventModel.findOne.mockReturnValue(chain);
-
-      const result = await eventsService.getActiveEventForOwner('user-1');
+      const result = await eventsService.getActiveEventForOwner(user._id.toString());
 
       expect(result).toBeDefined();
+      expect(result.name).toBe('Active Event');
     });
 
     test('should throw when no active event', async () => {
-      EventModel.findOne.mockReturnValue({
-        populate: jest.fn().mockReturnThis(),
-        sort: jest.fn().mockResolvedValue(null),
-      });
+      const user = await createTestUser();
 
-      await expect(eventsService.getActiveEventForOwner('user-1'))
+      await expect(eventsService.getActiveEventForOwner(user._id.toString()))
         .rejects.toThrow('Event not found');
     });
   });

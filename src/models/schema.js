@@ -16,17 +16,6 @@ const {
   defaultPermissionsForRole,
 } = require('./shared');
 
-async function hasEventPermission(user, eventId, permission) {
-  if (user.role === 'ADMIN') return true;
-  const member = await EventMemberModel.findOne({ eventId, userId: user._id })
-    .select({ permissions: 1 })
-    .lean();
-  if (!member) return false;
-  return (
-    Array.isArray(member.permissions) && member.permissions.includes(permission)
-  );
-}
-
 async function connectMongo(uri, dbName) {
   mongoose.set('strictQuery', true);
   const opts = { autoIndex: true };
@@ -48,7 +37,6 @@ module.exports = {
   AudioFingerprintHashModel,
   AudioFingerprintModel,
   connectMongo,
-  hasEventPermission,
   defaultPermissionsForRole,
   ALL_EVENT_PERMISSIONS,
 };

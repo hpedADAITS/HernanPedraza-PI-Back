@@ -1,74 +1,98 @@
 /**
- * Unit tests for participantsService.js
- * Tests participant join, leave, update, admin actions, cooldowns, bans
+ * Unit tests for participantsService.js - UNMOCKED
+ * Tests participant join, leave, update, admin actions, cooldowns, bans using REAL implementations
  */
 
-// Create mock functions first
-const mockSelect = jest.fn().mockReturnThis();
-const mockSession = jest.fn().mockReturnThis();
-const mockSort = jest.fn().mockResolvedValue([]);
-
-jest.mock('../../src/models/schema', () => ({
-  EventModel: {
-    exists: jest.fn().mockResolvedValue(false),
-    findById: jest.fn().mockResolvedValue(null),
-  },
-  ParticipantModel: {
-    findOne: jest.fn().mockReturnValue({
-      select: mockSelect,
-      session: mockSession,
-    }),
-    findById: jest.fn().mockResolvedValue(null),
-    countDocuments: jest.fn().mockResolvedValue(0),
-    findByIdAndUpdate: jest.fn().mockResolvedValue(null),
-    find: jest.fn().mockReturnValue({
-      sort: mockSort,
-    }),
-  },
-  UserModel: {
-    findById: jest.fn().mockResolvedValue(null),
-  },
-}));
-
-jest.mock('../../src/services/event-permissions.service', () => ({
-  assertParticipantAdmin: jest.fn().mockResolvedValue('admin-user-id'),
-}));
-
-jest.mock('../../src/utils', () => ({
-  logger: {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  },
-}));
-
-jest.mock('bcryptjs', () => ({
-  compare: jest.fn().mockResolvedValue(true),
-  hash: jest.fn().mockResolvedValue('hashed-password'),
-}));
-
-const bcrypt = require('bcryptjs');
-const { EventModel, ParticipantModel } = require('../../src/models/schema');
-const eventPermissionsService = require('../../src/services/event-permissions.service');
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const {
+  EventModel,
+  ParticipantModel,
+  UserModel,
+} = require('../../src/models/schema');
 const participantsService = require('../../src/services/participants.service');
 
-describe('ParticipantsService', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    jest.resetModules();
+let mongoServer;
+
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  await mongoose.connect(mongoServer.getUri());
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  if (mongoServer) await mongoServer.stop();
+});
+
+beforeEach(async () => {
+  await Promise.all([
+    EventModel.deleteMany({}),
+    ParticipantModel.deleteMany({}),
+    UserModel.deleteMany({}),
+  ]);
+});
+
+// Helper to create a real test event
+const createTestEvent = async (overrides = {}) => {
+  const user = await UserModel.create({
+    email: `dj-${Date.now()}@test.com`,
+    passwordHash: 'hashed',
+    displayName: 'Test DJ',
+    role: 'DJ',
+    isActive: true,
   });
 
+  const event = await EventModel.create({
+    name: 'Test Event',
+    ownerId: user._id,
+    eventId: `EVENT-${Date.now()}`,
+    accessCode: `TEST${Date.now()}`,
+    state: 'LIVE',
+    startsAt: new Date(),
+    ...overrides,
+  });
+
+  return { event, user };
+};
+
+// Helper to create a real participant
+const createTestParticipant = async (eventId, overrides = {}) => {
+  const nickname = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const userEmail = `participant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@test.com`;
+  const user = await UserModel.create({
+    email: userEmail,
+    passwordHash: 'hashed',
+    displayName: nickname,
+    role: 'ATTENDEE',
+    isActive: true,
+  });
+  
+  const participant = await ParticipantModel.create({
+    eventId,
+    nickname,
+    isBanned: false,
+    leftAt: null,
+    userId: user._id,
+    ...overrides,
+  });
+  
+  participant.userId = user._id;
+  await participant.save();
+  
+  return participant;
+};
+
+describe('ParticipantsService - Real Implementation Tests', () => {
   describe('ensureNicknameIsNotAccessCode', () => {
     test('should throw when nickname matches event access code', async () => {
-      EventModel.exists.mockResolvedValue(true);
+      const { event } = await createTestEvent();
 
-      await expect(participantsService.ensureNicknameIsNotAccessCode('ABCD12'))
+      await expect(participantsService.ensureNicknameIsNotAccessCode(event.accessCode))
         .rejects.toThrow('Nickname cannot be a valid access code');
     });
 
     test('should allow non-matching nicknames', async () => {
-      EventModel.exists.mockResolvedValue(false);
-
       await expect(participantsService.ensureNicknameIsNotAccessCode('DanceParty'))
         .resolves.toBeUndefined();
     });
@@ -76,217 +100,190 @@ describe('ParticipantsService', () => {
 
   describe('kickParticipant', () => {
     test('should kick participant and set reason', async () => {
-      const mockParticipant = {
-        _id: 'participant-1',
-        eventId: 'event-1',
-        userId: 'victim-user',
-        kickedAt: null,
-        kickedBy: null,
-        kickReason: null,
-        leftAt: null,
-        save: jest.fn().mockResolvedValue(true),
-      };
-
-      ParticipantModel.findById.mockResolvedValue(mockParticipant);
-      eventPermissionsService.assertParticipantAdmin.mockResolvedValue('admin-user');
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const adminUser = await UserModel.create({
+        email: `admin-${Date.now()}@test.com`,
+        passwordHash: 'hashed',
+        displayName: 'Admin',
+        role: 'DJ',
+        isActive: true,
+      });
 
       const result = await participantsService.kickParticipant(
-        'participant-1',
+        participant._id.toString(),
         'Violation of rules',
-        { userId: 'admin-user', role: 'DJ' }
+        { userId: adminUser._id.toString(), role: 'DJ' }
       );
 
-      expect(mockParticipant.kickedAt).toBeInstanceOf(Date);
-      expect(mockParticipant.kickedBy).toBe('admin-user');
       expect(result.action).toBe('participant_kicked');
+      
+      // Verify participant was updated
+      const updatedParticipant = await ParticipantModel.findById(participant._id);
+      expect(updatedParticipant.kickedAt).toBeDefined();
+      expect(updatedParticipant.kickedBy.toString()).toBe(adminUser._id.toString());
     });
 
     test('should throw NotFoundError when participant not found', async () => {
-      ParticipantModel.findById.mockResolvedValue(null);
+      const fakeId = new mongoose.Types.ObjectId();
 
-      await expect(participantsService.kickParticipant('invalid-id', 'reason', {}))
+      await expect(participantsService.kickParticipant(fakeId.toString(), 'reason', {}))
         .rejects.toThrow('Participant not found');
     });
   });
 
   describe('banParticipant', () => {
     test('should ban participant permanently', async () => {
-      const mockParticipant = {
-        _id: 'participant-1',
-        eventId: 'event-1',
-        bannedAt: null,
-        bannedBy: null,
-        banReason: null,
-        isBanned: false,
-        leftAt: null,
-        save: jest.fn().mockResolvedValue(true),
-      };
-
-      ParticipantModel.findById.mockResolvedValue(mockParticipant);
-      eventPermissionsService.assertParticipantAdmin.mockResolvedValue('admin-user');
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const adminUser = await UserModel.create({
+        email: `admin-${Date.now()}@test.com`,
+        passwordHash: 'hashed',
+        displayName: 'Admin',
+        role: 'DJ',
+        isActive: true,
+      });
 
       const result = await participantsService.banParticipant(
-        'participant-1',
+        participant._id.toString(),
         'Repeated violations',
-        { userId: 'admin-user', role: 'DJ' }
+        { userId: adminUser._id.toString(), role: 'DJ' }
       );
 
-      expect(mockParticipant.isBanned).toBe(true);
-      expect(mockParticipant.bannedAt).toBeInstanceOf(Date);
       expect(result.action).toBe('participant_banned');
+      
+      // Verify participant was banned
+      const updatedParticipant = await ParticipantModel.findById(participant._id);
+      expect(updatedParticipant.isBanned).toBe(true);
+      expect(updatedParticipant.bannedAt).toBeDefined();
+      expect(updatedParticipant.banReason).toBe('Repeated violations');
     });
   });
 
   describe('setParticipantCooldown', () => {
     test('should set cooldown period', async () => {
-      const mockParticipant = {
-        _id: 'participant-1',
-        eventId: 'event-1',
-        cooldownUntil: null,
-        cooldownReason: null,
-        save: jest.fn().mockResolvedValue(true),
-      };
-
-      ParticipantModel.findById.mockResolvedValue(mockParticipant);
-      eventPermissionsService.assertParticipantAdmin.mockResolvedValue('admin-user');
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const adminUser = await UserModel.create({
+        email: `admin-${Date.now()}@test.com`,
+        passwordHash: 'hashed',
+        displayName: 'Admin',
+        role: 'DJ',
+        isActive: true,
+      });
 
       const result = await participantsService.setParticipantCooldown(
-        'participant-1',
+        participant._id.toString(),
         3600000, // 1 hour
         'Spam',
-        { userId: 'admin-user', role: 'DJ' }
+        { userId: adminUser._id.toString(), role: 'DJ' }
       );
 
-      expect(mockParticipant.cooldownUntil).toBeInstanceOf(Date);
-      expect(mockParticipant.cooldownReason).toBe('Spam');
       expect(result.action).toBe('participant_cooldown');
+      
+      // Verify participant was updated
+      const updatedParticipant = await ParticipantModel.findById(participant._id);
+      expect(updatedParticipant.cooldownUntil).toBeDefined();
+      expect(updatedParticipant.cooldownReason).toBe('Spam');
     });
   });
 
   describe('ensureParticipantCanInteract', () => {
     test('should allow active participant', async () => {
-      const mockParticipant = {
-        _id: 'participant-1',
-        eventId: { toString: () => 'event-1' },
-        isBanned: false,
-        leftAt: null,
-        cooldownUntil: null,
-      };
-
-      ParticipantModel.findById.mockResolvedValue(mockParticipant);
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
 
       const result = await participantsService.ensureParticipantCanInteract(
-        'participant-1',
-        'event-1'
+        participant._id.toString(),
+        event._id.toString()
       );
 
       expect(result).toBeDefined();
     });
 
     test('should throw for banned participant', async () => {
-      const mockParticipant = {
-        _id: 'participant-1',
-        eventId: { toString: () => 'event-1' },
-        isBanned: true,
-      };
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id, { isBanned: true });
 
-      ParticipantModel.findById.mockResolvedValue(mockParticipant);
-
-      await expect(participantsService.ensureParticipantCanInteract('participant-1', 'event-1'))
+      await expect(participantsService.ensureParticipantCanInteract(participant._id.toString(), event._id.toString()))
         .rejects.toThrow('has been banned');
     });
 
     test('should throw for left participant', async () => {
-      const mockParticipant = {
-        _id: 'participant-1',
-        eventId: { toString: () => 'event-1' },
-        isBanned: false,
-        leftAt: new Date(),
-        kickedAt: null,
-      };
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id, { leftAt: new Date() });
 
-      ParticipantModel.findById.mockResolvedValue(mockParticipant);
-
-      await expect(participantsService.ensureParticipantCanInteract('participant-1', 'event-1'))
+      await expect(participantsService.ensureParticipantCanInteract(participant._id.toString(), event._id.toString()))
         .rejects.toThrow('no longer active');
     });
 
     test('should throw for kicked participant', async () => {
-      const mockParticipant = {
-        _id: 'participant-1',
-        eventId: { toString: () => 'event-1' },
-        isBanned: false,
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id, { 
         leftAt: new Date(),
         kickedAt: new Date(),
-      };
+      });
 
-      ParticipantModel.findById.mockResolvedValue(mockParticipant);
-
-      await expect(participantsService.ensureParticipantCanInteract('participant-1', 'event-1'))
+      await expect(participantsService.ensureParticipantCanInteract(participant._id.toString(), event._id.toString()))
         .rejects.toThrow('was kicked');
     });
 
     test('should throw when on cooldown', async () => {
       const futureTime = new Date(Date.now() + 3600000);
-      const mockParticipant = {
-        _id: 'participant-1',
-        eventId: { toString: () => 'event-1' },
-        isBanned: false,
-        leftAt: null,
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id, { 
         cooldownUntil: futureTime,
         cooldownReason: 'Spamming',
-      };
-
-      ParticipantModel.findById.mockResolvedValue(mockParticipant);
+      });
 
       await expect(participantsService.ensureParticipantCanInteract(
-        'participant-1',
-        'event-1',
+        participant._id.toString(),
+        event._id.toString(),
         { checkCooldown: true }
       )).rejects.toThrow('on cooldown');
     });
 
     test('should clear expired cooldown', async () => {
       const pastTime = new Date(Date.now() - 3600000);
-      const mockParticipant = {
-        _id: 'participant-1',
-        eventId: { toString: () => 'event-1' },
-        isBanned: false,
-        leftAt: null,
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id, { 
         cooldownUntil: pastTime,
         cooldownReason: 'Old',
-        save: jest.fn().mockResolvedValue(true),
-      };
-
-      ParticipantModel.findById.mockResolvedValue(mockParticipant);
+      });
 
       await participantsService.ensureParticipantCanInteract(
-        'participant-1',
-        'event-1',
+        participant._id.toString(),
+        event._id.toString(),
         { checkCooldown: false }
       );
 
-      expect(mockParticipant.save).toHaveBeenCalled();
+      // Verify cooldown was cleared
+      const updatedParticipant = await ParticipantModel.findById(participant._id);
+      expect(updatedParticipant.cooldownUntil).toBeUndefined();
     });
   });
 
   describe('setPremium', () => {
     test('should set premium status', async () => {
-      const mockParticipant = {
-        _id: 'participant-1',
-        isPremium: false,
-        save: jest.fn().mockResolvedValue(true),
-      };
-
-      ParticipantModel.findById.mockResolvedValue(mockParticipant);
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id, { isPremium: false });
+      const adminUser = await UserModel.create({
+        email: `admin-${Date.now()}@test.com`,
+        passwordHash: 'hashed',
+        displayName: 'Admin',
+        role: 'DJ',
+        isActive: true,
+      });
 
       const result = await participantsService.setPremium(
-        'participant-1',
+        participant._id.toString(),
         true,
-        { userId: 'admin', role: 'DJ' }
+        { userId: adminUser._id.toString(), role: 'DJ' }
       );
 
-      expect(mockParticipant.isPremium).toBe(true);
+      // Verify premium was set
+      const updatedParticipant = await ParticipantModel.findById(participant._id);
+      expect(updatedParticipant.isPremium).toBe(true);
     });
   });
 
