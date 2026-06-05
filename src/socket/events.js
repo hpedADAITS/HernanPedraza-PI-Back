@@ -1234,12 +1234,10 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
         `Invalid audio chunk sampleRate: ${data?.sampleRate ?? session.inputSampleRate}`
       );
     }
-    // Normalize browser/phone audio to the recognition sample rate.
-    const samples = resampleLinear(
-      rawSamples,
-      inputSampleRate,
-      TARGET_SAMPLE_RATE,
-    );
+    // Skip resampling if already at target rate (phone already resamples to 32kHz)
+    const samples = inputSampleRate === TARGET_SAMPLE_RATE
+      ? rawSamples
+      : resampleLinear(rawSamples, inputSampleRate, TARGET_SAMPLE_RATE);
 
     const hashes = session.fingerprinter.process(samples) ?? [];
 
