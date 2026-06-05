@@ -21,4 +21,4 @@ services:
       - key: SOCKET_CORS_ORIGIN
         value: https://sr-frontend-xrwk.onrender.com,https://sr-frontend.onrender.com
       - key: DEBUG_EMAIL
-        value: "true"
+        value: "true" # TEMP: Remove once Resend API is configured
