@@ -14,7 +14,7 @@ describe('Ping Routes Integration Tests', () => {
     test('should return message in Spanish', async () => {
       const response = await request(app).get('/api/v1/ping');
 
-      expect(response.body.message).toMatch(/SyncRekuest/i);
+      expect(response.body.message).toMatch(/Syncrequest/i);
     });
 
     test('should return valid ISO timestamp', async () => {

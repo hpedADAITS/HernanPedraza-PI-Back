@@ -18,7 +18,7 @@ initLoaders()
         logger.error(err);
         process.exit(1);
       }
-      logger.info(`API de SyncRekuest escuchando en puerto ${port}!`);
+      logger.info(`API de Syncrequest escuchando en puerto ${port}!`);
       logger.info(`Entorno: ${config.env}`);
     });
   })

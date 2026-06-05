@@ -50,7 +50,7 @@ describe('musicbrainz service', () => {
     expect(url.searchParams.get('fmt')).toBe('json');
     expect(url.pathname).toBe('/ws/2/recording');
     expect(options.headers.Accept).toBe('application/json');
-    expect(options.headers['User-Agent']).toContain('SyncRekuest');
+    expect(options.headers['User-Agent']).toContain('Syncrequest');
     expect(options.headers['User-Agent']).toContain('github.com/hpedadaits/hernanpedraza-pi-back');
   });
 

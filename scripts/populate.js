@@ -18,12 +18,12 @@ const DEFAULT_PASSWORD = 'Password1';
 
 const USERS = [
   {
-    email: 'admin@syncrekuest.com',
+    email: 'admin@Syncrequest.com',
     displayName: 'Admin Principal',
     role: 'ADMIN',
   },
-  { email: 'dj.carlos@syncrekuest.com', displayName: 'DJ Carlos', role: 'DJ' },
-  { email: 'dj.maria@syncrekuest.com', displayName: 'DJ María', role: 'DJ' },
+  { email: 'dj.carlos@Syncrequest.com', displayName: 'DJ Carlos', role: 'DJ' },
+  { email: 'dj.maria@Syncrequest.com', displayName: 'DJ María', role: 'DJ' },
   { email: 'ana@correo.com', displayName: 'Ana Torres', role: 'ATTENDEE' },
   { email: 'luis@correo.com', displayName: 'Luis García', role: 'ATTENDEE' },
   { email: 'pedro@correo.com', displayName: 'Pedro Ruiz', role: 'ATTENDEE' },

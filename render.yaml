@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: syncrekuest-backend
+    name: Syncrequest-backend
     runtime: node
     plan: free
     buildCommand: npm install

@@ -1,7 +1,7 @@
 {
-  "name": "syncrekuest-backend",
+  "name": "Syncrequest-backend",
   "version": "1.0.0",
-  "description": "Backend for SyncRekuest - Real-time collaborative music voting platform",
+  "description": "Backend for Syncrequest - Real-time collaborative music voting platform",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

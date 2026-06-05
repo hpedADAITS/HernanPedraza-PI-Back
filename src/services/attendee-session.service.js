@@ -123,7 +123,7 @@ class AttendeeSessionService {
     const [user] = await UserModel.create(
       [
         {
-          email: `attendee_${crypto.randomUUID()}@syncrekuest.local`,
+          email: `attendee_${crypto.randomUUID()}@Syncrequest.local`,
           passwordHash: await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10),
           displayName,
           role: 'ATTENDEE',

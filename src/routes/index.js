@@ -13,7 +13,7 @@ const router = Router();
 router.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'SyncRekuest API',
+    message: 'Syncrequest API',
     version: 'v1',
     timestamp: new Date().toISOString(),
   });

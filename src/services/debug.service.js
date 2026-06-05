@@ -171,7 +171,7 @@ class DebugService {
   }
 
   async _getOrCreateDebugUser(account, passwordHash) {
-    const email = `${account.emailPrefix}@syncrekuest.local`;
+    const email = `${account.emailPrefix}@Syncrequest.local`;
     let user = await UserModel.findOne({ email }).select('+passwordHash');
 
     if (!user) {

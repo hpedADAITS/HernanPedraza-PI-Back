@@ -79,7 +79,7 @@ class EmailService {
     const { data, error } = await this.resend.emails.send({
       from: this.fromEmail,
       to: [email],
-      subject: 'Welcome to SyncRekuest! 🎵',
+      subject: 'Welcome to Syncrequest! 🎵',
       html: this.getWelcomeEmailTemplate(displayName, verificationToken),
       idempotencyKey: idempotencyKey.substring(0, 256),
     });
@@ -106,7 +106,7 @@ class EmailService {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Welcome to SyncRekuest</title>
+  <title>Welcome to Syncrequest</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #0a0e27; font-family: Arial, sans-serif;">
   <center role="main" style="width: 100%; background-color: #0a0e27;">
@@ -117,16 +117,16 @@ class EmailService {
             
             <tr>
               <td align="center" style="padding: 32px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                <img src="https://raw.githubusercontent.com/hpedADAITS/HernanPedraza-PI-Front/refs/heads/main/src/assets/logo_white.png" alt="SyncRekuest Logo" style="width: 180px; height: auto; display: block; filter: brightness(1000%);" />
+                <img src="https://raw.githubusercontent.com/hpedADAITS/HernanPedraza-PI-Front/refs/heads/main/src/assets/logo_white.png" alt="Syncrequest Logo" style="width: 180px; height: auto; display: block; filter: brightness(1000%);" />
               </td>
             </tr>
             
             <tr>
               <td align="center" style="padding: 40px 24px;">
-                <h2 style="color: #e2e8f0; font-size: 18px; margin-bottom: 16px;">Welcome to SyncRekuest, ${this.escapeHtml(displayName)}!</h2>
+                <h2 style="color: #e2e8f0; font-size: 18px; margin-bottom: 16px;">Welcome to Syncrequest, ${this.escapeHtml(displayName)}!</h2>
                 
                 <p style="color: #cbd5e1; font-size: 16px; line-height: 1.7; margin-bottom: 24px;">
-                  You've successfully created an account as a DJ on SyncRekuest! We're excited to have you join our community of music lovers and event organizers.
+                  You've successfully created an account as a DJ on Syncrequest! We're excited to have you join our community of music lovers and event organizers.
                 </p>
                 
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background: linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(12, 30, 74, 0.2) 100%); border: 1px solid rgba(96, 165, 250, 0.2); border-radius: 12px; padding: 24px; margin-bottom: 32px;">
@@ -153,7 +153,7 @@ class EmailService {
             
             <tr>
               <td align="center" style="padding-top: 40px;">
-                <h3 style="color: #e2e8f0; font-size: 18px; margin-bottom: 24px;">Why SyncRekuest?</h3>
+                <h3 style="color: #e2e8f0; font-size: 18px; margin-bottom: 24px;">Why Syncrequest?</h3>
                 
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                   <tr>
@@ -199,7 +199,7 @@ class EmailService {
               <td align="center" style="padding-top: 32px; border-top: 1px solid rgba(255,255,255,0.1); color: #64748b; font-size: 13px;">
                 <p style="margin-bottom: 12px;">Made with ❤️</p>
                 <br/>
-                <p style="margin-top: 20px;">2026 SyncRekuest</p>
+                <p style="margin-top: 20px;">2026 Syncrequest</p>
               </td>
             </tr>
           </table>

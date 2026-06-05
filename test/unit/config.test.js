@@ -29,7 +29,7 @@ describe('config', () => {
 
     const config = loadConfig();
 
-    expect(config.jwtSecret).toBe('syncrekuest-local-development-secret');
+    expect(config.jwtSecret).toBe('Syncrequest-local-development-secret');
   });
 
   test('fails production startup when JWT_SECRET is missing', () => {
@@ -80,14 +80,14 @@ describe('config', () => {
       return {};
     });
     dotenv.parse.mockReturnValue({
-      MONGODB_URI: 'mongodb://localhost:27017/syncrekuest',
-      DB_NAME: 'syncrekuest',
+      MONGODB_URI: 'mongodb://localhost:27017/Syncrequest',
+      DB_NAME: 'Syncrequest',
     });
 
     const config = loadConfig();
 
-    expect(config.mongoUri).toBe('mongodb://localhost:27017/syncrekuest');
-    expect(config.dbName).toBe('syncrekuest');
+    expect(config.mongoUri).toBe('mongodb://localhost:27017/Syncrequest');
+    expect(config.dbName).toBe('Syncrequest');
   });
 
   test('keeps explicit shell MongoDB variables above .env.local', () => {
@@ -97,7 +97,7 @@ describe('config', () => {
 
     fs.existsSync.mockReturnValue(true);
     dotenv.parse.mockReturnValue({
-      MONGODB_URI: 'mongodb://localhost:27017/syncrekuest',
+      MONGODB_URI: 'mongodb://localhost:27017/Syncrequest',
     });
 
     const config = loadConfig();

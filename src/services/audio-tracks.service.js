@@ -253,7 +253,7 @@ function cleanOptional(value) {
 }
 
 async function writeTempFile(file) {
-  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'syncrekuest-audio-'));
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'Syncrequest-audio-'));
   const tmpFile = path.join(dir, `${Date.now()}-${path.basename(file.filename || 'audio.wav')}`);
   await fs.promises.writeFile(tmpFile, file.buffer);
   return tmpFile;

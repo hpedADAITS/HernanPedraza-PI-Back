@@ -5,7 +5,7 @@ const config = require('../config');
 const swaggerDefinition = {
   openapi: '3.0.3',
   info: {
-    title: 'SyncRekuest API',
+    title: 'Syncrequest API',
     version: '1.0.0',
     description:
       'Real-time collaborative music voting platform API. DJs create events, attendees join via access codes, suggest songs, and vote on the queue.',
@@ -1378,7 +1378,7 @@ const initSwagger = (app) => {
     swaggerUi.serve,
     swaggerUi.setup(swaggerSpec, {
       customCss: '.swagger-ui .topbar { display: none }',
-      customSiteTitle: 'SyncRekuest API Docs',
+      customSiteTitle: 'Syncrequest API Docs',
     }),
   );
 

@@ -6,7 +6,7 @@ const router = Router();
 router.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'La API de SyncRekuest está ejecutándose',
+    message: 'La API de Syncrequest está ejecutándose',
     timestamp: new Date().toISOString(),
   });
 });

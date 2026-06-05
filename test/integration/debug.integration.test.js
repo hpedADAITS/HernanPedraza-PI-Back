@@ -95,7 +95,7 @@ describe('Debug mock accounts', () => {
     let attendeeLoginToken;
 
     for (const account of res.body.data.accounts) {
-      expect(account.email).toMatch(/@syncrekuest\.local$/);
+      expect(account.email).toMatch(/@Syncrequest\.local$/);
       expect(account.password).toBe('DebugPass123!');
       expect(account.emailRegistered).toBe(true);
       expect(account.token).toEqual(expect.any(String));

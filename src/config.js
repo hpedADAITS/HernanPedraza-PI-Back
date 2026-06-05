@@ -18,7 +18,7 @@ if (explicitEnv.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'productio
 }
 
 const env = process.env.NODE_ENV || 'development';
-const DEVELOPMENT_JWT_SECRET = 'syncrekuest-local-development-secret';
+const DEVELOPMENT_JWT_SECRET = 'Syncrequest-local-development-secret';
 const MIN_PRODUCTION_JWT_SECRET_LENGTH = 32;
 const debugMode = process.env.DEBUG_MODE === 'true';
 
@@ -53,8 +53,8 @@ module.exports = {
   debugMode,
 
   /* DB */
-  mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/syncrekuest',
-  dbName: process.env.DB_NAME || 'syncrekuest',
+  mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/Syncrequest',
+  dbName: process.env.DB_NAME || 'Syncrequest',
 
   /* JWT */
   jwtSecret: readJwtSecret(),
