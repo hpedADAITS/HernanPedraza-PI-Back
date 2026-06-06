@@ -274,6 +274,7 @@ describe('EventPermissionsService', () => {
 
       const result = await eventPermissionsService.assertEventDj('event-1', {
         userId: 'user-1',
+        role: 'DJ',
       });
 
       expect(result).toBeDefined();
@@ -334,6 +335,7 @@ describe('EventPermissionsService', () => {
 
       const result = await eventPermissionsService.assertSongAdmin('event-1', {
         userId: 'user-1',
+        role: 'DJ',
       });
 
       expect(result).toBeDefined();
@@ -431,6 +433,7 @@ describe('EventPermissionsService', () => {
 
       const result = await eventPermissionsService.assertParticipantAdmin('event-1', {
         userId: 'perm-user',
+        role: 'ATTENDEE',
       });
 
       expect(result).toBeDefined();
@@ -450,7 +453,7 @@ describe('EventPermissionsService', () => {
       EventMemberModel.findOne.mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue({
-            role: 'PHONE',
+            role: 'DJ',
             permissions: ['EVENT_SETTINGS_EDIT', 'QUEUE_EDIT'],
           }),
         }),
@@ -458,7 +461,7 @@ describe('EventPermissionsService', () => {
 
       const result = await eventPermissionsService.assertPhoneMicrophone('event-1', {
         userId: 'phone-user',
-        role: 'PHONE',
+        role: 'DJ',
       });
 
       expect(result).toBeDefined();

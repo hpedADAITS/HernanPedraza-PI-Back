@@ -9,6 +9,8 @@ const PHONE_MICROPHONE_PERMISSIONS = [
   'SONG_APPROVE_REJECT',
 ];
 
+const VALID_ROLES = new Set(['DJ', 'ATTENDEE']);
+
 function actorId(actor) {
   if (typeof actor === 'string') return actor;
   return actor?.userId?.toString() || actor?._id?.toString() || actor?.id?.toString() || null;
@@ -16,6 +18,27 @@ function actorId(actor) {
 
 function objectId(value) {
   return value?._id ?? value;
+}
+
+function normalizeRole(role) {
+  if (typeof role === 'string' && VALID_ROLES.has(role)) {
+    return role;
+  }
+  return null;
+}
+
+function assertActorRole(actor) {
+  const role = normalizeRole(actor?.role);
+  if (role === null) {
+    const userId = actorId(actor);
+    logger.error('CRITICAL: Actor has no valid role. Actor must have role: \'DJ\' or \'ATTENDEE\'. Got:', {
+      role: actor?.role,
+      userId,
+      actorKeys: actor ? Object.keys(actor) : null,
+    });
+    throw new UnauthorizedError('Actor has no valid role. Authentication may be incomplete.');
+  }
+  return role;
 }
 
 class EventPermissionsService {
@@ -39,9 +62,17 @@ class EventPermissionsService {
 
     if (!userId) return { event, userId: null, role: null, isOwner: false, isDj: false, member: null };
 
-    const role = actor?.role || null;
+    const role = normalizeRole(actor?.role);
     const isDj = role === 'DJ';
     const isOwner = objectId(event.ownerId)?.toString() === userId.toString();
+
+    if (role === null) {
+      logger.warn('getContext: actor has no valid role — treating as unauthenticated. This may indicate a bug upstream.', {
+        userId,
+        actorRole: actor?.role,
+      });
+      return { event, userId, role: null, isOwner: false, isDj: false, member: null };
+    }
 
     /* DJs have full event permissions. Event-scoped permission membership
        only matters for non-DJ users. */
@@ -73,12 +104,14 @@ class EventPermissionsService {
   }
 
   async assertEventDj(eventId, actor, message = 'You do not have permission to manage this event') {
+    assertActorRole(actor);
     const context = await this.getContext(eventId, actor);
     if (this.isEventDj(context)) return context;
     throw new ForbiddenError(message);
   }
 
   async assertAnyPermission(eventId, actor, permissions, message = 'You do not have permission to perform this action') {
+    assertActorRole(actor);
     const context = await this.getContext(eventId, actor);
     logger.info('assertAnyPermission context', {
       isDj: context.isDj,
@@ -91,6 +124,7 @@ class EventPermissionsService {
   }
 
   async assertOwner(eventId, actor, message = 'Unauthorized') {
+    assertActorRole(actor);
     const context = await this.getContext(eventId, actor);
     if (context.isDj || context.isOwner) return context;
     throw new UnauthorizedError(message);
