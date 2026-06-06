@@ -124,9 +124,9 @@ class EventsService {
   }
 
   async getActiveEventForOwner(ownerId) {
-    const event = await EventModel.findOne({ ownerId, state: 'LIVE' })
+    const event = await EventModel.findOne({ ownerId, state: { $in: ['LIVE', 'DRAFT'] } })
       .populate('ownerId', 'email displayName profilePicture')
-      .sort({ startsAt: -1 });
+      .sort({ state: -1, startsAt: -1 });
 
     if (!event) {
       throw new NotFoundError('Event not found');

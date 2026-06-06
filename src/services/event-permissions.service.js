@@ -39,7 +39,8 @@ class EventPermissionsService {
 
     if (!userId) return { event, userId: null, role: null, isOwner: false, isAdmin: false, member: null };
 
-    const isAdmin = actor?.role === 'DJ';
+    const role = actor?.role || null;
+    const isAdmin = role === 'DJ';
     const isOwner = objectId(event.ownerId)?.toString() === userId.toString();
 
     // Global app admins and DJs have full event permissions.
@@ -54,7 +55,7 @@ class EventPermissionsService {
         : null;
     }
 
-    return { event, userId, role: actor?.role || null, isOwner, isAdmin, member };
+    return { event, userId, role, isOwner, isAdmin, member };
   }
 
   hasAnyPermission(context, permissions) {

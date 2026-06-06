@@ -20,7 +20,7 @@ React clients -> Express REST routes -> controllers/services -> Mongoose -> Mong
       `---- Socket.IO event rooms <- domain events
 ```
 
-REST endpoints handle auth, events, participants, songs, votes, phone microphone tokens, debug mock accounts, health checks, and Swagger docs. Socket.IO rooms broadcast queue, playback, vote, song, participant, and event updates.
+REST endpoints handle auth, events, participants, songs, votes, phone microphone tokens (not yet revoked on DJ logout), debug mock accounts, health checks, and Swagger docs. Socket.IO rooms broadcast queue, playback, vote, song, participant, and event updates.
 
 ## Main flows
 
@@ -36,6 +36,14 @@ Base REST prefix: `/api/v1`
 - Debug: `POST /debug/mock-accounts` only when `DEBUG_MODE=true` outside production.
 
 Typical event lifecycle: DJ creates/starts an event, shares the access code, attendees join, suggest songs and vote, DJ approves/rejects/controls playback, REST persists changes, Socket.IO updates connected clients.
+
+### DJ auth and event ownership notes
+
+- DJ identity comes from the authenticated JWT/user payload and the event ownership records, with one permission-layer alias: any user with role 'DJ' is treated as full event staff via `isAdmin = role === 'DJ'` (see `Back/src/services/event-permissions.service.js:43`). There is no separate 'admin' role.
+- When a DJ creates an event, the backend stores `Event.ownerId` and also creates an `EventMember` row for that user with `role: 'DJ'` and full DJ permissions.
+- DJ login loads the DJ's latest own `LIVE` or `DRAFT` event so the frontend keeps the correct Mongo event id and regenerable access code context.
+- Old pain point: the login resume path only looked for `LIVE` events while auto-created DJ events were saved as `DRAFT`. That made the app lose the existing event/code context and could cause moderation calls to arrive with stale attendee-like session state.
+- Frontend DJ login must reject non-DJ auth responses before creating/loading event state. The stored `user`, `currentEvent`, and `currentParticipant` records should all describe the same authenticated DJ and event id.
 
 ## Stack
 
@@ -59,7 +67,7 @@ src/
   models/           Mongoose models/shared schemas
   middleware/       auth, validation, logging, errors
   socket/           auth, rooms, handlers, events, acks
-  validators/ schemas/ dtos/
+  schemas/  (validators/ and dtos/ are dead code)
   utils/ errors/ constants/
 ```
 

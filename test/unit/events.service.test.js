@@ -450,6 +450,24 @@ describe('EventsService - Real Implementation Tests', () => {
       expect(result.name).toBe('Active Event');
     });
 
+    test('should return draft event created during DJ login setup', async () => {
+      const user = await createTestUser();
+
+      await EventModel.create({
+        name: 'Draft Event',
+        ownerId: user._id,
+        eventId: `EVENT-${Date.now()}`,
+        accessCode: `TEST${Date.now()}`,
+        state: 'DRAFT',
+        startsAt: new Date(),
+      });
+
+      const result = await eventsService.getActiveEventForOwner(user._id.toString());
+
+      expect(result).toBeDefined();
+      expect(result.name).toBe('Draft Event');
+    });
+
     test('should throw when no active event', async () => {
       const user = await createTestUser();
 
