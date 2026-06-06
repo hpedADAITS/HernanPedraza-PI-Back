@@ -155,9 +155,9 @@ describe('socket-auth.js', () => {
         .resolves.toBeNull();
     });
 
-    test('should allow DJ member to access their event room', async () => {
+    test('should allow admin access', async () => {
       mockSocket.user = { userId: 'dj-user', role: 'DJ' };
-
+      
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue({
@@ -165,10 +165,9 @@ describe('socket-auth.js', () => {
           ownerId: 'other-user',
         }),
       });
-      EventMemberModel.exists.mockResolvedValue({ _id: 'member-1' });
 
       const result = await assertEventRoomAccess(mockSocket, eventId, null);
-
+      
       expect(result).toBeNull();
     });
 

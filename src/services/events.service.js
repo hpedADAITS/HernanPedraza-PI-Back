@@ -257,9 +257,6 @@ class EventsService {
       role: userRole,
     });
 
-    const owner = await UserModel.findById(event.ownerId)
-      .select('authTokenVersion')
-      .lean();
     const token = generateToken(
       {
         userId: event.ownerId.toString(),
@@ -267,18 +264,11 @@ class EventsService {
         role: 'DJ',
         type: 'phone-microphone',
         eventId: event._id.toString(),
-        tokenVersion: owner?.authTokenVersion || 0,
       },
       '15m',
     );
     const baseUrl = (frontendUrl || '').replace(/\/$/, '');
-    return {
-      /* Token is in the URL fragment so it is not sent to the server in
-         the HTTP request, not recorded in access logs, and not leaked via
-         the Referer header when the phone navigates away. */
-      link: `${baseUrl}/dj/microphone/${event._id}#token=${encodeURIComponent(token)}`,
-      token,
-    };
+    return `${baseUrl}/dj/microphone/${event._id}?token=${encodeURIComponent(token)}`;
   }
 
   async connectPhoneMicrophone(eventId, deviceName = 'Phone microphone', token) {
@@ -287,39 +277,6 @@ class EventsService {
       throw new NotFoundError('Event not found');
     }
 
-    const owner = await UserModel.findById(event.ownerId)
-      .select('authTokenVersion')
-      .lean();
-    await this._assertValidPhoneMicrophoneToken(event, owner, token);
-
-    const microphone = {
-      eventId: event._id.toString(),
-      deviceName,
-      connectedAt: new Date().toISOString(),
-    };
-
-    logger.info(`Phone microphone connected for event ${eventId}`);
-    return microphone;
-  }
-
-  /**
-   * Validate a phone-microphone token and return a minimal actor object the
-   * rest of the system can consume (matches the shape of `req.user` /
-   * `socket.user` so callers do not branch on its provenance). Throws
-   * `UnauthorizedError` on any failure.
-   */
-  async assertPhoneMicrophoneActor(event, owner, token) {
-    await this._assertValidPhoneMicrophoneToken(event, owner, token);
-    return {
-      userId: event.ownerId.toString(),
-      id: event.ownerId.toString(),
-      role: owner?.role || 'DJ',
-      type: 'phone-microphone',
-      eventId: event._id.toString(),
-    };
-  }
-
-  async _assertValidPhoneMicrophoneToken(event, owner, token) {
     if (!token) {
       throw new UnauthorizedError('Phone microphone token is required');
     }
@@ -339,13 +296,14 @@ class EventsService {
       throw new UnauthorizedError('Invalid phone microphone token');
     }
 
-    if (!Number.isInteger(decoded.tokenVersion)) {
-      throw new UnauthorizedError('Invalid phone microphone token');
-    }
+    const microphone = {
+      eventId: event._id.toString(),
+      deviceName,
+      connectedAt: new Date().toISOString(),
+    };
 
-    if ((owner?.authTokenVersion || 0) !== decoded.tokenVersion) {
-      throw new UnauthorizedError('Phone microphone token has been revoked');
-    }
+    logger.info(`Phone microphone connected for event ${eventId}`);
+    return microphone;
   }
 
   async addEventMember(eventId, userId, role, actorUserId) {

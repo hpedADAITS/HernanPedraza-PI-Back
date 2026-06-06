@@ -407,9 +407,9 @@ describe('SongsService - Real Implementation Tests', () => {
 
       const result = songsService._withQueuePositions(songs);
 
-      expect(result[0].id).toBe('c'); // pinned first
-      expect(result[1].id).toBe('b'); // highest voteScore
-      expect(result[2].id).toBe('a'); // lowest voteScore
+      expect(result[0]._id).toBe('c'); // pinned first
+      expect(result[1]._id).toBe('b'); // highest voteScore
+      expect(result[2]._id).toBe('a'); // lowest voteScore
     });
   });
 

@@ -3,7 +3,8 @@ const { logger } = require('../utils');
 const { httpStatus } = require('../constants');
 const { eventsSchema } = require('../schemas');
 const config = require('../config');
-const { setIO, getIO } = require('../services/realtime.service');
+
+let io = null;
 
 function getSafeFrontendOrigin(value) {
   if (typeof value !== 'string' || !value.trim()) return '';
@@ -26,8 +27,15 @@ function isLoopbackOrigin(origin) {
 const roomForEvent = (eventId) => `event:${eventId}`;
 
 class EventsController {
+  setIO(socketIO) {
+    io = socketIO;
+  }
+
+  getIO() {
+    return io;
+  }
+
   emitEventUpdate(eventId, eventName, payload) {
-    const io = getIO();
     if (!io || !eventId) return;
     io.to(roomForEvent(eventId)).emit(eventName, {
       eventId,
@@ -271,7 +279,7 @@ class EventsController {
         origin ||
         requestBase;
 
-      const { link, token } = await eventsService.getPhoneMicrophoneLink(
+      const link = await eventsService.getPhoneMicrophoneLink(
         eventId,
         req.user.userId,
         req.user.role,
@@ -280,7 +288,7 @@ class EventsController {
 
       res.status(httpStatus.OK).json({
         success: true,
-        data: { link, token },
+        data: { link },
       });
     } catch (error) {
       logger.error('Get phone microphone link error:', error);

@@ -9,7 +9,6 @@ const {
   songsController,
   votesController,
 } = require('../controllers');
-const { setIO } = require('../services/realtime.service');
 const { logger } = require('../utils');
 
 let io = null;
@@ -67,7 +66,11 @@ const initSocketIO = (app) => {
       logger.warn('Socket.IO auth middleware DISABLED');
     }
 
-    setIO(io);
+    eventsController.setIO(io);
+    participantsController.setIO(io);
+    attendeeSessionController.setIO(io);
+    songsController.setIO(io);
+    votesController.setIO(io);
 
     io.on('connection', (socket) => {
       logger.info('Socket connected', {

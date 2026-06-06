@@ -3,13 +3,20 @@ const { logger } = require('../utils');
 const { httpStatus } = require('../constants');
 const { votesSchema } = require('../schemas');
 
-const { setIO, getIO } = require('../services/realtime.service');
+let io = null;
 
 const roomForEvent = (eventId) => `event:${eventId}`;
 
 class VotesController {
+  setIO(socketIO) {
+    io = socketIO;
+  }
+
+  getIO() {
+    return io;
+  }
+
   emitVoteEvent(eventId, eventName, payload) {
-    const io = getIO();
     if (!io || !eventId) return;
     io.to(roomForEvent(eventId)).emit(eventName, {
       eventId,
@@ -19,7 +26,6 @@ class VotesController {
   }
 
   async emitQueueUpdated(eventId) {
-    const io = getIO();
     if (!io || !eventId) return;
 
     const snapshot = songsService.getQueueSnapshotForEvent

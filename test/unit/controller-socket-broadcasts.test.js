@@ -171,7 +171,7 @@ describe('REST controller Socket.IO broadcasts', () => {
           payload: expect.objectContaining({
             eventId: event._id.toString(),
             queue: expect.arrayContaining([
-              expect.objectContaining({ id: song._id, status: 'APPROVED' }),
+              expect.objectContaining({ _id: song._id, status: 'APPROVED' }),
             ]),
           }),
         }),

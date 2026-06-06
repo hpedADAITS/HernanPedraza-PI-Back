@@ -114,7 +114,7 @@ describe('EventPermissionsService', () => {
         role: 'DJ',
       });
 
-      expect(result.isDj).toBe(true);
+      expect(result.isAdmin).toBe(true);
       expect(result.isOwner).toBe(false);
     });
 
@@ -133,7 +133,7 @@ describe('EventPermissionsService', () => {
         role: 'DJ',
       });
 
-      expect(result.isDj).toBe(true);
+      expect(result.isAdmin).toBe(true);
     });
 
     test('should fetch member permissions for regular user', async () => {
@@ -183,7 +183,7 @@ describe('EventPermissionsService', () => {
 
   describe('hasAnyPermission', () => {
     test('should return true for admin', () => {
-      const context = { isDj: true, isOwner: false, member: null };
+      const context = { isAdmin: true, isOwner: false, member: null };
 
       const result = eventPermissionsService.hasAnyPermission(context, ['ANY']);
 
@@ -191,7 +191,7 @@ describe('EventPermissionsService', () => {
     });
 
     test('should return true for owner', () => {
-      const context = { isDj: false, isOwner: true, member: null };
+      const context = { isAdmin: false, isOwner: true, member: null };
 
       const result = eventPermissionsService.hasAnyPermission(context, ['ANY']);
 
@@ -200,7 +200,7 @@ describe('EventPermissionsService', () => {
 
     test('should check member permissions', () => {
       const context = {
-        isDj: false,
+        isAdmin: false,
         isOwner: false,
         member: {
           permissions: ['SONG_APPROVE_REJECT', 'PARTICIPANT_KICK'],
@@ -216,7 +216,7 @@ describe('EventPermissionsService', () => {
 
     test('should return false for non-member', () => {
       const context = {
-        isDj: false,
+        isAdmin: false,
         isOwner: false,
         member: null,
       };
@@ -229,20 +229,20 @@ describe('EventPermissionsService', () => {
 
   describe('isEventDj', () => {
     test('should return true for admin', () => {
-      const context = { isDj: true, isOwner: false, member: null };
+      const context = { isAdmin: true, isOwner: false, member: null };
 
       expect(eventPermissionsService.isEventDj(context)).toBe(true);
     });
 
     test('should return true for owner', () => {
-      const context = { isDj: false, isOwner: true, member: null };
+      const context = { isAdmin: false, isOwner: true, member: null };
 
       expect(eventPermissionsService.isEventDj(context)).toBe(true);
     });
 
     test('should return true for member with DJ role', () => {
       const context = {
-        isDj: false,
+        isAdmin: false,
         isOwner: false,
         member: { role: 'DJ' },
       };
@@ -252,7 +252,7 @@ describe('EventPermissionsService', () => {
 
     test('should return false for regular attendee', () => {
       const context = {
-        isDj: false,
+        isAdmin: false,
         isOwner: false,
         member: { role: 'ATTENDEE' },
       };

@@ -131,8 +131,8 @@ describe('frontend/backend route inventory', () => {
     expect(source).toContain(`'${eventName}'`);
   });
 
-  test.each(WS_SERVER_BROADCASTS)('socket broadcast %s is emitted by backend handlers', (eventName) => {
-    const source = read('../../src/socket/handlers.js');
+  test.each(WS_SERVER_BROADCASTS)('socket broadcast %s is emitted by backend events', (eventName) => {
+    const source = read('../../src/socket/events.js');
     expect(source).toContain(`'${eventName}'`);
   });
 });

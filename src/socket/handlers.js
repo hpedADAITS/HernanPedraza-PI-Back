@@ -1,9 +1,5 @@
 const { logger } = require('../utils');
-const room = require('./room');
-const song = require('./song');
-const vote = require('./vote');
-const participant = require('./participant');
-const audio = require('./audio');
+const events = require('./events');
 
 const noop = () => {};
 
@@ -48,29 +44,34 @@ const legacyEvents = [
 ];
 
 const ackEvents = [
-  ['suggest_song', song.handleSuggestSong],
-  ['approve_song', song.handleApproveSong],
-  ['reject_song', song.handleRejectSong],
-  ['skip_song', song.handleSkipSong],
-  ['send_now', song.handleSendNow],
-  ['cast_vote', vote.handleCastVote],
-  ['remove_vote', vote.handleRemoveVote],
-  ['set_cooldown', participant.handleSetCooldown],
-  ['kick_participant', participant.handleKickParticipant],
-  ['ban_participant', participant.handleBanParticipant],
-  ['set_premium', participant.handleSetPremium],
-  ['audio_match_start', audio.handleAudioMatchStart],
-  ['audio_match_chunk', audio.handleAudioMatchChunk],
-  ['audio_match_stop', audio.handleAudioMatchStop],
+  ['suggest_song', events.handleSuggestSong],
+  ['approve_song', events.handleApproveSong],
+  ['reject_song', events.handleRejectSong],
+  ['skip_song', events.handleSkipSong],
+  ['send_now', events.handleSendNow],
+  ['cast_vote', events.handleCastVote],
+  ['remove_vote', events.handleRemoveVote],
+  ['set_cooldown', events.handleSetCooldown],
+  ['kick_participant', events.handleKickParticipant],
+  ['ban_participant', events.handleBanParticipant],
+  ['set_premium', events.handleSetPremium],
+  ['audio_match_start', events.handleAudioMatchStart],
+  ['audio_match_chunk', events.handleAudioMatchChunk],
+  ['audio_match_stop', events.handleAudioMatchStop],
 ];
 
+/**
+ * Handle all socket events
+ * @param {Socket} socket - Socket.IO socket instance
+ * @param {Server} io - Socket.IO server instance
+ */
 const handleSocketEvents = (socket, io) => {
   logger.debug('Setting up socket handlers', { socketId: socket.id });
 
   socket.on('join_event', async (data) => {
     logger.debug('Received join_event', { socketId: socket.id });
     try {
-      await room.handleJoinEvent(socket, io, data);
+      await events.handleJoinEvent(socket, io, data);
     } catch (error) {
       logger.error('Error in join_event:', error);
       emitSocketError(socket, 'Error joining event');
@@ -80,18 +81,18 @@ const handleSocketEvents = (socket, io) => {
   onSocketEvent(
     socket,
     'leave_event',
-    (data) => room.handleLeaveEvent(socket, io, data),
-    'Error leaving event',
+    (data) => events.handleLeaveEvent(socket, io, data),
+    'Error leaving event'
   );
 
-  onSocketEvent(socket, 'disconnect', () => room.handleDisconnect(socket, io));
+  onSocketEvent(socket, 'disconnect', () => events.handleDisconnect(socket, io));
 
   legacyEvents.forEach(([eventName, errorMessage]) => {
     onSocketEvent(
       socket,
       eventName,
-      () => song.rejectLegacyCommand(socket, eventName),
-      errorMessage,
+      () => events.rejectLegacyCommand(socket, eventName),
+      errorMessage
     );
   });
 
