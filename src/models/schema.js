@@ -6,9 +6,7 @@ const { EventMemberModel } = require('./event-member.model');
 const { ParticipantModel } = require('./participant.model');
 const { SongModel } = require('./song.model');
 const { VoteModel } = require('./vote.model');
-const { EventActionLogModel } = require('./event-action-log.model');
 const { AudioTrackModel } = require('./audio-track.model');
-const { AudioFingerprintPointModel } = require('./audio-fingerprint-point.model');
 const { AudioFingerprintModel } = require('./audio-fingerprint.model');
 const {
   ALL_EVENT_PERMISSIONS,
@@ -70,9 +68,7 @@ module.exports = {
   ParticipantModel,
   SongModel,
   VoteModel,
-  EventActionLogModel,
   AudioTrackModel,
-  AudioFingerprintPointModel,
   AudioFingerprintModel,
   connectMongo,
   stripMongoDbPath,

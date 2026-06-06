@@ -337,7 +337,7 @@ describe('Socket Auth Redundancy Issue', () => {
           canSuggestSongs: true,
           canVote: true,
           isOwner: false,
-          isAdmin: false,
+          isDj: false,
         },
       },
     };

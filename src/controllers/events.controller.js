@@ -304,10 +304,15 @@ class EventsController {
           ? req.body.deviceName.trim()
           : 'Phone microphone';
 
+      const rawAuth = req.get('authorization')?.replace(/^Bearer\s+/i, '');
+      if (!rawAuth) {
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Token required in Authorization header' } });
+      }
+
       const microphone = await eventsService.connectPhoneMicrophone(
         eventId,
         deviceName,
-        req.body?.token || req.query?.token || req.get('authorization')?.replace(/^Bearer\s+/i, ''),
+        rawAuth,
       );
 
       this.emitEventUpdate(eventId, 'phone_microphone_connected', {

@@ -257,6 +257,10 @@ class EventsService {
       role: userRole,
     });
 
+    const owner = await UserModel.findById(event.ownerId)
+      .select('authTokenVersion')
+      .lean();
+
     const token = generateToken(
       {
         userId: event.ownerId.toString(),
@@ -264,11 +268,12 @@ class EventsService {
         role: 'DJ',
         type: 'phone-microphone',
         eventId: event._id.toString(),
+        tokenVersion: owner?.authTokenVersion || 0,
       },
       '15m',
     );
     const baseUrl = (frontendUrl || '').replace(/\/$/, '');
-    return `${baseUrl}/dj/microphone/${event._id}?token=${encodeURIComponent(token)}`;
+    return `${baseUrl}/dj/microphone/${event._id}#token=${encodeURIComponent(token)}`;
   }
 
   async connectPhoneMicrophone(eventId, deviceName = 'Phone microphone', token) {

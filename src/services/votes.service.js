@@ -105,7 +105,8 @@ class VotesService {
 
     /* Update song vote score */
     if (song) {
-      song.voteScore -= vote.value;
+      const voteWeight = vote.isPremiumVote ? PREMIUM_VOTE_WEIGHT : REGULAR_VOTE_WEIGHT;
+      song.voteScore -= vote.value * voteWeight;
       song.voteCount -= 1;
       await song.save();
     }

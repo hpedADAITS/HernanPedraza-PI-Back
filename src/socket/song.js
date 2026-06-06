@@ -1,12 +1,7 @@
 // Song state-change handlers: suggest, approve, reject, skip, sendNow.
-// Plus the legacy "broadcast only" stubs (these reject client-emitted
-// commands that the server is supposed to broadcast, not receive).
-
 const { logger } = require('../utils');
 const { ackSuccess, ackError } = require('./ack');
 const { songsService } = require('../services');
-const { SongModel } = require('../models/schema');
-const { validateTransition } = require('../utils/song-state-machine');
 const { assertJoinedEvent, eventActor, emitQueueUpdated, rejectLegacyCommand, toEventRoom } = require('./room');
 const { isValidId } = require('./shared-validators');
 
@@ -128,133 +123,8 @@ const handleSendNow = async (socket, io, data, callback) => {
   }
 };
 
-// Legacy broadcast-only stubs. The server broadcasts these from the primary
-// handlers (above); the client must not be able to emit them.
-const handleSongSuggested = (socket, io, data) => {
-  const { eventId, songId, title, artist, participantId } = data;
-  if (!eventId || !songId || !title || !artist) {
-    socket.emit('error', { message: 'Invalid song data' });
-    return;
-  }
-  logger.info(`Song suggested: ${title} by ${artist}`);
-  toEventRoom(io, eventId).emit('song_suggested', {
-    songId, title, artist, participantId, timestamp: new Date().toISOString(),
-  });
-};
-
-const handleSongApproved = async (socket, io, data) => {
-  const { eventId, songId } = data;
-  if (!eventId || !songId) {
-    socket.emit('error', { message: 'Invalid song data' });
-    return;
-  }
-  try {
-    const song = await SongModel.findById(songId).select('title artist status eventId');
-    if (!song) {
-      socket.emit('error', { message: 'Song not found' });
-      return;
-    }
-    validateTransition(song.status, 'APPROVED', 'DJ');
-    song.status = 'APPROVED';
-    await song.save();
-    logger.info(`Song approved: ${songId}`, { eventId, songId, action: 'SONG_APPROVE' });
-    toEventRoom(io, eventId).emit('song_approved', {
-      songId, title: song.title, artist: song.artist, status: song.status,
-      timestamp: new Date().toISOString(),
-    });
-    await emitQueueUpdated(io, eventId);
-  } catch (error) {
-    logger.error('Error in song_approved:', error);
-    socket.emit('error', { message: error.message || 'Error approving song' });
-  }
-};
-
-const handleSongRejected = async (socket, io, data) => {
-  const { eventId, songId, reason } = data;
-  if (!eventId || !songId) {
-    socket.emit('error', { message: 'Invalid song data' });
-    return;
-  }
-  try {
-    const song = await SongModel.findById(songId).select('status');
-    if (!song) {
-      socket.emit('error', { message: 'Song not found' });
-      return;
-    }
-    validateTransition(song.status, 'REJECTED', 'DJ');
-    song.status = 'REJECTED';
-    await song.save();
-    logger.info(`Song rejected: ${songId}`, { eventId, songId, action: 'SONG_REJECT', reason });
-    toEventRoom(io, eventId).emit('song_rejected', {
-      songId, reason, timestamp: new Date().toISOString(),
-    });
-    await emitQueueUpdated(io, eventId);
-  } catch (error) {
-    logger.error('Error in song_rejected:', error);
-    socket.emit('error', { message: error.message || 'Error rejecting song' });
-  }
-};
-
-const handleSongSkipped = async (socket, io, data) => {
-  const { eventId, songId, reason } = data;
-  if (!eventId || !songId) {
-    socket.emit('error', { message: 'Invalid song data' });
-    return;
-  }
-  try {
-    const song = await SongModel.findById(songId).select('status');
-    if (!song) {
-      socket.emit('error', { message: 'Song not found' });
-      return;
-    }
-    validateTransition(song.status, 'SKIPPED', 'DJ');
-    song.status = 'SKIPPED';
-    song.skippedAt = new Date();
-    song.skippedReason = reason;
-    await song.save();
-    logger.info(`Song skipped: ${songId}`, { eventId, songId, action: 'SONG_SKIP', reason });
-    toEventRoom(io, eventId).emit('song_skipped', {
-      songId, reason, timestamp: new Date().toISOString(),
-    });
-    await emitQueueUpdated(io, eventId);
-  } catch (error) {
-    logger.error('Error in song_skipped:', error);
-    socket.emit('error', { message: error.message || 'Error skipping song' });
-  }
-};
-
-const handleSongNowPlaying = async (socket, io, data) => {
-  const { eventId, songId, title, artist, totalDuration, duration, recognitionMatch } = data;
-  if (!eventId || !songId || !title || !artist) {
-    socket.emit('error', { message: 'Invalid song data' });
-    return;
-  }
-  try {
-    logger.info(`Song now playing: ${title} by ${artist}`, { eventId, songId, action: 'SONG_NOW_PLAYING' });
-    toEventRoom(io, eventId).emit('song_now_playing', {
-      songId, title, artist,
-      recognitionMatch: recognitionMatch || null,
-      totalDuration: totalDuration ?? duration,
-      duration: totalDuration ?? duration,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.error('Error in song_now_playing:', error);
-    socket.emit('error', { message: error.message || 'Error setting song as playing' });
-  }
-};
-
-const handleQueueUpdated = (socket, io, data) => {
-  const { eventId, queue } = data;
-  if (!eventId || !queue) {
-    socket.emit('error', { message: 'Invalid queue data' });
-    return;
-  }
-  logger.info(`Queue updated for event ${eventId}`);
-  toEventRoom(io, eventId).emit('queue_updated', {
-    eventId, queue, timestamp: new Date().toISOString(),
-  });
-};
+// Legacy broadcast stubs — registered as rejectLegacyCommand in handlers.js.
+// Their bodies are never executed; only the rejector runs.
 
 module.exports = {
   handleSuggestSong,
@@ -262,11 +132,5 @@ module.exports = {
   handleRejectSong,
   handleSkipSong,
   handleSendNow,
-  handleSongSuggested,
-  handleSongApproved,
-  handleSongRejected,
-  handleSongSkipped,
-  handleSongNowPlaying,
-  handleQueueUpdated,
   rejectLegacyCommand,
 };

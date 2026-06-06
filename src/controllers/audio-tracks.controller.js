@@ -61,8 +61,11 @@ class AudioTracksController {
   async sendMatchedTrackNow(req, res, next) {
     try {
       logger.info('sendMatchedTrackNow called', { eventId: req.params.eventId, trackId: req.params.trackId });
-      const token = req.body?.token || req.query?.token || req.get('authorization')?.replace(/^Bearer\s+/i, '');
-      const actor = req.user || verifyPhoneMicrophoneToken(token, req.params.eventId);
+      const rawAuth = req.get('authorization')?.replace(/^Bearer\s+/i, '');
+      const actor = req.user || (rawAuth ? verifyPhoneMicrophoneToken(rawAuth, req.params.eventId) : null);
+      if (!actor) {
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Token required in Authorization header' } });
+      }
       const song = await audioTracksService.sendMatchedTrackNow(
         req.params.eventId,
         actor,

@@ -37,37 +37,38 @@ class EventPermissionsService {
       actorKeys: actor ? Object.keys(actor) : null,
     });
 
-    if (!userId) return { event, userId: null, role: null, isOwner: false, isAdmin: false, member: null };
+    if (!userId) return { event, userId: null, role: null, isOwner: false, isDj: false, member: null };
 
     const role = actor?.role || null;
-    const isAdmin = role === 'DJ';
+    const isDj = role === 'DJ';
     const isOwner = objectId(event.ownerId)?.toString() === userId.toString();
 
-    // Global app admins and DJs have full event permissions.
-    // Event-scoped permissions are only needed for non-DJ members.
+    /* DJs have full event permissions. Event-scoped permission membership
+       only matters for non-DJ users. */
     let member = null;
-    if (!isOwner && !isAdmin) {
+    if (!isOwner && !isDj) {
       const memberQuery = EventMemberModel.findOne({ eventId: event._id, userId });
-      // Some older unit tests mock only EventModel and rely on the historical
-      // global DJ shortcut. In real Mongoose this is always a query object.
       member = typeof memberQuery?.select === 'function'
         ? await memberQuery.select('role permissions').lean()
         : null;
     }
 
-    return { event, userId, role, isOwner, isAdmin, member };
+    return { event, userId, role, isOwner, isDj, member };
   }
 
   hasAnyPermission(context, permissions) {
-    if (context.isAdmin || context.isOwner) return true;
+    if (context.isDj || context.isOwner) return true;
     return Array.isArray(context.member?.permissions) && permissions.some((permission) => (
       context.member.permissions.includes(permission)
     ));
   }
 
   isEventDj(context) {
-    const result = context.isAdmin || context.isOwner || context.member?.role === 'DJ' || (!context.member && context.role === 'DJ');
-    logger.info('isEventDj', { isAdmin: context.isAdmin, isOwner: context.isOwner, memberRole: context.member?.role, result });
+    const result = context.isDj
+      || context.isOwner
+      || context.member?.role === 'DJ'
+      || (!context.member && context.role === 'DJ');
+    logger.info('isEventDj', { isDj: context.isDj, isOwner: context.isOwner, memberRole: context.member?.role, result });
     return result;
   }
 
@@ -80,7 +81,7 @@ class EventPermissionsService {
   async assertAnyPermission(eventId, actor, permissions, message = 'You do not have permission to perform this action') {
     const context = await this.getContext(eventId, actor);
     logger.info('assertAnyPermission context', {
-      isAdmin: context.isAdmin,
+      isDj: context.isDj,
       isOwner: context.isOwner,
       memberRole: context.member?.role,
       memberPermissions: context.member?.permissions,
@@ -91,7 +92,7 @@ class EventPermissionsService {
 
   async assertOwner(eventId, actor, message = 'Unauthorized') {
     const context = await this.getContext(eventId, actor);
-    if (context.isAdmin || context.isOwner) return context;
+    if (context.isDj || context.isOwner) return context;
     throw new UnauthorizedError(message);
   }
 
