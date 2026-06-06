@@ -21,7 +21,7 @@ const {
   UserModel,
   connectMongo,
 } = require('../../src/models/schema');
-const socketEvents = require('../../src/socket/events');
+const room = require('../../src/socket/room');
 const { isEventMemberOrOwner } = require('../../src/socket/auth');
 
 let mongoServer;
@@ -120,7 +120,7 @@ describe('Socket join_event: event owner / DJ is NOT a participant', () => {
     const io = makeIo();
     const socket = makeOwnerSocket(dj);
 
-    await socketEvents.handleJoinEvent(socket, io, {
+    await room.handleJoinEvent(socket, io, {
       eventId: event._id.toString(),
       participantId: dj._id.toString(),
       nickname: dj.displayName,
@@ -139,7 +139,7 @@ describe('Socket join_event: event owner / DJ is NOT a participant', () => {
     const io = makeIo();
     const socket = makeOwnerSocket(dj);
 
-    await socketEvents.handleJoinEvent(socket, io, {
+    await room.handleJoinEvent(socket, io, {
       eventId: event._id.toString(),
       participantId: dj._id.toString(),
       nickname: dj.displayName,

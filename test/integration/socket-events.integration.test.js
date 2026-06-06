@@ -13,7 +13,7 @@ const {
   UserModel,
   connectMongo,
 } = require('../../src/models/schema');
-const events = require('../../src/socket/events');
+const room = require('../../src/socket/room');
 
 let mongoServer;
 
@@ -93,7 +93,7 @@ describe('Socket event broadcasts', () => {
       to: jest.fn(() => ({ emit })),
     };
 
-    await events.handleJoinEvent(socket, io, {
+    await room.handleJoinEvent(socket, io, {
       eventId,
       participantId,
       nickname: 'Ada',

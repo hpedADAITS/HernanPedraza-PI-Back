@@ -254,7 +254,7 @@ class SongsService {
     }
 
     const queue = await this.getQueueForEvent(song.eventId);
-    const queuedSong = queue.find((item) => item._id.toString() === songId.toString());
+    const queuedSong = queue.find((item) => item.id.toString() === songId.toString());
 
     return {
       position: queuedSong?.queuePosition ?? null,
@@ -302,31 +302,27 @@ class SongsService {
     const playing = queue.find((song) => song.status === 'PLAYING');
     if (!playing) return null;
 
-    const startedAt = playing.playingStartedAt || playing.startedPlayingAt;
+    const startedAt = playing.startedAt || null;
     const elapsedTime = startedAt
       ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
       : 0;
-    const totalDuration = playing.totalDuration || playing.duration || 0;
+    const totalDuration = playing.totalDuration || 0;
 
     return {
-      songId: playing._id || playing.id,
+      songId: playing.id,
       title: playing.title,
       artist: playing.artist,
       totalDuration,
-      duration: totalDuration,
-      playingStartedAt: startedAt,
-      startedPlayingAt: startedAt,
+      startedAt,
       elapsedTime,
       remainingTime: totalDuration ? Math.max(0, totalDuration - elapsedTime) : null,
     };
   }
 
   _formatSong(song) {
-    const totalDuration = song.totalDuration ?? song.duration;
-
     return {
-      _id: song._id,
       id: song._id,
+      sortKey: song.sortKey,
       eventId: song.eventId,
       title: song.title,
       artist: song.artist,
@@ -336,11 +332,9 @@ class SongsService {
       voteScore: song.voteScore,
       voteCount: song.voteCount,
       queuePosition: song.queuePosition,
-      totalDuration,
-      duration: totalDuration,
+      totalDuration: song.totalDuration,
+      startedAt: song.startedPlayingAt || null,
       pinned: song.pinned,
-      startedPlayingAt: song.startedPlayingAt,
-      playingStartedAt: song.startedPlayingAt,
       skippedAt: song.skippedAt,
       createdAt: song.createdAt,
     };

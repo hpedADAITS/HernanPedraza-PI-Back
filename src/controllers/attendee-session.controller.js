@@ -2,18 +2,14 @@ const { attendeeSessionService } = require('../services');
 const { participantsSchema } = require('../schemas');
 const { httpStatus } = require('../constants');
 const { logger } = require('../utils');
-
-let io = null;
+const { setIO, getIO } = require('../services/realtime.service');
 
 class AttendeeSessionController {
-  setIO(socketIO) {
-    io = socketIO;
-  }
-
   async joinEvent(req, res, next) {
     try {
       const { eventId } = req.params;
       const data = participantsSchema.parseJoinEvent(req.body);
+      const io = getIO();
       const session = await attendeeSessionService.joinEvent(
         eventId,
         data.nickname,

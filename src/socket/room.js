@@ -167,8 +167,5 @@ module.exports = {
   rejectLegacyCommand,
   emitQueueUpdated,
   isValidId,
-  /* Re-export toEventRoom from ./rooms so the pre-existing imports in
-     song.js / vote.js / audio.js / participant.js that read it from
-     './room' keep working. The canonical home is ./rooms.js. */
   toEventRoom,
 };

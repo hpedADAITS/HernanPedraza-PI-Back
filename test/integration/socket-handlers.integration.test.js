@@ -15,7 +15,10 @@ const {
   VoteModel,
   connectMongo,
 } = require('../../src/models/schema');
-const socketEvents = require('../../src/socket/events');
+const room = require('../../src/socket/room');
+const song = require('../../src/socket/song');
+const vote = require('../../src/socket/vote');
+const participant = require('../../src/socket/participant');
 const cooldownCache = require('../../src/utils/cooldown-cache');
 
 let mongoServer;
@@ -159,7 +162,7 @@ describe('Socket.IO Handler Integration Tests', () => {
     test('should suggest song and acknowledge with data', async () => {
       const callback = jest.fn();
 
-      await socketEvents.handleSuggestSong(
+      await song.handleSuggestSong(
         socket,
         ioServer,
         {
@@ -198,7 +201,7 @@ describe('Socket.IO Handler Integration Tests', () => {
     test('should handle suggestion error and acknowledge with error', async () => {
       const callback = jest.fn();
 
-      await socketEvents.handleSuggestSong(
+      await song.handleSuggestSong(
         socket,
         ioServer,
         {
@@ -221,7 +224,7 @@ describe('Socket.IO Handler Integration Tests', () => {
     test('should reject missing required fields', async () => {
       const callback = jest.fn();
 
-      await socketEvents.handleSuggestSong(
+      await song.handleSuggestSong(
         socket,
         ioServer,
         {
@@ -247,7 +250,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
       useOwnerSocket();
 
-      await socketEvents.handleApproveSong(
+      await song.handleApproveSong(
         socket,
         ioServer,
         {
@@ -293,7 +296,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       await testSong.save();
 
       // Try to approve
-      await socketEvents.handleApproveSong(
+      await song.handleApproveSong(
         socket,
         ioServer,
         {
@@ -319,7 +322,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
       useOwnerSocket();
 
-      await socketEvents.handleRejectSong(
+      await song.handleRejectSong(
         socket,
         ioServer,
         {
@@ -363,7 +366,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       testSong.status = 'PLAYING';
       await testSong.save();
 
-      await socketEvents.handleSkipSong(
+      await song.handleSkipSong(
         socket,
         ioServer,
         {
@@ -407,7 +410,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       };
       await testSong.save();
 
-      await socketEvents.handleSendNow(
+      await song.handleSendNow(
         socket,
         ioServer,
         {
@@ -447,7 +450,7 @@ describe('Socket.IO Handler Integration Tests', () => {
     test('should cast upvote and broadcast', async () => {
       const callback = jest.fn();
 
-      await socketEvents.handleCastVote(
+      await vote.handleCastVote(
         socket,
         ioServer,
         {
@@ -483,7 +486,7 @@ describe('Socket.IO Handler Integration Tests', () => {
     test('should reject invalid vote value', async () => {
       const callback = jest.fn();
 
-      await socketEvents.handleCastVote(
+      await vote.handleCastVote(
         socket,
         ioServer,
         {
@@ -509,7 +512,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
 
       // First cast vote
-      await socketEvents.handleCastVote(
+      await vote.handleCastVote(
         socket,
         ioServer,
         {
@@ -524,7 +527,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       broadcastedEvents = []; // Reset broadcasts
 
       // Remove vote
-      await socketEvents.handleRemoveVote(
+      await vote.handleRemoveVote(
         socket,
         ioServer,
         {
@@ -561,7 +564,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
       useOwnerSocket();
 
-      await socketEvents.handleSetCooldown(
+      await participant.handleSetCooldown(
         socket,
         ioServer,
         {
@@ -601,7 +604,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
       useOwnerSocket();
 
-      await socketEvents.handleKickParticipant(
+      await participant.handleKickParticipant(
         socket,
         ioServer,
         {
@@ -639,7 +642,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       const callback = jest.fn();
       useOwnerSocket();
 
-      await socketEvents.handleSetPremium(
+      await participant.handleSetPremium(
         socket,
         ioServer,
         {
@@ -676,7 +679,7 @@ describe('Socket.IO Handler Integration Tests', () => {
   describe('Error Handling', () => {
     test('should tolerate missing acknowledgment callback', async () => {
       await expect(
-        socketEvents.handleSuggestSong(
+        song.handleSuggestSong(
           socket,
           ioServer,
           {
@@ -695,7 +698,7 @@ describe('Socket.IO Handler Integration Tests', () => {
     test('should emit socket error on invalid data', async () => {
       const callback = jest.fn();
 
-      await socketEvents.handleApproveSong(
+      await song.handleApproveSong(
         socket,
         ioServer,
         {

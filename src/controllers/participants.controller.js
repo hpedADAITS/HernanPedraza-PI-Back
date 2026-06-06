@@ -3,19 +3,11 @@ const { logger } = require('../utils');
 const { httpStatus, messages } = require('../constants');
 const { UnauthorizedError } = require('../errors');
 const { participantsSchema } = require('../schemas');
-
-let io = null;
+const { setIO, getIO } = require('../services/realtime.service');
 
 class ParticipantsController {
-  setIO(socketIO) {
-    io = socketIO;
-  }
-
-  getIO() {
-    return io;
-  }
-
   emitParticipantEvent(eventId, eventName, payload) {
+    const io = getIO();
     if (!io || !eventId) return;
     io.to(`event:${eventId}`).emit(eventName, payload);
   }
@@ -43,6 +35,7 @@ class ParticipantsController {
     try {
       const { eventId } = req.params;
       const data = participantsSchema.parseJoinEvent(req.body);
+      const io = getIO();
 
       const participant = await participantsService.joinEvent(
         eventId,

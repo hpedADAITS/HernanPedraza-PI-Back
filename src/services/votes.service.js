@@ -103,10 +103,14 @@ class VotesService {
       throw new NotFoundError('Vote not found');
     }
 
-    /* Update song vote score */
+    /* Update song vote score, applying the same premium weighting used at
+       cast time so the cumulative score does not drift when a premium
+       voter removes their ballot. */
     if (song) {
-      song.voteScore -= vote.value;
+      const weight = vote.isPremiumVote ? PREMIUM_VOTE_WEIGHT : REGULAR_VOTE_WEIGHT;
+      song.voteScore -= vote.value * weight;
       song.voteCount -= 1;
+      await this._applyAutoReject(song);
       await song.save();
     }
 

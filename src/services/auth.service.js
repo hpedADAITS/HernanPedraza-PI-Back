@@ -9,10 +9,7 @@ const {
   NotFoundError,
 } = require('../errors');
 const { messages } = require('../constants');
-const {
-  validateRegistration,
-  validateLogin,
-} = require('../validators/auth.validator');
+const { authSchema } = require('../schemas');
 const emailService = require('./email.service');
 
 class AuthService {
@@ -55,7 +52,7 @@ class AuthService {
 
   async register(email, password, displayName, role = 'ATTENDEE') {
     /* Validate input */
-    validateRegistration({ email, password, displayName, role });
+    authSchema.validateRegistration({ email, password, displayName, role });
 
     /* Role assignment: public register accepts ATTENDEE or DJ from the
        body. ADMIN is reserved for the database / debug service and is
@@ -124,7 +121,7 @@ class AuthService {
 
   async login(email, password) {
     /* Validate input */
-    validateLogin({ email, password });
+    authSchema.validateLogin({ email, password });
 
     /* Find user with password field */
     const user = await UserModel.findOne({

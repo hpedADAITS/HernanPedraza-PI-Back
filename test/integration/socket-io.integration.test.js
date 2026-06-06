@@ -156,7 +156,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       expect(result.eventId).toEqual(testEvent._id);
 
       // Verify in database
-      const dbSong = await SongModel.findById(result._id);
+      const dbSong = await SongModel.findById(result.id);
       expect(dbSong).toBeDefined();
       expect(dbSong.title).toBe('New Song');
       expect(dbSong.status).toBe('PENDING');
@@ -530,28 +530,28 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
 
       // 2. DJ approves
       const approved = await songsService.approveSong(
-        suggested._id,
+        suggested.id,
         testEvent._id,
         testDj._id
       );
       expect(approved.status).toBe('APPROVED');
 
       // 3. User 2 votes
-      await votesService.castVote(suggested._id, participant2._id, 1, {
+      await votesService.castVote(suggested.id, participant2._id, 1, {
         userId: user2._id.toString(),
         role: 'ATTENDEE',
       });
 
-      let song = await SongModel.findById(suggested._id);
+      let song = await SongModel.findById(suggested.id);
       expect(song.voteCount).toBe(1);
       expect(song.voteScore).toBe(1);
 
       // 4. DJ plays
-      const playing = await songsService.sendNow(suggested._id, testEvent._id, testDj._id);
+      const playing = await songsService.sendNow(suggested.id, testEvent._id, testDj._id);
       expect(playing.status).toBe('PLAYING');
 
       // 5. Verify final state
-      const final = await SongModel.findById(suggested._id);
+      const final = await SongModel.findById(suggested.id);
       expect(final.status).toBe('PLAYING');
       expect(final.voteScore).toBe(1);
     });

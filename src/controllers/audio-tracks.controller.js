@@ -1,8 +1,8 @@
-const { audioTracksService } = require('../services');
+const { audioTracksService, eventsService } = require('../services');
 const songsService = require('../services/songs.service');
+const { EventModel, UserModel } = require('../models/schema');
 const { httpStatus } = require('../constants');
 const { logger } = require('../utils');
-const { verifyToken } = require('../utils/jwt.utils');
 
 class AudioTracksController {
   async createTrack(req, res, next) {
@@ -61,8 +61,22 @@ class AudioTracksController {
   async sendMatchedTrackNow(req, res, next) {
     try {
       logger.info('sendMatchedTrackNow called', { eventId: req.params.eventId, trackId: req.params.trackId });
-      const token = req.body?.token || req.query?.token || req.get('authorization')?.replace(/^Bearer\s+/i, '');
-      const actor = req.user || verifyPhoneMicrophoneToken(token, req.params.eventId);
+      const event = await EventModel.findById(req.params.eventId).select('ownerId').lean();
+      if (!event) return next(new Error('Event not found'));
+      const owner = await UserModel.findById(event.ownerId)
+        .select('authTokenVersion role')
+        .lean();
+
+      const auth = req.get('authorization') || '';
+      const bearerToken = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      const token = bearerToken || req.body?.token;
+      const actor = req.user
+        || (await eventsService.assertPhoneMicrophoneActor(
+          { _id: event._id, ownerId: event.ownerId },
+          owner,
+          token,
+        ));
+
       const song = await audioTracksService.sendMatchedTrackNow(
         req.params.eventId,
         actor,
@@ -77,9 +91,8 @@ class AudioTracksController {
           artist: song.artist,
           recognitionMatch: song.recognitionMatch || null,
           status: song.status,
+          startedAt: song.startedAt || song.playingStartedAt || song.startedPlayingAt,
           totalDuration: song.totalDuration || 0,
-          duration: song.duration || 0,
-          playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
           timestamp: new Date().toISOString(),
         });
         io.to(`event:${req.params.eventId}`).emit('queue_updated', {
@@ -93,14 +106,6 @@ class AudioTracksController {
       next(error);
     }
   }
-}
-
-function verifyPhoneMicrophoneToken(token, eventId) {
-  const decoded = verifyToken(token || '');
-  if (decoded.type !== 'phone-microphone' || decoded.eventId !== eventId) {
-    throw new Error('Invalid phone microphone token');
-  }
-  return decoded;
 }
 
 module.exports = new AudioTracksController();
