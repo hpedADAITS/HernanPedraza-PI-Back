@@ -11,9 +11,11 @@ const { validateTransition } = require('../utils/song-state-machine');
 const participantsService = require('./participants.service');
 const eventPermissionsService = require('./event-permissions.service');
 const musicBrainzService = require('./musicbrainz.service');
-const { decryptCoverUrl } = require('./cover-url-crypto');
+const { decryptCoverUrl, encryptCoverUrl } = require('./cover-url-crypto');
 
 const MUSICBRAINZ_LOOKUP_THROTTLE_MS = 1550;
+const COVER_DOWNLOAD_TIMEOUT_MS = 8000;
+const MAX_COVER_DOWNLOAD_BYTES = 5 * 1024 * 1024;
 const musicBrainzLookupThrottle = new Map();
 
 class SongsService {
@@ -132,7 +134,9 @@ class SongsService {
     const metadataSha512 = musicBrainzMatch.metadataSha512 || sha512MusicBrainzMatch(musicBrainzMatch);
     track.title = musicBrainzMatch.title;
     track.artist = musicBrainzMatch.artist;
-    if (musicBrainzMatch.coverUrl) track.coverUrl = musicBrainzMatch.coverUrl;
+    const coverSource = await coverSourceFromMusicBrainzMatch(musicBrainzMatch);
+    const coverUrl = await encryptedCoverFromSource(coverSource, actorUser?.authToken);
+    if (coverUrl) track.coverUrl = coverUrl;
     track.musicBrainzMetadataSha512 = metadataSha512;
     track.musicBrainzRecordingId = musicBrainzMatch.recordingId || null;
     track.musicBrainzReleaseId = musicBrainzMatch.releaseId || null;
@@ -701,4 +705,43 @@ function markMusicBrainzLookup(eventId, participantId) {
 
 function musicBrainzLookupKey(eventId, participantId) {
   return `${eventId}:${participantId}`;
+}
+
+async function encryptedCoverFromSource(coverUrl, token) {
+  if (!coverUrl) return null;
+  if (String(coverUrl).startsWith('data:image/')) return encryptCoverUrl(coverUrl, token);
+  if (!/^https:\/\//i.test(String(coverUrl))) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), COVER_DOWNLOAD_TIMEOUT_MS);
+  try {
+    const response = await fetch(coverUrl, {
+      headers: { Accept: 'image/*' },
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+
+    const contentType = String(response.headers.get('content-type') || '').split(';')[0].toLowerCase();
+    if (!contentType.startsWith('image/')) return null;
+
+    const contentLength = Number(response.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > MAX_COVER_DOWNLOAD_BYTES) return null;
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > MAX_COVER_DOWNLOAD_BYTES) return null;
+
+    return encryptCoverUrl(`data:${contentType};base64,${bytes.toString('base64')}`, token);
+  } catch (error) {
+    logger.warn('MusicBrainz cover download failed', { message: error.message });
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function coverSourceFromMusicBrainzMatch(match) {
+  if (match?.coverUrl) return match.coverUrl;
+  if (!match?.recordingId) return null;
+  const summary = await musicBrainzService.lookupRecordingSummary(match.recordingId);
+  return summary?.coverUrl || null;
 }

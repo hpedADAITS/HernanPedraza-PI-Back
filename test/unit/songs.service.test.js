@@ -167,6 +167,12 @@ describe('SongsService - Real Implementation Tests', () => {
     });
 
     test('assigns accepted MusicBrainz metadata to a fingerprinted track', async () => {
+      const downloadedCover = Buffer.from('fake-cover');
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        headers: { get: (name) => (name.toLowerCase() === 'content-type' ? 'image/jpeg' : null) },
+        arrayBuffer: async () => downloadedCover,
+      });
       const { event, user: djUser } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
       const song = await createTestSong(event._id, participant._id, {
@@ -213,9 +219,12 @@ describe('SongsService - Real Implementation Tests', () => {
       expect(result.track).toMatchObject({
         title: 'Matched Song',
         artist: 'Matched Artist',
-        coverUrl: 'https://example.test/cover.jpg',
+        coverUrl: `data:image/jpeg;base64,${downloadedCover.toString('base64')}`,
         musicBrainzMetadataSha512: 'a'.repeat(128),
       });
+      const storedTrack = await AudioTrackModel.findById(track._id).lean();
+      expect(storedTrack.coverUrl).toMatch(/^enc-cover:v1:/);
+      expect(storedTrack.coverUrl).not.toContain('https://example.test/cover.jpg');
     });
 
     test('skips MusicBrainz metadata when attendee declines match', async () => {
