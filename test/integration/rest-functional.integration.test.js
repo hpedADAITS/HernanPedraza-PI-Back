@@ -1,6 +1,15 @@
 process.env.DEBUG_EMAIL = 'true';
 process.env.DEBUG_MODE = 'true';
 
+/* Avoid hitting the live MusicBrainz API during functional tests. Network
+ * lookups make the suite hang and return real-world matches that override the
+ * local fingerprint behaviour these tests assert on. */
+jest.mock('../../src/services/musicbrainz.service', () => ({
+  findRecordingMatch: jest.fn().mockResolvedValue(null),
+  findRecordingMatches: jest.fn().mockResolvedValue([]),
+  lookupRecordingSummary: jest.fn().mockResolvedValue(null),
+}));
+
 const request = require('supertest');
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
@@ -519,7 +528,7 @@ describe('REST functional coverage', () => {
       eventId: event._id || event.id,
       title: second.title,
       artist: second.artist,
-      uploadedBy: dj.userId,
+      uploadedBy: dj.user.id,
       duration: 200,
       sampleRate: 8000,
       pointsCount: 1,

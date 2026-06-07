@@ -1,3 +1,11 @@
+/* Never hit the live MusicBrainz API from this suite — stub the service so
+ * the suggest flow stays hermetic and fast. */
+jest.mock('../../src/services/musicbrainz.service', () => ({
+  findRecordingMatch: jest.fn().mockResolvedValue(null),
+  findRecordingMatches: jest.fn().mockResolvedValue([]),
+  lookupRecordingSummary: jest.fn().mockResolvedValue(null),
+}));
+
 const request = require('supertest');
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
