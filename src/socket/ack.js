@@ -5,7 +5,8 @@ const ackSuccess = (callback, data) => {
 
 const ackError = (callback, error) => {
   if (typeof callback !== 'function') return;
-  callback({ success: false, data: null, error: error.message });
+  const code = error?.code || error?.name || 'ERROR';
+  callback({ success: false, data: null, error: error.message, code });
 };
 
 module.exports = {

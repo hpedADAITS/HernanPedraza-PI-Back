@@ -8,6 +8,7 @@ const {
   SongModel,
   UserModel,
   VoteModel,
+  AudioTrackModel,
 } = require('../../src/models');
 
 let mongoServer;
@@ -102,6 +103,35 @@ const suggestSong = async (eventId, participantId, attendeeToken, title, artist)
     })
     .expect(201);
   return res.body.data.song;
+};
+
+// Simulate the phone-microphone audio fingerprinting auto-match so that
+// the song becomes eligible for send-now. The server blocks manual send-now
+// until a fingerprint trackId is bound.
+const bindFingerprintMatch = async (eventId, song, title, artist, uploadedByUserId) => {
+  const track = await AudioTrackModel.create({
+    eventId,
+    title,
+    artist,
+    uploadedBy: uploadedByUserId,
+    duration: 200,
+    sampleRate: 8000,
+    pointsCount: 1,
+    hashesCount: 1,
+  });
+  await SongModel.updateOne(
+    { _id: song.id },
+    {
+      $set: {
+        'recognitionMatch.trackId': track._id,
+        'recognitionMatch.title': title,
+        'recognitionMatch.artist': artist,
+        'recognitionMatch.score': 1,
+        'recognitionMatch.matchedOn': 'title',
+      },
+    },
+  );
+  return track;
 };
 
 const approveSong = async (eventId, songId, djToken) => {
@@ -205,6 +235,7 @@ describe('Queue System - DJ Approval Requirement', () => {
     const pendingSong = await suggestSong(event.id, participant._id, attendee.token, 'Pending', 'Artist');
     const approvedSong = await suggestSong(event.id, participant._id, attendee.token, 'Approved', 'Artist');
     await approveSong(event.id, approvedSong.id, dj.token);
+    await bindFingerprintMatch(event.id, approvedSong, 'Approved', 'Artist', dj.userId);
 
     // Send approved song to playing (now queue only has PLAYING)
     await request(app)
@@ -367,6 +398,7 @@ describe('Queue System - DJ Controls', () => {
 
     const song = await suggestSong(event.id, participant._id, attendee.token, 'Play Now', 'Artist');
     await approveSong(event.id, song.id, dj.token);
+    await bindFingerprintMatch(event.id, song, 'Play Now', 'Artist', dj.userId);
 
     // Send now
     await request(app)
@@ -394,6 +426,7 @@ describe('Queue System - DJ Controls', () => {
 
     const song = await suggestSong(event.id, participant._id, attendee.token, 'Skippable', 'Artist');
     await approveSong(event.id, song.id, dj.token);
+    await bindFingerprintMatch(event.id, song, 'Skippable', 'Artist', dj.userId);
     await request(app)
       .post(`/api/v1/songs/${event.id}/${song.id}/send-now`)
       .set(authHeader(dj.token))
@@ -562,6 +595,7 @@ describe('Queue System - Attendee Cannot Control Playback', () => {
 
     const song = await suggestSong(event.id, participant._id, attendee.token, 'Try Skip', 'Artist');
     await approveSong(event.id, song.id, dj.token);
+    await bindFingerprintMatch(event.id, song, 'Try Skip', 'Artist', dj.userId);
     await request(app)
       .post(`/api/v1/songs/${event.id}/${song.id}/send-now`)
       .set(authHeader(dj.token))

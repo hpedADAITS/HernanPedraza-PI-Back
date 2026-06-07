@@ -15,6 +15,7 @@ const {
   SongModel,
   UserModel,
   VoteModel,
+  AudioTrackModel,
 } = require('../../src/models');
 
 function waitForEvent(socket, event, timeoutMs = 2000) {
@@ -238,6 +239,29 @@ describe('Socket.IO server integration', () => {
     await expect(voteRemoved).resolves.toMatchObject({ songId, participantId: participant._id });
 
     const nowPlaying = waitForEvent(listener, 'song_now_playing');
+    // Simulate phone-mic audio fingerprinting match
+    const track = await AudioTrackModel.create({
+      eventId: event._id || event.id,
+      title: 'Socket Song',
+      artist: 'Socket Artist',
+      uploadedBy: dj.user.id,
+      duration: 123,
+      sampleRate: 8000,
+      pointsCount: 1,
+      hashesCount: 1,
+    });
+    await SongModel.updateOne(
+      { _id: songId },
+      {
+        $set: {
+          'recognitionMatch.trackId': track._id,
+          'recognitionMatch.title': 'Socket Song',
+          'recognitionMatch.artist': 'Socket Artist',
+          'recognitionMatch.score': 1,
+          'recognitionMatch.matchedOn': 'title',
+        },
+      },
+    );
     await expect(
       emitAck(djClient, 'send_now', { eventId: event.id, songId, userId: dj.user.id }),
     ).resolves.toMatchObject({ success: true, data: { status: 'PLAYING' } });

@@ -108,6 +108,21 @@ const createTestSong = async (eventId, requestedByParticipantId, overrides = {})
   });
 };
 
+// Helper to create a real AudioTrack (required by sendNow/playNextSong tests
+// which must attach a recognitionMatch.trackId to drive the Now Playing path).
+const createTestAudioTrack = async (eventId, uploadedByUserId, overrides = {}) =>
+  AudioTrackModel.create({
+    eventId,
+    title: 'Test Song',
+    artist: 'Test Artist',
+    uploadedBy: uploadedByUserId,
+    duration: 200,
+    sampleRate: 8000,
+    pointsCount: 1,
+    hashesCount: 1,
+    ...overrides,
+  });
+
 describe('SongsService - Real Implementation Tests', () => {
   describe('suggestSong', () => {
     test('stores attendee-confirmed MusicBrainz metadata', async () => {
@@ -687,7 +702,11 @@ describe('SongsService - Real Implementation Tests', () => {
     test('should mark song as playing and update event', async () => {
       const { event, user } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
-      const song = await createTestSong(event._id, participant._id, { status: 'APPROVED' });
+      const track = await createTestAudioTrack(event._id, user._id);
+      const song = await createTestSong(event._id, participant._id, {
+        status: 'APPROVED',
+        recognitionMatch: { trackId: track._id, title: track.title, artist: track.artist, score: 1, matchedOn: 'title' },
+      });
 
       const result = await songsService.sendNow(
         song._id.toString(),
@@ -696,11 +715,11 @@ describe('SongsService - Real Implementation Tests', () => {
       );
 
       expect(result.status).toBe('PLAYING');
-      
+
       // Verify song was updated
       const updatedSong = await SongModel.findById(song._id);
       expect(updatedSong.status).toBe('PLAYING');
-      
+
       // Verify event was updated
       const updatedEvent = await EventModel.findById(event._id);
       expect(updatedEvent.currentSongId?.toString()).toBe(song._id.toString());
@@ -709,18 +728,21 @@ describe('SongsService - Real Implementation Tests', () => {
     test('should clear other PLAYING songs when sending new song', async () => {
       const { event, user } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
-      
+      const track = await createTestAudioTrack(event._id, user._id);
+
       // Create a currently playing song
       await createTestSong(event._id, participant._id, {
         title: 'Currently Playing',
         status: 'PLAYING',
         startedPlayingAt: new Date(),
+        recognitionMatch: { trackId: track._id, title: 'Currently Playing', artist: 'Test Artist', score: 1, matchedOn: 'title' },
       });
-      
+
       // Create the next song to play
       const nextSong = await createTestSong(event._id, participant._id, {
         title: 'Next Song',
         status: 'APPROVED',
+        recognitionMatch: { trackId: track._id, title: 'Next Song', artist: 'Test Artist', score: 1, matchedOn: 'title' },
       });
 
       await songsService.sendNow(
@@ -733,23 +755,62 @@ describe('SongsService - Real Implementation Tests', () => {
       const playedSongs = await SongModel.find({ eventId: event._id, status: 'PLAYED' });
       expect(playedSongs.length).toBe(1);
     });
+
+    test('throws MatchRequiredError when song has no recognitionMatch.trackId', async () => {
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id, { status: 'APPROVED' });
+
+      const { MatchRequiredError } = require('../../src/errors');
+      await expect(
+        songsService.sendNow(
+          song._id.toString(),
+          event._id.toString(),
+          { userId: user._id.toString(), role: 'DJ' },
+        ),
+      ).rejects.toBeInstanceOf(MatchRequiredError);
+
+      const stillApproved = await SongModel.findById(song._id);
+      expect(stillApproved.status).toBe('APPROVED');
+    });
+
+    test('throws MatchRequiredError when recognitionMatch exists but trackId is missing', async () => {
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id, {
+        status: 'APPROVED',
+        recognitionMatch: { title: 'Unmatched', artist: 'No Track', score: 0.4, matchedOn: 'title' },
+      });
+
+      const { MatchRequiredError } = require('../../src/errors');
+      await expect(
+        songsService.sendNow(
+          song._id.toString(),
+          event._id.toString(),
+          { userId: user._id.toString(), role: 'DJ' },
+        ),
+      ).rejects.toBeInstanceOf(MatchRequiredError);
+    });
   });
 
   describe('playNextSong', () => {
     test('should play next approved song in queue', async () => {
       const { event, user } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
-      
+      const track = await createTestAudioTrack(event._id, user._id);
+
       // Create approved songs
       await createTestSong(event._id, participant._id, {
         status: 'APPROVED',
         voteScore: 3,
         sortKey: '1',
+        recognitionMatch: { trackId: track._id, title: 'Song 1', artist: 'Test Artist', score: 1, matchedOn: 'title' },
       });
       const song2 = await createTestSong(event._id, participant._id, {
         status: 'APPROVED',
         voteScore: 5,
         sortKey: '2',
+        recognitionMatch: { trackId: track._id, title: 'Song 2', artist: 'Test Artist', score: 1, matchedOn: 'title' },
       });
 
       const result = await songsService.playNextSong(
@@ -770,6 +831,39 @@ describe('SongsService - Real Implementation Tests', () => {
       );
 
       expect(result).toBeNull();
+    });
+
+    test('skips approved songs without a fingerprint trackId', async () => {
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const track = await createTestAudioTrack(event._id, user._id);
+
+      // This song has no recognitionMatch at all - should be skipped
+      const unmatched = await createTestSong(event._id, participant._id, {
+        status: 'APPROVED',
+        voteScore: 99,
+        sortKey: 'a',
+      });
+
+      // This one is properly matched
+      const matched = await createTestSong(event._id, participant._id, {
+        status: 'APPROVED',
+        voteScore: 1,
+        sortKey: 'b',
+        recognitionMatch: { trackId: track._id, title: 'Matched', artist: 'Test Artist', score: 1, matchedOn: 'title' },
+      });
+
+      const result = await songsService.playNextSong(
+        event._id.toString(),
+        { userId: user._id.toString(), role: 'DJ' },
+      );
+
+      expect(result).not.toBeNull();
+      expect(result._id.toString()).toBe(matched._id.toString());
+      expect(result.status).toBe('PLAYING');
+
+      const stillApproved = await SongModel.findById(unmatched._id);
+      expect(stillApproved.status).toBe('APPROVED');
     });
   });
 

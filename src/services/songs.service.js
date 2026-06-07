@@ -6,7 +6,7 @@ const {
 } = require('../models/schema');
 const crypto = require('crypto');
 const { logger } = require('../utils');
-const { ForbiddenError, NotFoundError, ValidationError } = require('../errors');
+const { ForbiddenError, NotFoundError, ValidationError, MatchRequiredError } = require('../errors');
 const { validateTransition } = require('../utils/song-state-machine');
 const participantsService = require('./participants.service');
 const eventPermissionsService = require('./event-permissions.service');
@@ -382,6 +382,12 @@ class SongsService {
     await this._assertSongAdmin(eventId, userId);
     const song = await this._getSongForEvent(songId, eventId);
 
+    /* A song can only be pushed to Now Playing if it has a fingerprint match.
+       The phone-microphone / audio-fingerprinting pipeline is the only path
+       that can promote an APPROVED song to PLAYING (via sendMatchedTrackNow).
+       Manual sendNow is therefore blocked until a trackId is bound. */
+    this._assertPlayableMatch(song);
+
     /* Validate state transition using state machine */
     validateTransition(song.status, 'PLAYING', 'DJ');
 
@@ -445,6 +451,7 @@ class SongsService {
       {
         eventId,
         status: 'APPROVED',
+        'recognitionMatch.trackId': { $exists: true, $ne: null },
       },
       {
         status: 'PLAYING',
@@ -458,6 +465,13 @@ class SongsService {
         eventId,
         userId,
         songId: nextSong._id,
+        action: 'SONG_STATUS_CHANGE',
+        newStatus: 'PLAYING',
+      });
+    } else {
+      logger.info('playNextSong skipped - no playable (matched) approved song', {
+        eventId,
+        userId,
         action: 'SONG_STATUS_CHANGE',
         newStatus: 'PLAYING',
       });
@@ -789,6 +803,16 @@ class SongsService {
       throw new NotFoundError('Song not in this event');
     }
     return song;
+  }
+
+  // Helper: A song can only be promoted to Now Playing once a fingerprint
+  // match is bound (recognitionMatch.trackId). Until then the audio
+  // fingerprinting pipeline (sendMatchedTrackNow) is the only path that may
+  // flip it to PLAYING. The DJ must wait for the microphone to match it.
+  _assertPlayableMatch(song) {
+    if (!song.recognitionMatch?.trackId) {
+      throw new MatchRequiredError();
+    }
   }
 }
 

@@ -422,6 +422,7 @@ describe('Socket.IO Handler Integration Tests', () => {
       // Approve song first
       testSong.status = 'APPROVED';
       testSong.recognitionMatch = {
+        trackId: new mongoose.Types.ObjectId(),
         title: 'Test Song',
         artist: 'Test Artist',
         coverUrl: 'https://example.com/cover.jpg',

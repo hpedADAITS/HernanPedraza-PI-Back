@@ -514,6 +514,30 @@ describe('REST functional coverage', () => {
         expect(res.body.data.position).toBe(1);
       });
 
+    // Simulate phone-mic audio fingerprinting match
+    const track = await AudioTrackModel.create({
+      eventId: event._id || event.id,
+      title: second.title,
+      artist: second.artist,
+      uploadedBy: dj.userId,
+      duration: 200,
+      sampleRate: 8000,
+      pointsCount: 1,
+      hashesCount: 1,
+    });
+    await SongModel.updateOne(
+      { _id: second.id },
+      {
+        $set: {
+          'recognitionMatch.trackId': track._id,
+          'recognitionMatch.title': second.title,
+          'recognitionMatch.artist': second.artist,
+          'recognitionMatch.score': 1,
+          'recognitionMatch.matchedOn': 'title',
+        },
+      },
+    );
+
     await request(app)
       .post(`/api/v1/songs/${event.id}/${second.id}/send-now`)
       .set(authHeader(dj.token))

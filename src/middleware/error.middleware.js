@@ -12,7 +12,7 @@ const errorMiddleware = (err, req, res, next) => {
   if (err instanceof ApiError) {
     statusCode = err.statusCode;
     message = err.message;
-    errorCode = err.name;
+    errorCode = err.code || err.name;
     details = err.details;
   } else if (err.statusCode && err.message) {
     /* Handle errors with statusCode property */

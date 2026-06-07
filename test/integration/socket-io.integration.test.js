@@ -14,6 +14,7 @@ const {
   ParticipantModel,
   UserModel,
   VoteModel,
+  AudioTrackModel,
   defaultPermissionsForRole,
   connectMongo,
 } = require('../../src/models/schema');
@@ -551,7 +552,32 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       expect(song.voteCount).toBe(1);
       expect(song.voteScore).toBe(1);
 
-      // 4. DJ plays
+      // 4. Bind a fingerprint match (audio fingerprinting auto-push is the
+      //    only path to Now Playing - simulate the mic match here).
+      const track = await AudioTrackModel.create({
+        eventId: testEvent._id || testEvent.id,
+        title: 'Popular Song',
+        artist: 'Artist Name',
+        uploadedBy: testDjActor.userId,
+        duration: 200,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+      await SongModel.updateOne(
+        { _id: suggested._id },
+        {
+          $set: {
+            'recognitionMatch.trackId': track._id,
+            'recognitionMatch.title': track.title,
+            'recognitionMatch.artist': track.artist,
+            'recognitionMatch.score': 1,
+            'recognitionMatch.matchedOn': 'title',
+          },
+        },
+      );
+
+      // 5. DJ plays
       const playing = await songsService.sendNow(suggested._id, testEvent._id, testDjActor);
       expect(playing.status).toBe('PLAYING');
 
