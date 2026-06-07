@@ -49,6 +49,7 @@ const authMiddleware = async (req, res, next) => {
     req.user = {
       ...decoded,
       role,
+      authToken: token,
     };
     req.token = token;
 

@@ -21,6 +21,7 @@ const {
 
 const { audioTracksService } = require('../../src/services/audio-tracks.service');
 const { AudioFingerprintModel } = require('../../src/models/schema');
+const { storedHashRows } = require('../../src/services/audio-recognition/fingerprint-codec');
 const { resampleLinear, TARGET_SAMPLE_RATE } = require('../../src/services/audio-recognition/wav');
 
 jest.setTimeout(60000);
@@ -39,6 +40,7 @@ const phoneStreamWav = firstExisting([
   path.join(__root, 'repo', 'phone_stream_reverb_32kHz.wav'),
   path.join(__root, 'latest', 'phone_stream_reverb_32kHz.wav'),
 ]);
+const dataImageCover = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2w==';
 
 const authHeader = (token) => ({ Authorization: `Bearer ${token}` });
 const futureDate = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -138,8 +140,9 @@ describe('Audio track REST integration', () => {
 
     const trackId = res.body.data.track.id;
     await expect(AudioTrackModel.countDocuments({ eventId: event.id })).resolves.toBe(1);
-    const bundled = await AudioFingerprintModel.findOne({ eventId: event.id, trackId }).select('hashes hashesCount');
-    expect(bundled.hashes.length).toBe(res.body.data.track.hashesCount);
+    const bundled = await AudioFingerprintModel.findOne({ eventId: event.id, trackId }).select('hashData hashes hashesCount');
+    expect(storedHashRows(bundled).length).toBe(res.body.data.track.hashesCount);
+    expect(bundled.hashData.length).toBe(res.body.data.track.hashesCount * 8);
     expect(bundled.hashesCount).toBe(res.body.data.track.hashesCount);
 
     await request(app)
@@ -166,9 +169,9 @@ describe('Audio track REST integration', () => {
     const created = await uploadTrack(event.id, dj.token).expect(201);
     const trackId = created.body.data.track.id;
     const bundled = await AudioFingerprintModel.findOne({ eventId: event.id, trackId })
-      .select('hashes')
+      .select('hashData hashes')
       .lean();
-    const sampleHashes = (bundled?.hashes || []).slice(0, 2);
+    const sampleHashes = storedHashRows(bundled).slice(0, 2);
 
     const sparseNoiseHashes = [
       ...sampleHashes.map(({ h, t }) => ({ hash: h, time: t })),
@@ -179,6 +182,48 @@ describe('Audio track REST integration', () => {
     const matches = await matchHashes(event.id, sparseNoiseHashes);
 
     expect(matches).toEqual([]);
+  });
+
+  test('encrypts data-image cover art at rest and returns it decoded', async () => {
+    const dj = await createVerifiedDj();
+    const event = await createEvent(dj.token);
+    const created = await uploadTrack(event.id, dj.token, { coverUrl: dataImageCover }).expect(201);
+    const trackId = created.body.data.track.id;
+
+    expect(created.body.data.track.coverUrl).toBe(dataImageCover);
+    expect(created.body.data.track.coverUrlCacheKey).toEqual(expect.any(String));
+
+    const stored = await AudioTrackModel.findById(trackId).select('coverUrl').lean();
+    expect(stored.coverUrl).toMatch(/^enc-cover:v1:/);
+    expect(stored.coverUrl).not.toContain(dataImageCover);
+
+    await request(app)
+      .get(`/api/v1/events/${event.id}/audio-tracks`)
+      .set(authHeader(dj.token))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.tracks[0].coverUrl).toBe(dataImageCover);
+        expect(res.body.data.tracks[0].coverUrlCacheKey).toBe(created.body.data.track.coverUrlCacheKey);
+      });
+
+    await request(app)
+      .get(`/api/v1/events/${event.id}/audio-tracks`)
+      .query({ coverCacheKeys: created.body.data.track.coverUrlCacheKey })
+      .set(authHeader(dj.token))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.tracks[0].coverUrl).toBeNull();
+        expect(res.body.data.tracks[0].coverUrlCacheKey).toBe(created.body.data.track.coverUrlCacheKey);
+      });
+
+    await request(app)
+      .post(`/api/v1/events/${event.id}/audio-match`)
+      .set(authHeader(dj.token))
+      .attach('audio', fixture)
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.matches[0].coverUrl).toBe(dataImageCover);
+      });
   });
 
   test('phone microphone token can send a matched queued track to now playing', async () => {

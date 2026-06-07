@@ -80,14 +80,16 @@ defined at the top of each module and (deliberately) not centralised.
 
 ### RAM matcher memory budget (`ram-matcher.js`)
 
-Sized for the Render free tier (512 MB / 0.1 vCPU). Caps below keep each
-`AudioFingerprintModel.hashes` JSON document under MongoDB's 16 MB hard
-limit, and keep the in-memory index bounded.
+Sized for the Render free tier (512 MB / 0.1 vCPU). New uploads store
+fingerprints in `AudioFingerprintModel.hashData` as 8 bytes per
+`{hash,time}` pair. Legacy `AudioFingerprintModel.hashes` arrays are
+still read for existing documents. Caps below keep each MongoDB document
+under the 16 MB hard limit and keep the in-memory index bounded.
 
 | Constant | Value | Effect |
 |----------|-------|--------|
 | `MAX_TRACK_HASHES` | `100_000` | Tracks with more hashes are skipped on load. ~3-7 min of audio. |
-| `MAX_INDEXED_HASHES_PER_EVENT` | `200_000` | Hard cap while building the in-memory index. ~6 MB JSON, ~10 MB in-memory. |
+| `MAX_INDEXED_HASHES_PER_EVENT` | `200_000` | Hard cap while building the in-memory index. ~1.6 MB packed, ~10 MB in-memory. |
 | `MAX_CACHED_EVENTS` | `2` | LRU eviction. Two events held in RAM at once ≈ 20 MB. |
 
 ### Streaming (`streaming.js`)
@@ -104,9 +106,8 @@ limit, and keep the in-memory index bounded.
 ## One matching path
 
 Both REST and live socket use the same matcher. The matcher's index is
-loaded from `AudioFingerprintModel.hashes` (the bundled per-track array
-on the document) on first match per event and held in RAM with LRU
-eviction.
+loaded from `AudioFingerprintModel.hashData` (or legacy `hashes`) on
+first match per event and held in RAM with LRU eviction.
 
 | Path | When used | Storage |
 |------|-----------|---------|
@@ -189,8 +190,8 @@ The DJ upload path goes through `fingerprintWavStreamed` in
   100 000 entries respectively via `streaming.js`).
 - Emits hashes in batches of `batchSize` (default 5 000) via the
   `onBatch` callback. The `audio-tracks.service.js` `createTrack`
-  handler uses this callback to `$push` hashes into the bundled
-  `AudioFingerprintModel`.
+  handler packs each batch into binary chunks and stores one compact
+  `AudioFingerprintModel.hashData` buffer.
 
 Peak heap usage is **O(1) in the audio length**: a 5-minute synthetic
 WAV uses roughly the same memory as a 30-second one. The memory test

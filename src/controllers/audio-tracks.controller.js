@@ -22,7 +22,13 @@ class AudioTracksController {
 
   async listTracks(req, res, next) {
     try {
-      const tracks = await audioTracksService.listTracks(req.params.eventId, req.user);
+      const tracks = await audioTracksService.listTracks(
+        req.params.eventId,
+        req.user,
+        {
+          cachedCoverKeys: parseCsv(req.query.coverCacheKeys),
+        },
+      );
       res.status(httpStatus.OK).json({ success: true, data: { tracks } });
     } catch (error) {
       logger.error('List audio tracks error:', error);
@@ -96,6 +102,11 @@ class AudioTracksController {
       next(error);
     }
   }
+}
+
+function parseCsv(value) {
+  if (typeof value !== 'string') return [];
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
 function verifyPhoneMicrophoneToken(token, eventId) {

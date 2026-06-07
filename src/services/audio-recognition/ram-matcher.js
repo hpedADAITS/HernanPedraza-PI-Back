@@ -3,20 +3,22 @@
 //
 // Resource budgets (512 MB Render deployment):
 //   MongoDB document: 16 MB hard limit per document.
-//   Per-track hashes:   3-7 min of audio → ~30-100k hashes → ~2-3 MB.
-//   Per-event hashes:   cap at 200k → ~6 MB, well under the 16 MB limit.
+//   Per-track hashes:   3-7 min of audio -> ~30-100k hashes -> ~240-800 KB packed.
+//   Per-event hashes:   cap at 200k -> ~1.6 MB packed, well under the 16 MB limit.
 //   In-memory index:    ~50 bytes per (hash → {trackId, sourceTime}) entry.
 //                       200k entries ≈ 10 MB. MAX_CACHED_EVENTS=2 → ~20 MB.
 //   Available heap:     ~260 MB after Node + Mongoose + app. Audio is a small share.
 
 const { AudioFingerprintModel, AudioTrackModel } = require('../../models/schema');
 const { logger } = require('../../utils');
+const { decryptCoverUrl } = require('../cover-url-crypto');
+const { storedHashRows } = require('./fingerprint-codec');
 
 const MIN_MATCH_SCORE = 4;
 
-// Caps below keep AudioFingerprintModel.hashes under MongoDB's 16 MB document
-// limit (3 tracks * 200k ≈ 6 MB JSON, comfortably under) and keep the in-memory
-// index bounded per the budget above.
+// Caps below keep AudioFingerprintModel.hashData under MongoDB's 16 MB document
+// limit and keep the in-memory index bounded per the budget above. Legacy
+// AudioFingerprintModel.hashes arrays are still decoded on load.
 const MAX_TRACK_HASHES = 100_000;
 const MAX_INDEXED_HASHES_PER_EVENT = 200_000;
 
@@ -74,7 +76,7 @@ class RamMatcher {
 
   async _doLoad(eventId) {
     const fingerprints = await AudioFingerprintModel.find({ eventId })
-      .select('trackId hashesCount hashes')
+      .select('trackId hashesCount hashData hashes')
       .lean();
 
     if (!fingerprints.length) {
@@ -98,7 +100,7 @@ class RamMatcher {
 
     for (const fp of fingerprints) {
       const trackId = fp.trackId.toString();
-      const hashes = fp.hashes || [];
+      const hashes = storedHashRows(fp);
 
       // Skip tracks with too many hashes to prevent OOM
       if (hashes.length > MAX_TRACK_HASHES) {
@@ -213,7 +215,7 @@ class RamMatcher {
         score: match.score,
         title: track?.title || 'Unknown track',
         artist: track?.artist || 'Unknown artist',
-        coverUrl: track?.coverUrl || null,
+        coverUrl: decryptCoverUrl(track?.coverUrl),
         duration: track?.duration || 0,
         sampleRate: track?.sampleRate || 0,
       };

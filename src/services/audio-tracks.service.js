@@ -12,7 +12,9 @@ const {
 const { ForbiddenError, NotFoundError, ValidationError } = require('../errors');
 const eventPermissionsService = require('./event-permissions.service');
 const songsService = require('./songs.service');
+const { coverUrlCacheKey, decryptCoverUrl, encryptCoverUrl } = require('./cover-url-crypto');
 const { fingerprintWavStreamed } = require('./audio-recognition/fingerprint');
+const { encodeHashRows } = require('./audio-recognition/fingerprint-codec');
 const { matchHashes, RamMatcher } = require('./audio-recognition/ram-matcher');
 const { parseWavHeader, TARGET_SAMPLE_RATE } = require('./audio-recognition/wav');
 const musicBrainzService = require('./musicbrainz.service');
@@ -48,7 +50,7 @@ class AudioTracksService {
 
     const title = cleanRequired(fields.title, 'title');
     const artist = cleanRequired(fields.artist, 'artist');
-    const coverUrl = cleanOptional(fields.coverUrl);
+    const coverUrl = encryptCoverUrl(cleanOptional(fields.coverUrl), actor?.authToken);
     const tmpFile = await writeTempFile(file);
 
     try {
@@ -83,8 +85,6 @@ class AudioTracksService {
         hashesCount: 0,
       });
 
-      // Seed the bundled fingerprint document with an empty hashes array
-      // and stream $push batches in to bound memory.
       await AudioFingerprintModel.create({
         eventId: eventObjectId,
         trackId: track._id,
@@ -92,18 +92,16 @@ class AudioTracksService {
         duration: expectedDuration,
         pointsCount: 0,
         hashesCount: 0,
-        hashes: [],
       });
 
+      const hashChunks = [];
       const totals = await fingerprintWavStreamed(tmpFile, {
         batchSize: INSERT_CHUNK,
         onBatch: async (batch) => {
-          await AudioFingerprintModel.updateOne(
-            { trackId: track._id },
-            { $push: { hashes: { $each: batch.map(({ hash, time }) => ({ h: hash, t: time })) } } }
-          );
+          hashChunks.push(encodeHashRows(batch));
         },
       });
+      const hashData = Buffer.concat(hashChunks);
 
       await Promise.all([
         AudioTrackModel.updateOne(
@@ -118,10 +116,14 @@ class AudioTracksService {
         AudioFingerprintModel.updateOne(
           { trackId: track._id },
           {
-            sampleRate: totals.sampleRate,
-            duration: totals.duration,
-            pointsCount: totals.pointsCount,
-            hashesCount: totals.hashesCount,
+            $set: {
+              sampleRate: totals.sampleRate,
+              duration: totals.duration,
+              pointsCount: totals.pointsCount,
+              hashesCount: totals.hashesCount,
+              hashData,
+            },
+            $unset: { hashes: 1 },
           }
         ),
       ]);
@@ -137,8 +139,9 @@ class AudioTracksService {
     }
   }
 
-  async listTracks(eventId, actor) {
+  async listTracks(eventId, actor, options = {}) {
     const { eventObjectId } = await this._assertDj(eventId, actor);
+    const cachedCoverKeys = new Set(options.cachedCoverKeys || []);
     const tracks = await AudioTrackModel.find({ eventId: eventObjectId })
       .sort({ createdAt: -1 })
       .lean();
@@ -157,7 +160,7 @@ class AudioTracksService {
 
     const enriched = await Promise.all(
       tracks.map(async (track) => {
-        const formatted = this._formatTrack(track);
+        const formatted = this._formatTrack(track, { cachedCoverKeys });
         let musicBrainz = null;
         if (formatted.musicBrainzRecordingId) {
           const summary = await musicBrainzService.lookupRecordingSummary(
@@ -167,7 +170,7 @@ class AudioTracksService {
             musicBrainz = {
               title: summary.title,
               artist: summary.artist,
-              coverUrl: summary.coverUrl,
+              coverUrl: decryptCoverUrl(summary.coverUrl),
               metadataSha512: formatted.musicBrainzMetadataSha512,
             };
           }
@@ -285,14 +288,18 @@ class AudioTracksService {
     }
   }
 
-  _formatTrack(track) {
+  _formatTrack(track, options = {}) {
+    const cacheKey = coverUrlCacheKey(track.coverUrl);
+    const coverCached = cacheKey && options.cachedCoverKeys?.has(cacheKey);
     return {
       id: track._id,
       _id: track._id,
       eventId: track.eventId,
       title: track.title,
       artist: track.artist,
-      coverUrl: track.coverUrl || null,
+      coverUrl: coverCached ? null : decryptCoverUrl(track.coverUrl),
+      coverUrlCacheKey: cacheKey,
+      audioSha256: track.audioSha256 || null,
       duration: track.duration,
       sampleRate: track.sampleRate,
       pointsCount: track.pointsCount,

@@ -42,18 +42,29 @@ const AudioFingerprintSchema = new Schema(
       required: true,
     },
 
-    hashes: [
-      {
-        h: {
-          type: Number,
-          required: true,
-        },
-        t: {
-          type: Number,
-          required: true,
-        },
-      },
-    ],
+    hashData: {
+      type: Buffer,
+      default: undefined,
+    },
+
+    hashes: {
+      type: [
+        new Schema(
+          {
+            h: {
+              type: Number,
+              required: true,
+            },
+            t: {
+              type: Number,
+              required: true,
+            },
+          },
+          { _id: false }
+        ),
+      ],
+      default: undefined,
+    },
   },
   {
     timestamps: true,

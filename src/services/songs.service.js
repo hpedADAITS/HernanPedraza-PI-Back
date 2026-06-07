@@ -11,6 +11,7 @@ const { validateTransition } = require('../utils/song-state-machine');
 const participantsService = require('./participants.service');
 const eventPermissionsService = require('./event-permissions.service');
 const musicBrainzService = require('./musicbrainz.service');
+const { decryptCoverUrl } = require('./cover-url-crypto');
 
 class SongsService {
   async suggestSong(eventId, participantId, title, artist, totalDuration, actorUser, options = {}) {
@@ -446,7 +447,7 @@ class SongsService {
   _formatSong(song) {
     const totalDuration = song.totalDuration ?? song.duration;
     const recognitionMatch = hasRecognitionMatch(song.recognitionMatch)
-      ? song.recognitionMatch
+      ? formatRecognitionMatch(song.recognitionMatch)
       : null;
 
     return {
@@ -623,7 +624,8 @@ function formatAudioTrack(track) {
     eventId: track.eventId,
     title: track.title,
     artist: track.artist,
-    coverUrl: track.coverUrl || null,
+    coverUrl: decryptCoverUrl(track.coverUrl),
+    audioSha256: track.audioSha256 || null,
     duration: track.duration,
     sampleRate: track.sampleRate,
     pointsCount: track.pointsCount,
@@ -634,6 +636,14 @@ function formatAudioTrack(track) {
     metadataSourceSongId: track.metadataSourceSongId || null,
     createdAt: track.createdAt,
     updatedAt: track.updatedAt,
+  };
+}
+
+function formatRecognitionMatch(match) {
+  const plain = match.toObject?.() || match;
+  return {
+    ...plain,
+    coverUrl: decryptCoverUrl(plain.coverUrl),
   };
 }
 
