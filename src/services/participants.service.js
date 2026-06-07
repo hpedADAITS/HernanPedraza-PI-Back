@@ -330,6 +330,34 @@ class ParticipantsService {
     };
   }
 
+  async clearParticipantCooldown(participantId, actorUser) {
+    const participant = await ParticipantModel.findById(participantId);
+    if (!participant) {
+      throw new NotFoundError('Participant not found');
+    }
+
+    await this._assertParticipantAdminPermission(
+      participant,
+      actorUser,
+    );
+
+    participant.cooldownUntil = undefined;
+    participant.cooldownReason = undefined;
+    await participant.save();
+
+    logger.info(`Participant ${participantId} cooldown cleared`, {
+      eventId: participant.eventId,
+      participantId,
+      action: 'PARTICIPANT_COOLDOWN_CLEAR',
+    });
+
+    return {
+      participant: this._formatParticipant(participant),
+      eventId: participant.eventId,
+      action: 'participant_cooldown_cleared',
+    };
+  }
+
   async kickParticipant(participantId, reason, actorUser) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {

@@ -50,6 +50,10 @@ router.post(
   '/:participantId/cooldown',
   participantsController.setCooldown.bind(participantsController),
 );
+router.delete(
+  '/:participantId/cooldown',
+  participantsController.clearCooldown.bind(participantsController),
+);
 router.post(
   '/:participantId/kick',
   participantsController.kickParticipant.bind(participantsController),

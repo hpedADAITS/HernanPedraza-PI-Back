@@ -52,6 +52,7 @@ const ackEvents = [
   ['cast_vote', events.handleCastVote],
   ['remove_vote', events.handleRemoveVote],
   ['set_cooldown', events.handleSetCooldown],
+  ['clear_cooldown', events.handleClearCooldown],
   ['kick_participant', events.handleKickParticipant],
   ['ban_participant', events.handleBanParticipant],
   ['set_premium', events.handleSetPremium],

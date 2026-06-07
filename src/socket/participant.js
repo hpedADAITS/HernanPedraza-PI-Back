@@ -121,8 +121,35 @@ const handleSetPremium = async (socket, io, data, callback) => {
   }
 };
 
+const handleClearCooldown = async (socket, io, data, callback) => {
+  try {
+    const { eventId, participantId, userId } = data;
+    const actor = eventActor(socket, userId);
+    if (!eventId || !participantId || !actor) {
+      throw new Error('Missing required fields: eventId, participantId');
+    }
+    if (!isValidId(eventId) || !isValidId(participantId)) {
+      throw new Error('Invalid ID format');
+    }
+    await assertJoinedEvent(socket, eventId);
+    const result = await participantsService.clearParticipantCooldown(
+      participantId, actor,
+    );
+    toEventRoom(io, eventId).emit('participant_cooldown_cleared', {
+      participantId,
+      timestamp: new Date().toISOString(),
+    });
+    logger.info('Cooldown cleared via Socket.IO', { participantId, eventId });
+    ackSuccess(callback, result.participant);
+  } catch (error) {
+    logger.error('Error clearing cooldown via Socket.IO:', error);
+    ackError(callback, error);
+  }
+};
+
 module.exports = {
   handleSetCooldown,
+  handleClearCooldown,
   handleKickParticipant,
   handleBanParticipant,
   handleSetPremium,

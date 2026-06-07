@@ -17,6 +17,7 @@ module.exports = {
   handleCastVote: vote.handleCastVote,
   handleRemoveVote: vote.handleRemoveVote,
   handleSetCooldown: participant.handleSetCooldown,
+  handleClearCooldown: participant.handleClearCooldown,
   handleKickParticipant: participant.handleKickParticipant,
   handleBanParticipant: participant.handleBanParticipant,
   handleSetPremium: participant.handleSetPremium,

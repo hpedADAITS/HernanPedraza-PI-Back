@@ -245,6 +245,33 @@ class ParticipantsController {
     }
   }
 
+  async clearCooldown(req, res, next) {
+    try {
+      const { participantId } = req.params;
+
+      if (!req.user?.userId) {
+        throw new UnauthorizedError(messages.AUTH.UNAUTHORIZED);
+      }
+
+      const result = await participantsService.clearParticipantCooldown(
+        participantId,
+        req.user,
+      );
+
+      this.emitParticipantEvent(result.eventId, 'participant_cooldown_cleared', {
+        participantId: result.participant._id,
+      });
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { participant: result.participant },
+      });
+    } catch (error) {
+      logger.error('Clear cooldown error:', error);
+      next(error);
+    }
+  }
+
   async kickParticipant(req, res, next) {
     try {
       const { participantId } = req.params;
