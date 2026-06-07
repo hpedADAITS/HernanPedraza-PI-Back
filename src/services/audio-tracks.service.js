@@ -15,6 +15,7 @@ const songsService = require('./songs.service');
 const { fingerprintWavStreamed } = require('./audio-recognition/fingerprint');
 const { matchHashes, RamMatcher } = require('./audio-recognition/ram-matcher');
 const { parseWavHeader, TARGET_SAMPLE_RATE } = require('./audio-recognition/wav');
+const musicBrainzService = require('./musicbrainz.service');
 
 // Shared RamMatcher instance for socket-level matching
 const sharedRamMatcher = new RamMatcher();
@@ -141,7 +142,45 @@ class AudioTracksService {
     const tracks = await AudioTrackModel.find({ eventId: eventObjectId })
       .sort({ createdAt: -1 })
       .lean();
-    return tracks.map((track) => this._formatTrack(track));
+
+    const trackIds = tracks.map((t) => t._id);
+    const songCounts = await SongModel.aggregate([
+      {
+        $match: {
+          eventId: eventObjectId,
+          'recognitionMatch.trackId': { $in: trackIds },
+        },
+      },
+      { $group: { _id: '$recognitionMatch.trackId', count: { $sum: 1 } } },
+    ]);
+    const countMap = Object.fromEntries(songCounts.map((r) => [String(r._id), r.count]));
+
+    const enriched = await Promise.all(
+      tracks.map(async (track) => {
+        const formatted = this._formatTrack(track);
+        let musicBrainz = null;
+        if (formatted.musicBrainzRecordingId) {
+          const summary = await musicBrainzService.lookupRecordingSummary(
+            formatted.musicBrainzRecordingId,
+          );
+          if (summary) {
+            musicBrainz = {
+              title: summary.title,
+              artist: summary.artist,
+              coverUrl: summary.coverUrl,
+              metadataSha512: formatted.musicBrainzMetadataSha512,
+            };
+          }
+        }
+        return {
+          ...formatted,
+          musicBrainz,
+          songsAttached: countMap[String(track._id)] || 0,
+        };
+      }),
+    );
+
+    return enriched;
   }
 
   async deleteTrack(eventId, trackId, actor) {

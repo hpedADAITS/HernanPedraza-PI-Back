@@ -146,6 +146,35 @@ class SongsService {
     };
   }
 
+  async assignFingerprintToSong(eventId, songId, trackId, actorUser) {
+    await this._assertSongAdmin(eventId, actorUser);
+    if (!trackId) throw new ValidationError('Audio track ID is required');
+
+    const song = await this._getSongForEvent(songId, eventId);
+    const track = await AudioTrackModel.findOne({ _id: trackId, eventId: song.eventId });
+    if (!track) throw new NotFoundError('Audio track not found');
+
+    song.recognitionMatch = {
+      source: 'fingerprint',
+      trackId: track._id,
+      title: track.title,
+      artist: track.artist,
+      coverUrl: track.coverUrl || null,
+      duration: Number.isFinite(Number(track.duration)) ? Number(track.duration) : null,
+      score: 1.0,
+      matchedOn: 'fingerprint',
+    };
+
+    await song.save();
+    logger.info('Assigned fingerprint to song', {
+      eventId,
+      songId,
+      trackId,
+    });
+
+    return { song: this._formatSong(song) };
+  }
+
   async getQueueForEvent(eventId) {
     const songs = await SongModel.find({
       eventId,

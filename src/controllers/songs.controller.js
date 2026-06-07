@@ -149,6 +149,34 @@ class SongsController {
     }
   }
 
+  async assignFingerprintToSong(req, res, next) {
+    try {
+      const { eventId, songId } = req.params;
+      const { trackId } = req.body || {};
+      const data = await songsService.assignFingerprintToSong(
+        eventId,
+        songId,
+        trackId,
+        req.user,
+      );
+
+      this.emitSongEvent(eventId, 'song_updated', {
+        songId: getSongId(data.song),
+        recognitionMatch: data.song.recognitionMatch || null,
+        status: data.song.status,
+      });
+      await this.emitQueueUpdated(eventId);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      logger.error('Assign fingerprint error:', error);
+      next(error);
+    }
+  }
+
   async getQueue(req, res, next) {
     try {
       const { eventId } = req.params;

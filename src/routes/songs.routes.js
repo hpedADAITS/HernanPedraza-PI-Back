@@ -24,6 +24,10 @@ router.post(
   '/:eventId/:songId/assign-musicbrainz-track',
   songsController.assignMusicBrainzMetadataToTrack.bind(songsController),
 );
+router.post(
+  '/:eventId/:songId/assign-fingerprint',
+  songsController.assignFingerprintToSong.bind(songsController),
+);
 router.get('/:eventId/queue', songsController.getQueue.bind(songsController));
 router.get(
   '/:eventId/pending',

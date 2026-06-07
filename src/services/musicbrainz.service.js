@@ -23,6 +23,47 @@ class MusicBrainzService {
     this.requestTail = Promise.resolve();
   }
 
+  async lookupRecordingSummary(recordingId) {
+    if (!recordingId) return null;
+    const cacheKey = `recording:${recordingId}`;
+    const cached = this._getCached(cacheKey);
+    if (cached !== undefined) return cached;
+    if (this.inFlight.has(cacheKey)) return this.inFlight.get(cacheKey);
+    const lookup = this._lookupRecordingSummary(cacheKey, recordingId);
+    this.inFlight.set(cacheKey, lookup);
+    return lookup;
+  }
+
+  async _lookupRecordingSummary(cacheKey, recordingId) {
+    try {
+      const data = await this._getJson(`/recording/${encodeURIComponent(recordingId)}`, { fmt: 'json' });
+      if (!data) return this._cacheAndReturn(cacheKey, null);
+      const summary = {
+        title: data.title || null,
+        artist: readArtistCredit(data['artist-credit']),
+        coverUrl: null,
+        metadataSha512: null,
+      };
+      if (data.releases?.length) {
+        const releaseId = data.releases[0].id;
+        if (releaseId) {
+          summary.coverUrl = await this._fetchCoverArt(releaseId);
+        }
+      }
+      return this._cacheAndReturn(cacheKey, summary);
+    } catch (error) {
+      logger.debug('lookupRecordingSummary failed', { recordingId, message: error.message });
+      return this._cacheAndReturn(cacheKey, null);
+    } finally {
+      this.inFlight.delete(cacheKey);
+    }
+  }
+
+  _cacheAndReturn(key, value) {
+    this._setCached(key, value);
+    return value;
+  }
+
   async findRecordingMatch(title, artist, totalDuration) {
     const targetTitle = normalizeText(title);
     const targetArtist = normalizeText(artist);
