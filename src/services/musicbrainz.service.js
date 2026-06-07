@@ -115,7 +115,10 @@ class MusicBrainzService {
       this._setCached(cacheKey, recording);
       return recording;
     } catch (error) {
-      logger.warn('MusicBrainz lookup failed', { message: error.message });
+      logger.warn('MusicBrainz lookup failed', {
+        message: error.message,
+        cause: error.cause ? error.cause.code || error.cause.message || String(error.cause) : null,
+      });
       this._setCached(cacheKey, null);
       return null;
     } finally {

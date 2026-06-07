@@ -477,7 +477,10 @@ class SongsService {
       try {
         return await musicBrainzService.findRecordingMatch(title, artist, totalDuration);
       } catch (err) {
-        logger.warn('MusicBrainz lookup failed', { message: err.message });
+        logger.warn('MusicBrainz lookup failed', {
+          message: err.message,
+          cause: err.cause ? err.cause.code || err.cause.message || String(err.cause) : null,
+        });
         return null;
       }
     })();
