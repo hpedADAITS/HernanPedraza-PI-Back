@@ -1,6 +1,6 @@
 process.env.DEBUG_EMAIL = 'true';
 process.env.DEBUG_MODE = 'true';
-process.env.SOCKET_AUTH_DISABLED = 'true';
+delete process.env.SOCKET_AUTH_DISABLED;
 
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
@@ -127,8 +127,9 @@ describe('Socket.IO server integration', () => {
     delete process.env.SOCKET_AUTH_DISABLED;
   });
 
-  async function connectClient() {
+  async function connectClient(token) {
     const client = Client(serverUrl, {
+      auth: token ? { token } : undefined,
       forceNew: true,
       reconnection: false,
       transports: ['polling','websocket'],
@@ -144,8 +145,8 @@ describe('Socket.IO server integration', () => {
     const event = await createEvent(dj.token);
     const participant = await joinEvent(event.id, attendee.body.data.token, 'Listener');
     const broadcasterParticipant = await joinEvent(event.id, attendee.body.data.token, 'Broadcaster');
-    const broadcaster = await connectClient();
-    const listener = await connectClient();
+    const broadcaster = await connectClient(attendee.body.data.token);
+    const listener = await connectClient(attendee.body.data.token);
 
     const listenerJoined = waitForEvent(listener, 'participant_joined');
     listener.emit('join_event', {
@@ -184,20 +185,22 @@ describe('Socket.IO server integration', () => {
     const attendee = await registerUser({ displayName: 'Socket Voter' });
     const event = await createEvent(dj.token);
     const participant = await joinEvent(event.id, attendee.body.data.token, 'Voter');
-    const client = await connectClient();
-    const listener = await connectClient();
+    const attendeeClient = await connectClient(attendee.body.data.token);
+    const djClient = await connectClient(dj.token);
+    const listener = await connectClient(attendee.body.data.token);
 
     listener.emit('join_event', { eventId: event.id, participantId: participant._id, nickname: 'Voter' });
     await waitForEvent(listener, 'participant_joined');
 
     const suggestedEvent = waitForEvent(listener, 'song_suggested');
-    const suggestedAck = await emitAck(client, 'suggest_song', {
+    const suggestedAck = await emitAck(attendeeClient, 'suggest_song', {
       eventId: event.id,
       participantId: participant._id,
       title: 'Socket Song',
       artist: 'Socket Artist',
       totalDuration: 123,
       userId: attendee.body.data.user.id,
+      skipMusicBrainzLookup: true,
     });
     expect(suggestedAck).toMatchObject({ success: true, data: { title: 'Socket Song' } });
     const suggested = await suggestedEvent;
@@ -206,14 +209,14 @@ describe('Socket.IO server integration', () => {
     const approvedEvent = waitForEvent(listener, 'song_approved');
     const queueAfterApprove = waitForEvent(listener, 'queue_updated');
     await expect(
-      emitAck(client, 'approve_song', { eventId: event.id, songId, userId: dj.user.id }),
+      emitAck(djClient, 'approve_song', { eventId: event.id, songId, userId: dj.user.id }),
     ).resolves.toMatchObject({ success: true, data: { status: 'APPROVED' } });
     await expect(approvedEvent).resolves.toMatchObject({ songId: expect.anything(), status: 'APPROVED' });
     await expect(queueAfterApprove).resolves.toMatchObject({ eventId: event.id, queue: expect.any(Array) });
 
     const voteEvent = waitForEvent(listener, 'votes_updated');
     await expect(
-      emitAck(client, 'cast_vote', {
+      emitAck(attendeeClient, 'cast_vote', {
         eventId: event.id,
         songId,
         participantId: participant._id,
@@ -225,7 +228,7 @@ describe('Socket.IO server integration', () => {
 
     const voteRemoved = waitForEvent(listener, 'vote_removed');
     await expect(
-      emitAck(client, 'remove_vote', {
+      emitAck(attendeeClient, 'remove_vote', {
         eventId: event.id,
         songId,
         participantId: participant._id,
@@ -236,13 +239,13 @@ describe('Socket.IO server integration', () => {
 
     const nowPlaying = waitForEvent(listener, 'song_now_playing');
     await expect(
-      emitAck(client, 'send_now', { eventId: event.id, songId, userId: dj.user.id }),
+      emitAck(djClient, 'send_now', { eventId: event.id, songId, userId: dj.user.id }),
     ).resolves.toMatchObject({ success: true, data: { status: 'PLAYING' } });
     await expect(nowPlaying).resolves.toMatchObject({ songId: expect.anything(), status: 'PLAYING' });
 
     const skipped = waitForEvent(listener, 'song_skipped');
     await expect(
-      emitAck(client, 'skip_song', {
+      emitAck(djClient, 'skip_song', {
         eventId: event.id,
         songId,
         reason: 'Socket skip',
@@ -251,16 +254,17 @@ describe('Socket.IO server integration', () => {
     ).resolves.toMatchObject({ success: true, data: { status: 'SKIPPED' } });
     await expect(skipped).resolves.toMatchObject({ songId: expect.anything(), status: 'SKIPPED' });
 
-    const rejectedSuggestion = await emitAck(client, 'suggest_song', {
+    const rejectedSuggestion = await emitAck(attendeeClient, 'suggest_song', {
       eventId: event.id,
       participantId: participant._id,
       title: 'Reject Via Socket',
       artist: 'Socket Artist',
       userId: attendee.body.data.user.id,
+      skipMusicBrainzLookup: true,
     });
     const rejected = waitForEvent(listener, 'song_rejected');
     await expect(
-      emitAck(client, 'reject_song', {
+      emitAck(djClient, 'reject_song', {
         eventId: event.id,
         songId: rejectedSuggestion.data.id,
         reason: 'No thanks',
@@ -271,7 +275,7 @@ describe('Socket.IO server integration', () => {
 
     const cooldown = waitForEvent(listener, 'participant_cooldown');
     await expect(
-      emitAck(client, 'set_cooldown', {
+      emitAck(djClient, 'set_cooldown', {
         eventId: event.id,
         participantId: participant._id,
         durationMs: 30_000,
@@ -283,7 +287,7 @@ describe('Socket.IO server integration', () => {
 
     const premium = waitForEvent(listener, 'participant_premium_updated');
     await expect(
-      emitAck(client, 'set_premium', {
+      emitAck(djClient, 'set_premium', {
         eventId: event.id,
         participantId: participant._id,
         isPremium: true,
@@ -294,7 +298,7 @@ describe('Socket.IO server integration', () => {
 
     const kicked = waitForEvent(listener, 'participant_kicked');
     await expect(
-      emitAck(client, 'kick_participant', {
+      emitAck(djClient, 'kick_participant', {
         eventId: event.id,
         participantId: participant._id,
         reason: 'Socket kick',
@@ -306,7 +310,7 @@ describe('Socket.IO server integration', () => {
     const banTarget = await joinEvent(event.id, attendee.body.data.token, 'Ban Target');
     const banned = waitForEvent(listener, 'participant_banned');
     await expect(
-      emitAck(client, 'ban_participant', {
+      emitAck(djClient, 'ban_participant', {
         eventId: event.id,
         participantId: banTarget._id,
         reason: 'Socket ban',
@@ -319,7 +323,8 @@ describe('Socket.IO server integration', () => {
   });
 
   test('emits a real socket error for invalid join_event payloads', async () => {
-    const client = await connectClient();
+    const attendee = await registerUser({ displayName: 'Invalid Join User' });
+    const client = await connectClient(attendee.body.data.token);
 
     const errorReceived = waitForEvent(client, 'error');
     client.emit('join_event', {

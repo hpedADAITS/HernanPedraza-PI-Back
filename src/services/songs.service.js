@@ -267,7 +267,7 @@ class SongsService {
   }
 
   async skipSong(songId, eventId, reason, userId) {
-    await this._assertSongAdmin(eventId, userId);
+    const context = await this._assertSongAdmin(eventId, userId);
     const song = await this._getSongForEvent(songId, eventId);
 
     /* Validate state transition using state machine */
@@ -275,7 +275,7 @@ class SongsService {
 
     song.status = 'SKIPPED';
     song.skippedAt = new Date();
-    song.skippedBy = userId;
+    song.skippedBy = context?.userId || actorUserId(userId);
     song.skippedReason = reason;
     await song.save();
 
@@ -531,7 +531,7 @@ class SongsService {
   }
 
   async _assertSongAdmin(eventId, actorUser) {
-    await eventPermissionsService.assertSongAdmin(eventId, actorUser);
+    return eventPermissionsService.assertSongAdmin(eventId, actorUser);
   }
 
   // Helper: Get song and validate ownership for a specific event
@@ -545,6 +545,11 @@ class SongsService {
     }
     return song;
   }
+}
+
+function actorUserId(actor) {
+  if (typeof actor === 'string') return actor;
+  return actor?.userId?.toString() || actor?._id?.toString() || actor?.id?.toString() || null;
 }
 
 function normalizeText(value) {

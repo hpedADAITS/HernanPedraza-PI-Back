@@ -31,6 +31,7 @@ const ATTENDEE_USER = {
 };
 
 const authHeader = (token) => ({ Authorization: `Bearer ${token}` });
+const tokenFromLink = (link) => new URLSearchParams(new URL(link).hash.slice(1)).get('token');
 
 const register = (user) => request(app).post('/api/v1/auth/register').send(user);
 
@@ -99,9 +100,10 @@ describe('Event, participant, song and vote integration flow', () => {
 
     expect(url.origin).toBe('https://192.168.1.154:5173');
     expect(url.pathname).toBe(`/dj/microphone/${event.id}`);
+    expect(url.hash).toMatch(/^#token=/);
     expect(url.href).not.toContain('localhost');
 
-    const token = url.searchParams.get('token');
+    const token = tokenFromLink(linkRes.body.data.link);
     const decoded = verifyToken(token);
     expect(decoded).toMatchObject({
       userId: dj.userId,
@@ -112,7 +114,8 @@ describe('Event, participant, song and vote integration flow', () => {
     expect(decoded.exp - decoded.iat).toBe(15 * 60);
 
     await request(app)
-      .post(`/api/v1/events/${event.id}/phone-microphone/connect?token=${encodeURIComponent(token)}`)
+      .post(`/api/v1/events/${event.id}/phone-microphone/connect`)
+      .set(authHeader(token))
       .send({ deviceName: 'Android microphone' })
       .expect(200)
       .expect((res) => {
@@ -159,7 +162,9 @@ describe('Event, participant, song and vote integration flow', () => {
       .get(`/api/v1/events/${event.id}/phone-microphone-link`)
       .set(authHeader(memberRes.body.data.token))
       .expect(200);
-    const decoded = verifyToken(new URL(linkRes.body.data.link).searchParams.get('token'));
+    const url = new URL(linkRes.body.data.link);
+    expect(url.hash).toMatch(/^#token=/);
+    const decoded = verifyToken(tokenFromLink(linkRes.body.data.link));
 
     expect(decoded).toMatchObject({
       userId: owner.userId,
@@ -192,6 +197,7 @@ describe('Event, participant, song and vote integration flow', () => {
 
     expect(url.origin).toBe('http://192.168.1.154:5173');
     expect(url.pathname).toBe(`/dj/microphone/${event.id}`);
+    expect(url.hash).toMatch(/^#token=/);
     expect(url.href).not.toContain('localhost');
   });
 
@@ -208,7 +214,7 @@ describe('Event, participant, song and vote integration flow', () => {
       })
       .expect(403)
       .expect((res) => {
-        expect(res.body.error.message).toBe('Only DJs and admins can create events');
+        expect(res.body.error.message).toBe('Only DJs can create events');
       });
   });
 

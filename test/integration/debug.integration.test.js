@@ -95,13 +95,15 @@ describe('Debug mock accounts', () => {
     let attendeeLoginToken;
 
     for (const account of res.body.data.accounts) {
-      expect(account.email).toMatch(/@Syncrequest\.local$/);
+      const storedEmail = account.email.toLowerCase();
+      expect(storedEmail).toMatch(/@syncrequest\.local$/);
       expect(account.password).toBe('DebugPass123!');
       expect(account.emailRegistered).toBe(true);
       expect(account.token).toEqual(expect.any(String));
 
-      const stored = await UserModel.findOne({ email: account.email });
+      const stored = await UserModel.findOne({ email: storedEmail });
       expect(stored).toMatchObject({
+        email: storedEmail,
         displayName: account.displayName,
         role: account.role,
         emailRegistered: true,
@@ -109,7 +111,7 @@ describe('Debug mock accounts', () => {
       });
 
       const login = await request(app).post('/api/v1/auth/login').send({
-        email: account.email,
+        email: storedEmail,
         password: account.password,
       });
 

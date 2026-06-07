@@ -145,7 +145,7 @@ describe('REST controller Socket.IO broadcasts', () => {
     await songsController.approveSong(
       {
         params: { eventId: event._id.toString(), songId: song._id.toString() },
-        user: { userId: owner._id.toString() },
+        user: { userId: owner._id.toString(), role: 'DJ' },
       },
       res,
       next,
@@ -199,7 +199,7 @@ describe('REST controller Socket.IO broadcasts', () => {
     await songsController.approveSong(
       {
         params: { eventId: event._id.toString(), songId: song._id.toString() },
-        user: { userId: owner._id.toString() },
+        user: { userId: owner._id.toString(), role: 'DJ' },
       },
       res,
       next,

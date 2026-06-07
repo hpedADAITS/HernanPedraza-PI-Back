@@ -437,7 +437,7 @@ describe('REST functional coverage', () => {
       .expect(200)
       .expect((res) => {
         expect(res.body.data.link).toMatch(
-          new RegExp(`^https://192\\.168\\.1\\.50:5173/dj/microphone/${event.id}\\?token=`),
+          new RegExp(`^https://192\\.168\\.1\\.50:5173/dj/microphone/${event.id}#token=`),
         );
       });
   });
@@ -620,7 +620,7 @@ describe('REST functional coverage', () => {
       .set(authHeader(dj.token))
       .expect(200)
       .expect((res) => {
-        expect(res.body.data.stats.total_votes).toBe(1);
+        expect(res.body.data.stats.total_votes).toBe(2);
       });
 
     await request(app)

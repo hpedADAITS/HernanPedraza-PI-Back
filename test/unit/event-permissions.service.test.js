@@ -99,12 +99,20 @@ describe('EventPermissionsService', () => {
       expect(result.isOwner).toBe(true);
     });
 
-    test('should identify DJ role correctly', async () => {
+    test('should identify event DJ member correctly', async () => {
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue({
             _id: 'event-1',
             ownerId: 'other-user',
+          }),
+        }),
+      });
+      EventMemberModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            role: 'DJ',
+            permissions: [],
           }),
         }),
       });
@@ -118,7 +126,7 @@ describe('EventPermissionsService', () => {
       expect(result.isOwner).toBe(false);
     });
 
-    test('should identify ADMIN role correctly', async () => {
+    test('should not treat unrelated DJ role as event DJ', async () => {
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue({
@@ -127,13 +135,18 @@ describe('EventPermissionsService', () => {
           }),
         }),
       });
+      EventMemberModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue(null),
+        }),
+      });
 
       const result = await eventPermissionsService.getContext('event-1', {
         userId: 'dj-user',
         role: 'DJ',
       });
 
-      expect(result.isDj).toBe(true);
+      expect(result.isDj).toBe(false);
     });
 
     test('should fetch member permissions for regular user', async () => {
@@ -280,12 +293,20 @@ describe('EventPermissionsService', () => {
       expect(result).toBeDefined();
     });
 
-    test('should allow DJ to manage event', async () => {
+    test('should allow event DJ member to manage event', async () => {
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue({
             _id: 'event-1',
             ownerId: 'other-user',
+          }),
+        }),
+      });
+      EventMemberModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            role: 'DJ',
+            permissions: [],
           }),
         }),
       });
@@ -341,12 +362,20 @@ describe('EventPermissionsService', () => {
       expect(result).toBeDefined();
     });
 
-    test('should allow DJ to approve/reject songs', async () => {
+    test('should allow event DJ member to approve/reject songs', async () => {
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue({
             _id: 'event-1',
             ownerId: 'other-user',
+          }),
+        }),
+      });
+      EventMemberModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            role: 'DJ',
+            permissions: [],
           }),
         }),
       });

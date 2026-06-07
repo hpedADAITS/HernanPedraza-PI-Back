@@ -63,7 +63,6 @@ class EventPermissionsService {
     if (!userId) return { event, userId: null, role: null, isOwner: false, isDj: false, member: null };
 
     const role = normalizeRole(actor?.role);
-    const isDj = role === 'DJ';
     const isOwner = objectId(event.ownerId)?.toString() === userId.toString();
 
     if (role === null) {
@@ -74,16 +73,15 @@ class EventPermissionsService {
       return { event, userId, role: null, isOwner: false, isDj: false, member: null };
     }
 
-    /* DJs have full event permissions. Event-scoped permission membership
-       only matters for non-DJ users. */
     let member = null;
-    if (!isOwner && !isDj) {
-      const memberQuery = EventMemberModel.findOne({ eventId: event._id, userId });
+    if (!isOwner) {
+      const memberQuery = EventMemberModel.findOne({ eventId: event._id ?? eventOrId, userId });
       member = typeof memberQuery?.select === 'function'
         ? await memberQuery.select('role permissions').lean()
         : null;
     }
 
+    const isDj = isOwner || member?.role === 'DJ';
     return { event, userId, role, isOwner, isDj, member };
   }
 
@@ -97,8 +95,7 @@ class EventPermissionsService {
   isEventDj(context) {
     const result = context.isDj
       || context.isOwner
-      || context.member?.role === 'DJ'
-      || (!context.member && context.role === 'DJ');
+      || context.member?.role === 'DJ';
     logger.info('isEventDj', { isDj: context.isDj, isOwner: context.isOwner, memberRole: context.member?.role, result });
     return result;
   }
@@ -126,7 +123,7 @@ class EventPermissionsService {
   async assertOwner(eventId, actor, message = 'Unauthorized') {
     assertActorRole(actor);
     const context = await this.getContext(eventId, actor);
-    if (context.isDj || context.isOwner) return context;
+    if (this.isEventDj(context)) return context;
     throw new UnauthorizedError(message);
   }
 

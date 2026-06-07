@@ -119,6 +119,10 @@ function read(relativePath) {
   return fs.readFileSync(path.join(__dirname, relativePath), 'utf8');
 }
 
+function readAll(relativePaths) {
+  return relativePaths.map(read).join('\n');
+}
+
 describe('frontend/backend route inventory', () => {
   test.each(ROUTES_USED_BY_FRONTEND)('%s %s is mounted by backend routes', (method, apiPath) => {
     const source = read(routeFileFor(apiPath));
@@ -132,7 +136,13 @@ describe('frontend/backend route inventory', () => {
   });
 
   test.each(WS_SERVER_BROADCASTS)('socket broadcast %s is emitted by backend events', (eventName) => {
-    const source = read('../../src/socket/events.js');
+    const source = readAll([
+      '../../src/socket/audio.js',
+      '../../src/socket/participant.js',
+      '../../src/socket/room.js',
+      '../../src/socket/song.js',
+      '../../src/socket/vote.js',
+    ]);
     expect(source).toContain(`'${eventName}'`);
   });
 });

@@ -102,18 +102,11 @@ describe('ParticipantsService - Real Implementation Tests', () => {
     test('should kick participant and set reason', async () => {
       const { event, user } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
-      const adminUser = await UserModel.create({
-        email: `admin-${Date.now()}@test.com`,
-        passwordHash: 'hashed',
-        displayName: 'Admin',
-        role: 'DJ',
-        isActive: true,
-      });
 
       const result = await participantsService.kickParticipant(
         participant._id.toString(),
         'Violation of rules',
-        { userId: adminUser._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' }
       );
 
       expect(result.action).toBe('participant_kicked');
@@ -121,7 +114,7 @@ describe('ParticipantsService - Real Implementation Tests', () => {
       // Verify participant was updated
       const updatedParticipant = await ParticipantModel.findById(participant._id);
       expect(updatedParticipant.kickedAt).toBeDefined();
-      expect(updatedParticipant.kickedBy.toString()).toBe(adminUser._id.toString());
+      expect(updatedParticipant.kickedBy.toString()).toBe(user._id.toString());
     });
 
     test('should throw NotFoundError when participant not found', async () => {
@@ -134,20 +127,13 @@ describe('ParticipantsService - Real Implementation Tests', () => {
 
   describe('banParticipant', () => {
     test('should ban participant permanently', async () => {
-      const { event } = await createTestEvent();
+      const { event, user } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
-      const adminUser = await UserModel.create({
-        email: `admin-${Date.now()}@test.com`,
-        passwordHash: 'hashed',
-        displayName: 'Admin',
-        role: 'DJ',
-        isActive: true,
-      });
 
       const result = await participantsService.banParticipant(
         participant._id.toString(),
         'Repeated violations',
-        { userId: adminUser._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' }
       );
 
       expect(result.action).toBe('participant_banned');
@@ -162,21 +148,14 @@ describe('ParticipantsService - Real Implementation Tests', () => {
 
   describe('setParticipantCooldown', () => {
     test('should set cooldown period', async () => {
-      const { event } = await createTestEvent();
+      const { event, user } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
-      const adminUser = await UserModel.create({
-        email: `admin-${Date.now()}@test.com`,
-        passwordHash: 'hashed',
-        displayName: 'Admin',
-        role: 'DJ',
-        isActive: true,
-      });
 
       const result = await participantsService.setParticipantCooldown(
         participant._id.toString(),
         3600000, // 1 hour
         'Spam',
-        { userId: adminUser._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' }
       );
 
       expect(result.action).toBe('participant_cooldown');
@@ -265,20 +244,13 @@ describe('ParticipantsService - Real Implementation Tests', () => {
 
   describe('setPremium', () => {
     test('should set premium status', async () => {
-      const { event } = await createTestEvent();
+      const { event, user } = await createTestEvent();
       const participant = await createTestParticipant(event._id, { isPremium: false });
-      const adminUser = await UserModel.create({
-        email: `admin-${Date.now()}@test.com`,
-        passwordHash: 'hashed',
-        displayName: 'Admin',
-        role: 'DJ',
-        isActive: true,
-      });
 
       const result = await participantsService.setPremium(
         participant._id.toString(),
         true,
-        { userId: adminUser._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' }
       );
 
       // Verify premium was set

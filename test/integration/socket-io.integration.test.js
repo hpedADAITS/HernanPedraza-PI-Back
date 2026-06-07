@@ -54,6 +54,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
   let testDj;
   let testUser;
   let testActor;
+  let testDjActor;
 
   /**
     * Setup: Create test data before each test
@@ -84,6 +85,10 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
     testActor = {
       userId: testUser._id.toString(),
       role: 'ATTENDEE',
+    };
+    testDjActor = {
+      userId: testDj._id.toString(),
+      role: 'DJ',
     };
 
     // Create test event with all required fields
@@ -204,7 +209,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       const updated = await songsService.approveSong(
         testSong._id,
         testEvent._id,
-        testDj._id
+        testDjActor
       );
 
       expect(updated.status).toBe('APPROVED');
@@ -219,7 +224,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       await songsService.approveSong(
         testSong._id,
         testEvent._id,
-        testDj._id
+        testDjActor
       );
 
       // Then reject
@@ -227,7 +232,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         testSong._id,
         testEvent._id,
         'Not suitable',
-        testDj._id
+        testDjActor
       );
 
       expect(updated.status).toBe('REJECTED');
@@ -243,7 +248,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         testSong._id,
         testEvent._id,
         'Wrong song',
-        new (require('mongoose')).Types.ObjectId()
+        testDjActor
       );
 
       expect(updated.status).toBe('SKIPPED');
@@ -260,7 +265,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         songsService.approveSong(
           testSong._id,
           testEvent._id,
-          testDj._id
+          testDjActor
         )
       ).rejects.toThrow();
     });
@@ -532,7 +537,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       const approved = await songsService.approveSong(
         suggested._id,
         testEvent._id,
-        testDj._id
+        testDjActor
       );
       expect(approved.status).toBe('APPROVED');
 
@@ -547,7 +552,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       expect(song.voteScore).toBe(1);
 
       // 4. DJ plays
-      const playing = await songsService.sendNow(suggested._id, testEvent._id, testDj._id);
+      const playing = await songsService.sendNow(suggested._id, testEvent._id, testDjActor);
       expect(playing.status).toBe('PLAYING');
 
       // 5. Verify final state
