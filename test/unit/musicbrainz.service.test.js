@@ -81,6 +81,55 @@ describe('musicbrainz service', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
+  test('serializes concurrent uncached requests through one limiter', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ recordings: [] }) });
+
+    const service = loadService();
+    const first = service.findRecordingMatch('Song A', 'Artist A', 180);
+    const second = service.findRecordingMatch('Song B', 'Artist B', 180);
+    await Promise.resolve();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    await first;
+    await Promise.resolve();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(1499);
+    await Promise.resolve();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(1);
+    await Promise.resolve();
+    await second;
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('skips placeholder metadata without calling MusicBrainz', async () => {
+    global.fetch = jest.fn();
+
+    await expect(loadService().findRecordingMatch(
+      'thatsongthatgoeswawa',
+      'Skrillex',
+      180,
+    )).resolves.toBeNull();
+
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('backs off after transport failures', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    global.fetch = jest.fn().mockRejectedValue(new TypeError('fetch failed'));
+
+    const service = loadService();
+    await expect(service.findRecordingMatch('Song A', 'Artist A', 180)).resolves.toBeNull();
+    await expect(service.findRecordingMatch('Song B', 'Artist B', 180)).resolves.toBeNull();
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   test('returns null when MusicBrainz is unavailable', async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('offline'));
 

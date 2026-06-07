@@ -8,8 +8,9 @@ const COVER_ART_TIMEOUT_MS = 3000;
 const COVER_ART_REQUEST_INTERVAL_MS = 800;
 const MAX_CACHE_SIZE = 250;
 const MIN_SCORE = 0.72;
-const MAX_REQUESTS_PER_SECOND = 1.5;
+const MAX_REQUESTS_PER_SECOND = 1;
 const MIN_REQUEST_INTERVAL_MS = 1500;
+const FAILURE_BACKOFF_MS = 60 * 1000;
 const USER_AGENT =
   process.env.MUSICBRAINZ_USER_AGENT ||
   'Syncrequest Student Project (github.com/hpedadaits/hernanpedraza-pi-back)';
@@ -21,6 +22,7 @@ class MusicBrainzService {
     this.lastRequestAt = 0;
     this.lastCoverArtAt = 0;
     this.requestTail = Promise.resolve();
+    this.unavailableUntil = 0;
   }
 
   async lookupRecordingSummary(recordingId) {
@@ -68,6 +70,10 @@ class MusicBrainzService {
     const targetTitle = normalizeText(title);
     const targetArtist = normalizeText(artist);
     if (!targetTitle || !targetArtist || typeof fetch !== 'function') return null;
+    if (shouldSkipLookup(title) || shouldSkipLookup(artist)) {
+      logger.info('MusicBrainz lookup skipped for placeholder metadata', { title, artist });
+      return null;
+    }
 
     const cacheKey = `${targetTitle}|${targetArtist}|${Math.round(Number(totalDuration) || 0)}`;
     const cached = this._getCached(cacheKey);
@@ -128,6 +134,8 @@ class MusicBrainzService {
 
   async _getJson(path, params) {
     const run = this.requestTail.then(async () => {
+      if (Date.now() < this.unavailableUntil) throw new Error('MusicBrainz backoff active');
+
       const waitMs = Math.max(0, MIN_REQUEST_INTERVAL_MS - (Date.now() - this.lastRequestAt));
       if (waitMs) await sleep(waitMs);
       this.lastRequestAt = Date.now();
@@ -149,9 +157,16 @@ class MusicBrainzService {
           },
           signal: controller.signal,
         });
-        if (!response.ok) throw new Error(`MusicBrainz ${response.status}`);
+        if (!response.ok) {
+          const error = new Error(`MusicBrainz ${response.status}`);
+          error.status = response.status;
+          throw error;
+        }
         logger.info('MusicBrainz API response OK', { path, status: response.status });
         return response.json();
+      } catch (error) {
+        if (isBackoffError(error)) this.unavailableUntil = Date.now() + FAILURE_BACKOFF_MS;
+        throw error;
       } finally {
         clearTimeout(timeout);
       }
@@ -238,6 +253,19 @@ class MusicBrainzService {
 
 function escapeQuery(value) {
   return String(value || '').replace(/["\\]/g, ' ');
+}
+
+function shouldSkipLookup(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized.includes('PLACEHOLDER') || normalized.includes('BADLY_WRITTEN');
+}
+
+function isBackoffError(error) {
+  return error?.name === 'AbortError'
+    || error?.message === 'fetch failed'
+    || error?.message === 'MusicBrainz backoff active'
+    || error?.status === 429
+    || error?.status >= 500;
 }
 
 function readArtistCredit(credits) {
