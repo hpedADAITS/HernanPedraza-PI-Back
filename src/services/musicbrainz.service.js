@@ -1,3 +1,4 @@
+const https = require('https');
 const { logger } = require('../utils');
 
 const BASE_URL = 'https://musicbrainz.org/ws/2';
@@ -14,6 +15,7 @@ const MIN_REQUEST_INTERVAL_MS = 1550;
 const FAILURE_BACKOFF_MS = 60 * 1000;
 const MAX_TRANSPORT_ATTEMPTS = 2;
 const RECORDING_SEARCH_LIMIT = '4';
+const MAX_JSON_RESPONSE_BYTES = 2 * 1024 * 1024;
 const USER_AGENT =
   process.env.MUSICBRAINZ_USER_AGENT ||
   'Syncrequest Student Project (github.com/hpedadaits/hernanpedraza-pi-back)';
@@ -81,7 +83,7 @@ class MusicBrainzService {
   async findRecordingMatches(title, artist, totalDuration) {
     const targetTitle = normalizeText(title);
     const targetArtist = normalizeText(artist);
-    if (!targetTitle || !targetArtist || typeof fetch !== 'function') return [];
+    if (!targetTitle || !targetArtist) return [];
     if (shouldSkipLookup(title) || shouldSkipLookup(artist)) {
       logger.info('MusicBrainz lookup skipped for placeholder metadata', { title, artist });
       return [];
@@ -171,34 +173,18 @@ class MusicBrainzService {
     if (waitMs) await sleep(waitMs);
     this.lastRequestAt = Date.now();
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    try {
-      const url = new URL(`${BASE_URL}${path}`);
-      Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-      logger.info('MusicBrainz API request', {
-        path,
-        attempt,
-        maxRequestsPerSecond: MAX_REQUESTS_PER_SECOND,
-        minIntervalMs: MIN_REQUEST_INTERVAL_MS,
-      });
-      const response = await fetch(url, {
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': USER_AGENT,
-        },
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        const error = new Error(`MusicBrainz ${response.status}`);
-        error.status = response.status;
-        throw error;
-      }
-      logger.info('MusicBrainz API response OK', { path, attempt, status: response.status });
-      return response.json();
-    } finally {
-      clearTimeout(timeout);
-    }
+    const url = new URL(`${BASE_URL}${path}`);
+    Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+    logger.info('MusicBrainz API request', {
+      path,
+      attempt,
+      transport: 'https',
+      maxRequestsPerSecond: MAX_REQUESTS_PER_SECOND,
+      minIntervalMs: MIN_REQUEST_INTERVAL_MS,
+    });
+    const { status, data } = await requestJson(url);
+    logger.info('MusicBrainz API response OK', { path, attempt, status });
+    return data;
   }
 
   async _fetchCoverArt(releaseId) {
@@ -300,15 +286,68 @@ function isBackoffError(error) {
   return error?.name === 'AbortError'
     || error?.message === 'fetch failed'
     || error?.message === 'MusicBrainz backoff active'
+    || isRetryableTransportError(error)
     || error?.status === 429
     || error?.status >= 500;
 }
 
 function isRetryableTransportError(error) {
   return error?.message === 'fetch failed'
+    || error?.message === 'socket hang up'
+    || error?.code === 'ECONNRESET'
+    || error?.code === 'ETIMEDOUT'
+    || error?.code === 'UND_ERR_SOCKET'
     || error?.cause?.code === 'ECONNRESET'
     || error?.cause?.code === 'ETIMEDOUT'
     || error?.cause?.code === 'UND_ERR_SOCKET';
+}
+
+function requestJson(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, {
+      method: 'GET',
+      family: 4,
+      agent: false,
+      timeout: FETCH_TIMEOUT_MS,
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': USER_AGENT,
+      },
+    }, (res) => {
+      const chunks = [];
+      let totalBytes = 0;
+      res.on('data', (chunk) => {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_JSON_RESPONSE_BYTES) {
+          req.destroy(new Error('MusicBrainz response too large'));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      res.on('end', () => {
+        const status = res.statusCode || 0;
+        if (status < 200 || status >= 300) {
+          const error = new Error(`MusicBrainz ${status}`);
+          error.status = status;
+          reject(error);
+          return;
+        }
+        try {
+          resolve({ status, data: JSON.parse(Buffer.concat(chunks).toString('utf8')) });
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+
+    req.on('timeout', () => {
+      const error = new Error('MusicBrainz request timeout');
+      error.name = 'AbortError';
+      req.destroy(error);
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 function readArtistCredit(credits) {
