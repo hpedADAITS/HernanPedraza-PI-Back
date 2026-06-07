@@ -94,7 +94,7 @@ class SongsController {
     try {
       const { eventId } = req.params;
       const data = songsSchema.parseSuggestSong(req.body);
-      const match = await songsService.lookupMusicBrainz(
+      const matches = await songsService.lookupMusicBrainz(
         eventId,
         data.participantId,
         data.title,
@@ -105,7 +105,7 @@ class SongsController {
 
       res.status(httpStatus.OK).json({
         success: true,
-        data: { match },
+        data: { match: matches[0] || null, matches },
       });
     } catch (error) {
       logger.error('MusicBrainz lookup error:', error);

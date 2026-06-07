@@ -3,14 +3,16 @@ const { logger } = require('../utils');
 const BASE_URL = 'https://musicbrainz.org/ws/2';
 const COVER_ART_BASE_URL = 'https://coverartarchive.org';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const FETCH_TIMEOUT_MS = 2500;
+const FETCH_TIMEOUT_MS = 8000;
 const COVER_ART_TIMEOUT_MS = 3000;
 const COVER_ART_REQUEST_INTERVAL_MS = 800;
 const MAX_CACHE_SIZE = 250;
 const MIN_SCORE = 0.72;
+const MIN_CANDIDATE_SCORE = 0.35;
 const MAX_REQUESTS_PER_SECOND = 1;
-const MIN_REQUEST_INTERVAL_MS = 1500;
+const MIN_REQUEST_INTERVAL_MS = 1550;
 const FAILURE_BACKOFF_MS = 60 * 1000;
+const RECORDING_SEARCH_LIMIT = '4';
 const USER_AGENT =
   process.env.MUSICBRAINZ_USER_AGENT ||
   'Syncrequest Student Project (github.com/hpedadaits/hernanpedraza-pi-back)';
@@ -67,66 +69,68 @@ class MusicBrainzService {
   }
 
   async findRecordingMatch(title, artist, totalDuration) {
+    const matches = await this.findRecordingMatches(title, artist, totalDuration);
+    const match = matches[0] || null;
+    if (!match?.releaseId) return match;
+
+    const coverUrl = await this._fetchCoverArt(match.releaseId);
+    return coverUrl ? { ...match, coverUrl } : match;
+  }
+
+  async findRecordingMatches(title, artist, totalDuration) {
     const targetTitle = normalizeText(title);
     const targetArtist = normalizeText(artist);
-    if (!targetTitle || !targetArtist || typeof fetch !== 'function') return null;
+    if (!targetTitle || !targetArtist || typeof fetch !== 'function') return [];
     if (shouldSkipLookup(title) || shouldSkipLookup(artist)) {
       logger.info('MusicBrainz lookup skipped for placeholder metadata', { title, artist });
-      return null;
+      return [];
     }
 
-    const cacheKey = `${targetTitle}|${targetArtist}|${Math.round(Number(totalDuration) || 0)}`;
+    const cacheKey = `matches:${targetTitle}|${targetArtist}|${Math.round(Number(totalDuration) || 0)}`;
     const cached = this._getCached(cacheKey);
     if (cached !== undefined) {
-      logger.info('MusicBrainz cache hit', { title, artist, result: summarizeMatch(cached) });
+      logger.info('MusicBrainz cache hit', { title, artist, results: cached.map(summarizeMatch) });
       return cached;
     }
     if (this.inFlight.has(cacheKey)) return this.inFlight.get(cacheKey);
 
-    const lookup = this._lookupRecordingMatch(cacheKey, title, artist, targetTitle, targetArtist, totalDuration);
+    const lookup = this._lookupRecordingMatches(cacheKey, title, artist, targetTitle, targetArtist, totalDuration);
     this.inFlight.set(cacheKey, lookup);
     return lookup;
   }
 
-  async _lookupRecordingMatch(cacheKey, title, artist, targetTitle, targetArtist, totalDuration) {
+  async _lookupRecordingMatches(cacheKey, title, artist, targetTitle, targetArtist, totalDuration) {
     try {
       logger.info('MusicBrainz lookup started', { title, artist, totalDuration });
       const data = await this._getJson('/recording', {
-        query: `recording:"${escapeQuery(title)}" AND artist:"${escapeQuery(artist)}"`,
-        limit: '5',
+        query: buildRecordingSearchQuery(title, artist),
+        limit: RECORDING_SEARCH_LIMIT,
         offset: '0',
         fmt: 'json',
       });
       const recordings = data?.recordings || [];
+      const matches = this._recordingCandidates(recordings, targetTitle, targetArtist, totalDuration);
       logger.info('MusicBrainz lookup returned candidates', {
         title,
         artist,
         count: recordings.length,
         candidates: recordings.map(summarizeRecording),
       });
-      const recording = this._bestRecording(recordings, targetTitle, targetArtist, totalDuration);
-      if (!recording) {
+      if (!matches.length) {
         logger.info('MusicBrainz lookup found no acceptable match', { title, artist });
-        this._setCached(cacheKey, null);
-        return null;
+        this._setCached(cacheKey, []);
+        return [];
       }
-      const releaseId = recording.releaseId;
-      if (releaseId) {
-        const coverUrl = await this._fetchCoverArt(releaseId);
-        if (coverUrl) {
-          recording.coverUrl = coverUrl;
-        }
-      }
-      logger.info('MusicBrainz lookup selected match', { title, artist, result: summarizeMatch(recording) });
-      this._setCached(cacheKey, recording);
-      return recording;
+      logger.info('MusicBrainz lookup selected matches', { title, artist, results: matches.map(summarizeMatch) });
+      this._setCached(cacheKey, matches);
+      return matches;
     } catch (error) {
       logger.warn('MusicBrainz lookup failed', {
         message: error.message,
         cause: error.cause ? error.cause.code || error.cause.message || String(error.cause) : null,
       });
-      this._setCached(cacheKey, null);
-      return null;
+      this._setCached(cacheKey, []);
+      return [];
     } finally {
       this.inFlight.delete(cacheKey);
     }
@@ -205,32 +209,36 @@ class MusicBrainzService {
     }
   }
 
-  _bestRecording(recordings, targetTitle, targetArtist, totalDuration) {
-    let best = null;
-    for (const recording of recordings) {
-      const artist = readArtistCredit(recording['artist-credit']);
-      const titleScore = similarity(targetTitle, normalizeText(recording.title));
-      const artistScore = similarity(targetArtist, normalizeText(artist));
-      const durationScore = durationSimilarity(totalDuration, recording.length);
-      const mbScore = Math.min(Number(recording.score) || 0, 100) / 100;
-      const score = (titleScore * 0.45) + (artistScore * 0.35) + (mbScore * 0.15) + (durationScore * 0.05);
+  _recordingCandidates(recordings, targetTitle, targetArtist, totalDuration) {
+    return recordings
+      .map((recording) => this._formatRecordingCandidate(recording, targetTitle, targetArtist, totalDuration))
+      .filter((recording) => recording && recording.score >= MIN_CANDIDATE_SCORE)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, Number(RECORDING_SEARCH_LIMIT));
+  }
 
-      if (score < MIN_SCORE || (best && score <= best.score)) continue;
-      best = {
-        source: 'musicbrainz',
-        recordingId: recording.id || null,
-        releaseId: readFirstReleaseId(recording),
-        title: recording.title,
-        artist,
-        coverUrl: null,
-        duration: Number.isFinite(Number(recording.length)) && Number(recording.length) > 0
-          ? Math.round(Number(recording.length) / 1000)
-          : null,
-        score: Number(score.toFixed(3)),
-        matchedOn: titleScore >= 0.86 && artistScore >= 0.72 ? 'title_artist' : 'title',
-      };
-    }
-    return best;
+  _formatRecordingCandidate(recording, targetTitle, targetArtist, totalDuration) {
+    const artist = readArtistCredit(recording['artist-credit']);
+    const titleScore = similarity(targetTitle, normalizeText(recording.title));
+    const artistScore = similarity(targetArtist, normalizeText(artist));
+    const durationScore = durationSimilarity(totalDuration, recording.length);
+    const mbScore = Math.min(Number(recording.score) || 0, 100) / 100;
+    const score = (titleScore * 0.45) + (artistScore * 0.35) + (mbScore * 0.15) + (durationScore * 0.05);
+
+    if (score < MIN_SCORE && mbScore < 0.9) return null;
+    return {
+      source: 'musicbrainz',
+      recordingId: recording.id || null,
+      releaseId: readFirstReleaseId(recording),
+      title: recording.title,
+      artist,
+      coverUrl: null,
+      duration: Number.isFinite(Number(recording.length)) && Number(recording.length) > 0
+        ? Math.round(Number(recording.length) / 1000)
+        : null,
+      score: Number(score.toFixed(3)),
+      matchedOn: titleScore >= 0.86 && artistScore >= 0.72 ? 'title_artist' : 'title',
+    };
   }
 
   _getCached(key) {
@@ -251,8 +259,15 @@ class MusicBrainzService {
   }
 }
 
-function escapeQuery(value) {
-  return String(value || '').replace(/["\\]/g, ' ');
+function buildRecordingSearchQuery(title, artist) {
+  return `recording:(${escapeSearchTerm(title)}) AND artist:(${escapeSearchTerm(artist)})`;
+}
+
+function escapeSearchTerm(value) {
+  return String(value || '')
+    .replace(/[()[\]{}^~*?:\\/+\-!|&"]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function shouldSkipLookup(value) {

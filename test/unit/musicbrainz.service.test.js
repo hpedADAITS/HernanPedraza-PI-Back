@@ -57,7 +57,7 @@ describe('musicbrainz service', () => {
     expect(options.headers['User-Agent']).toContain('github.com/hpedadaits/hernanpedraza-pi-back');
   });
 
-  test('spaces uncached requests by at least 1.5 seconds', async () => {
+  test('spaces uncached requests by more than 1.5 seconds', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ recordings: [] }) });
@@ -71,7 +71,7 @@ describe('musicbrainz service', () => {
     await Promise.resolve();
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
-    jest.advanceTimersByTime(1499);
+    jest.advanceTimersByTime(1549);
     await Promise.resolve();
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
@@ -96,7 +96,7 @@ describe('musicbrainz service', () => {
     await Promise.resolve();
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
-    jest.advanceTimersByTime(1499);
+    jest.advanceTimersByTime(1549);
     await Promise.resolve();
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
@@ -106,12 +106,37 @@ describe('musicbrainz service', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
+  test('maps mocked MusicBrainz search candidates for attendee typos', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        recordings: [{
+          id: 'mb-recording-1',
+          title: 'Bangarang',
+          score: 100,
+          length: 215000,
+          'artist-credit': [{ artist: { name: 'Skrillex' } }],
+        }],
+      }),
+    });
+
+    const matches = await loadService().findRecordingMatches('thatsongthatgoeswawa', 'Skrillex', 180);
+
+    expect(matches).toEqual([expect.objectContaining({
+      source: 'musicbrainz',
+      recordingId: 'mb-recording-1',
+      title: 'Bangarang',
+      artist: 'Skrillex',
+    })]);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   test('skips placeholder metadata without calling MusicBrainz', async () => {
     global.fetch = jest.fn();
 
     await expect(loadService().findRecordingMatch(
-      'thatsongthatgoeswawa',
-      'Skrillex',
+      'TITLE_PLACEHOLDER',
+      'ARTIST_PLACEHOLDER_ATENDEE_SONG_BADLY_WRITTEN',
       180,
     )).resolves.toBeNull();
 

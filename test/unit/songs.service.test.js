@@ -240,6 +240,38 @@ describe('SongsService - Real Implementation Tests', () => {
     });
   });
 
+  describe('lookupMusicBrainz', () => {
+    test('throttles repeated attendee lookups before MusicBrainz', async () => {
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const actor = { userId: participant.userId.toString(), role: 'ATTENDEE' };
+      const findRecordingMatches = jest
+        .spyOn(musicBrainzService, 'findRecordingMatches')
+        .mockResolvedValue([{ source: 'musicbrainz', title: 'Song', artist: 'Artist', score: 1 }]);
+
+      const first = await songsService.lookupMusicBrainz(
+        event._id.toString(),
+        participant._id.toString(),
+        'Song',
+        'Artist',
+        undefined,
+        actor,
+      );
+      const second = await songsService.lookupMusicBrainz(
+        event._id.toString(),
+        participant._id.toString(),
+        'Song',
+        'Artist',
+        undefined,
+        actor,
+      );
+
+      expect(first).toHaveLength(1);
+      expect(second).toEqual([]);
+      expect(findRecordingMatches).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('getQueueForEvent', () => {
     test('should return sorted queue with positions', async () => {
       const { event } = await createTestEvent();

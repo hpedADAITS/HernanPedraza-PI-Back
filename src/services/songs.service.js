@@ -13,6 +13,9 @@ const eventPermissionsService = require('./event-permissions.service');
 const musicBrainzService = require('./musicbrainz.service');
 const { decryptCoverUrl } = require('./cover-url-crypto');
 
+const MUSICBRAINZ_LOOKUP_THROTTLE_MS = 1550;
+const musicBrainzLookupThrottle = new Map();
+
 class SongsService {
   async suggestSong(eventId, participantId, title, artist, totalDuration, actorUser, options = {}) {
     await participantsService.assertParticipantSession(
@@ -64,6 +67,11 @@ class SongsService {
       actorUser,
       { checkCooldown: true },
     );
+    if (isMusicBrainzLookupThrottled(eventId, participantId)) {
+      logger.info('Attendee MusicBrainz lookup throttled', { eventId, participantId });
+      return [];
+    }
+    markMusicBrainzLookup(eventId, participantId);
 
     logger.info('Attendee MusicBrainz confirmation lookup requested', {
       eventId,
@@ -72,13 +80,13 @@ class SongsService {
       artist,
       totalDuration,
     });
-    const match = await musicBrainzService.findRecordingMatch(title, artist, totalDuration);
+    const matches = await musicBrainzService.findRecordingMatches(title, artist, totalDuration);
     logger.info('Attendee MusicBrainz confirmation lookup completed', {
       eventId,
       participantId,
-      result: match || null,
+      results: matches,
     });
-    return match;
+    return matches;
   }
 
   async getMusicBrainzMatchCandidates(eventId, songId, actorUser) {
@@ -680,3 +688,17 @@ function levenshtein(a, b) {
 }
 
 module.exports = new SongsService();
+
+function isMusicBrainzLookupThrottled(eventId, participantId) {
+  const key = musicBrainzLookupKey(eventId, participantId);
+  const lastLookupAt = musicBrainzLookupThrottle.get(key) || 0;
+  return Date.now() - lastLookupAt < MUSICBRAINZ_LOOKUP_THROTTLE_MS;
+}
+
+function markMusicBrainzLookup(eventId, participantId) {
+  musicBrainzLookupThrottle.set(musicBrainzLookupKey(eventId, participantId), Date.now());
+}
+
+function musicBrainzLookupKey(eventId, participantId) {
+  return `${eventId}:${participantId}`;
+}
