@@ -4,11 +4,12 @@
   "description": "Backend for Syncrequest - Real-time collaborative music voting platform",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node --max-old-space-size=512 src/index.js",
     "dev": "nodemon src/index.js",
     "seed": "node scripts/populate.js",
     "populate": "node scripts/populate.js",
     "refingerprint": "node scripts/refingerprint-audio-tracks.js",
+    "measure:fingerprint": "node --expose-gc --max-old-space-size=512 scripts/measure-fingerprint-resource.js",
     "test": "jest --detectOpenHandles",
     "test:unit": "jest test/unit --detectOpenHandles",
     "test:integration": "jest test/integration --detectOpenHandles",

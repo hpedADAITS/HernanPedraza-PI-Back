@@ -76,7 +76,6 @@ defined at the top of each module and (deliberately) not centralised.
 
 | Constant | Value | Effect |
 |----------|-------|--------|
-| `MAX_MATCH_HASHES` | `1200` | Cap on query hashes. Bounds DB round-trips and CPU per match. |
 | `MIN_MATCH_SCORE` | `4` | Absolute score threshold. Matches below this are rejected outright. Prevents noise/typos from producing matches. |
 
 ### RAM matcher memory budget (`ram-matcher.js`)
@@ -88,7 +87,7 @@ limit, and keep the in-memory index bounded.
 | Constant | Value | Effect |
 |----------|-------|--------|
 | `MAX_TRACK_HASHES` | `100_000` | Tracks with more hashes are skipped on load. ~3-7 min of audio. |
-| `MAX_INDEXED_HASHES_PER_EVENT` | `200_000` | Soft cap (logged). ~6 MB JSON, ~10 MB in-memory. |
+| `MAX_INDEXED_HASHES_PER_EVENT` | `200_000` | Hard cap while building the in-memory index. ~6 MB JSON, ~10 MB in-memory. |
 | `MAX_CACHED_EVENTS` | `2` | LRU eviction. Two events held in RAM at once ≈ 20 MB. |
 
 ### Streaming (`streaming.js`)
@@ -99,6 +98,8 @@ limit, and keep the in-memory index bounded.
 | `MAX_HASH_ENTRIES` | `100_000` | Soft cap on the hash map. Same LRU-style truncation. |
 | `MAX_BUFFER_SAMPLES` | `80_000` | Backpressure on the live path. If the input buffer exceeds 5 seconds worth of samples, oldest samples are dropped. |
 | `MAX_AUDIO_SECONDS` (in `fingerprint.js`) | `600` | Reject uploads > 10 min at the source. |
+| `keepHashHistory: false` (socket path) | recent 10 windows | Live matching keeps only the windows needed to create new hash pairs; upload fingerprinting keeps full de-duplication history up to the upload cap. |
+| `MAX_LIVE_MATCH_HASHES` (in `socket/audio.js`) | `2000` | Caps per-update live match CPU if a client sends an oversized chunk. |
 
 ## One matching path
 

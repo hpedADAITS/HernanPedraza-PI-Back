@@ -12,6 +12,18 @@ router.post(
   '/:eventId/suggest',
   songsController.suggestSong.bind(songsController),
 );
+router.post(
+  '/:eventId/lookup-musicbrainz',
+  songsController.lookupMusicBrainz.bind(songsController),
+);
+router.get(
+  '/:eventId/:songId/musicbrainz-match-candidates',
+  songsController.getMusicBrainzMatchCandidates.bind(songsController),
+);
+router.post(
+  '/:eventId/:songId/assign-musicbrainz-track',
+  songsController.assignMusicBrainzMetadataToTrack.bind(songsController),
+);
 router.get('/:eventId/queue', songsController.getQueue.bind(songsController));
 router.get(
   '/:eventId/pending',

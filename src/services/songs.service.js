@@ -6,14 +6,14 @@ const {
 } = require('../models/schema');
 const crypto = require('crypto');
 const { logger } = require('../utils');
-const { ForbiddenError, NotFoundError } = require('../errors');
+const { ForbiddenError, NotFoundError, ValidationError } = require('../errors');
 const { validateTransition } = require('../utils/song-state-machine');
 const participantsService = require('./participants.service');
 const eventPermissionsService = require('./event-permissions.service');
 const musicBrainzService = require('./musicbrainz.service');
 
 class SongsService {
-  async suggestSong(eventId, participantId, title, artist, totalDuration, actorUser) {
+  async suggestSong(eventId, participantId, title, artist, totalDuration, actorUser, options = {}) {
     await participantsService.assertParticipantSession(
       participantId,
       eventId,
@@ -25,32 +25,125 @@ class SongsService {
     const participant = await participantsService.getParticipantById(participantId);
     const isPremiumSuggestion = participant?.isPremium || false;
 
-    const recognitionMatch = await this._findRecognitionMatch(
+    const recognitionMatch = await this._resolveRecognitionMatch(
       eventId,
       title,
       artist,
       totalDuration,
+      options,
     );
     const resolvedDuration = Number.isFinite(Number(totalDuration))
       ? Number(totalDuration)
       : recognitionMatch?.duration ?? undefined;
 
-    const song = new SongModel({
+    const songData = {
       eventId,
       title,
       artist,
-      recognitionMatch,
       requestedBy: participantId,
       status: 'PENDING',
       isPremiumSuggestion,
       sortKey: `${Date.now()}_${crypto.randomUUID()}`,
       totalDuration: resolvedDuration,
-    });
+    };
+    if (recognitionMatch) songData.recognitionMatch = recognitionMatch;
+
+    const song = new SongModel(songData);
 
     await song.save();
     logger.info(`Song suggested: ${title} by ${artist}`);
 
     return this._formatSong(song);
+  }
+
+  async lookupMusicBrainz(eventId, participantId, title, artist, totalDuration, actorUser) {
+    await participantsService.assertParticipantSession(
+      participantId,
+      eventId,
+      actorUser,
+      { checkCooldown: true },
+    );
+
+    logger.info('Attendee MusicBrainz confirmation lookup requested', {
+      eventId,
+      participantId,
+      title,
+      artist,
+      totalDuration,
+    });
+    const match = await musicBrainzService.findRecordingMatch(title, artist, totalDuration);
+    logger.info('Attendee MusicBrainz confirmation lookup completed', {
+      eventId,
+      participantId,
+      result: match || null,
+    });
+    return match;
+  }
+
+  async getMusicBrainzMatchCandidates(eventId, songId, actorUser) {
+    await this._assertSongAdmin(eventId, actorUser);
+    const song = await this._getSongForEvent(songId, eventId);
+    const musicBrainzMatch = song.recognitionMatch;
+    if (!isMusicBrainzMatch(musicBrainzMatch)) {
+      throw new ValidationError('Song has no accepted MusicBrainz metadata');
+    }
+
+    const tracks = await AudioTrackModel.find({ eventId: song.eventId }).lean();
+    const targetTitle = normalizeText(musicBrainzMatch.title || song.title);
+    const targetArtist = normalizeText(musicBrainzMatch.artist || song.artist);
+    const candidates = tracks
+      .map((track) => ({
+        ...formatAudioTrack(track),
+        matchScore: Number((
+          similarity(targetTitle, normalizeText(track.title)) * 0.65 +
+          similarity(targetArtist, normalizeText(track.artist)) * 0.35
+        ).toFixed(3)),
+      }))
+      .sort((a, b) => b.matchScore - a.matchScore);
+
+    return {
+      song: this._formatSong(song),
+      musicBrainz: musicBrainzMatch,
+      tracks: candidates,
+    };
+  }
+
+  async assignMusicBrainzMetadataToTrack(eventId, songId, trackId, actorUser) {
+    await this._assertSongAdmin(eventId, actorUser);
+    if (!trackId) throw new ValidationError('Audio track ID is required');
+    const song = await this._getSongForEvent(songId, eventId);
+    const musicBrainzMatch = song.recognitionMatch;
+    if (!isMusicBrainzMatch(musicBrainzMatch)) {
+      throw new ValidationError('Song has no accepted MusicBrainz metadata');
+    }
+
+    const track = await AudioTrackModel.findOne({ _id: trackId, eventId: song.eventId });
+    if (!track) throw new NotFoundError('Audio track not found');
+
+    const metadataSha512 = musicBrainzMatch.metadataSha512 || sha512MusicBrainzMatch(musicBrainzMatch);
+    track.title = musicBrainzMatch.title;
+    track.artist = musicBrainzMatch.artist;
+    if (musicBrainzMatch.coverUrl) track.coverUrl = musicBrainzMatch.coverUrl;
+    track.musicBrainzMetadataSha512 = metadataSha512;
+    track.musicBrainzRecordingId = musicBrainzMatch.recordingId || null;
+    track.musicBrainzReleaseId = musicBrainzMatch.releaseId || null;
+    track.metadataSourceSongId = song._id;
+
+    const matchData = musicBrainzMatch.toObject?.() || musicBrainzMatch;
+    song.recognitionMatch = { ...matchData, trackId: track._id, metadataSha512 };
+
+    await Promise.all([track.save(), song.save()]);
+    logger.info('Assigned MusicBrainz metadata to fingerprinted track', {
+      eventId,
+      songId,
+      trackId,
+      metadataSha512,
+    });
+
+    return {
+      song: this._formatSong(song),
+      track: formatAudioTrack(track),
+    };
   }
 
   async getQueueForEvent(eventId) {
@@ -323,6 +416,9 @@ class SongsService {
 
   _formatSong(song) {
     const totalDuration = song.totalDuration ?? song.duration;
+    const recognitionMatch = hasRecognitionMatch(song.recognitionMatch)
+      ? song.recognitionMatch
+      : null;
 
     return {
       _id: song._id,
@@ -330,7 +426,7 @@ class SongsService {
       eventId: song.eventId,
       title: song.title,
       artist: song.artist,
-      recognitionMatch: song.recognitionMatch || null,
+      recognitionMatch,
       requestedBy: song.requestedBy,
       status: song.status,
       voteScore: song.voteScore,
@@ -367,6 +463,34 @@ class SongsService {
     return localMatch.score >= musicBrainzMatch.score ? localMatch : musicBrainzMatch;
   }
 
+  async _resolveRecognitionMatch(eventId, title, artist, totalDuration, options) {
+    if (options.musicBrainzConfirmed && options.musicBrainzMatch?.title && options.musicBrainzMatch?.artist) {
+      const musicBrainzMatch = {
+        ...options.musicBrainzMatch,
+        source: 'musicbrainz',
+        metadataSha512: sha512MusicBrainzMatch(options.musicBrainzMatch),
+      };
+      logger.info('Using attendee-confirmed MusicBrainz metadata', {
+        eventId,
+        title,
+        artist,
+        match: musicBrainzMatch,
+      });
+      return musicBrainzMatch;
+    }
+
+    if (options.skipMusicBrainzLookup) {
+      logger.info('Attendee declined MusicBrainz metadata; sending request as entered', {
+        eventId,
+        title,
+        artist,
+      });
+      return null;
+    }
+
+    return this._findRecognitionMatch(eventId, title, artist, totalDuration);
+  }
+
   async _findLocalRecognitionMatch(eventId, title, artist) {
     const targetTitle = normalizeText(title);
     const targetArtist = normalizeText(artist);
@@ -392,6 +516,7 @@ class SongsService {
 
       if (!matchedOn || (best && score <= best.score)) continue;
       best = {
+        source: 'local',
         trackId: track._id,
         title: track.title,
         artist: track.artist,
@@ -429,6 +554,50 @@ function normalizeText(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+function hasRecognitionMatch(match) {
+  return Boolean(match?.title && match?.artist && Number.isFinite(Number(match.score)));
+}
+
+function isMusicBrainzMatch(match) {
+  return hasRecognitionMatch(match) && match.source === 'musicbrainz';
+}
+
+function sha512MusicBrainzMatch(match) {
+  const canonical = JSON.stringify({
+    source: 'musicbrainz',
+    recordingId: match.recordingId || null,
+    releaseId: match.releaseId || null,
+    title: match.title || null,
+    artist: match.artist || null,
+    coverUrl: match.coverUrl || null,
+    duration: Number.isFinite(Number(match.duration)) ? Number(match.duration) : null,
+    score: Number.isFinite(Number(match.score)) ? Number(match.score) : null,
+    matchedOn: match.matchedOn || null,
+  });
+  return crypto.createHash('sha512').update(canonical).digest('hex');
+}
+
+function formatAudioTrack(track) {
+  return {
+    id: track._id,
+    _id: track._id,
+    eventId: track.eventId,
+    title: track.title,
+    artist: track.artist,
+    coverUrl: track.coverUrl || null,
+    duration: track.duration,
+    sampleRate: track.sampleRate,
+    pointsCount: track.pointsCount,
+    hashesCount: track.hashesCount,
+    musicBrainzMetadataSha512: track.musicBrainzMetadataSha512 || null,
+    musicBrainzRecordingId: track.musicBrainzRecordingId || null,
+    musicBrainzReleaseId: track.musicBrainzReleaseId || null,
+    metadataSourceSongId: track.metadataSourceSongId || null,
+    createdAt: track.createdAt,
+    updatedAt: track.updatedAt,
+  };
 }
 
 function similarity(a, b) {

@@ -14,11 +14,9 @@ const { isValidId } = require('./shared-validators');
 
 function assertAudioEventAccess(socket, eventId) {
   if (!isValidId(eventId)) throw new Error('Invalid event ID');
-  if (
-    socket.user?.type === 'phone-microphone' &&
-    socket.user.eventId !== eventId
-  ) {
-    throw new Error('Invalid phone microphone token');
+  if (socket.user?.type === 'phone-microphone') {
+    if (socket.user.eventId !== eventId) throw new Error('Invalid phone microphone token');
+    return true;
   }
   return audioTracksService.listTracks(eventId, socket.user);
 }
@@ -57,7 +55,7 @@ const handleAudioMatchStart = async (socket, io, data, callback) => {
     await sharedRamMatcher.loadEvent(eventId);
     socket.audioMatch = {
       eventId,
-      fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE),
+      fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE, { keepHashHistory: false }),
       ramMatcher: sharedRamMatcher,
       inputSampleRate: sampleRate,
       lastEmitAt: 0,
@@ -84,7 +82,7 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
             await sharedRamMatcher.loadEvent(eventId);
             socket.audioMatch = {
               eventId,
-              fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE),
+              fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE, { keepHashHistory: false }),
               ramMatcher: sharedRamMatcher,
               inputSampleRate: sampleRate,
               lastEmitAt: 0,
@@ -145,17 +143,23 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
 
     if (hashes.length && now - session.lastEmitAt > AUDIO_MATCH_INTERVAL_MS) {
       session.lastEmitAt = now;
-      const matches = session.ramMatcher.match(session.eventId, hashes);
+      const MAX_LIVE_MATCH_HASHES = 2000;
+      const queryHashes = hashes.length > MAX_LIVE_MATCH_HASHES
+        ? hashes.slice(-MAX_LIVE_MATCH_HASHES)
+        : hashes;
+      const matches = session.ramMatcher.match(session.eventId, queryHashes);
       logger.info('audio_match_update', {
         eventId: session.eventId,
         matchCount: matches?.length || 0,
         topMatch: matches?.[0] ? { title: matches[0].title, artist: matches[0].artist, score: matches[0].score } : null,
       });
-      socket.emit('audio_match_update', {
+      const update = {
         eventId: session.eventId,
         matches,
         timestamp: new Date().toISOString(),
-      });
+      };
+      socket.emit('audio_match_update', update);
+      socket.to(`event:${session.eventId}`).emit('audio_match_update', update);
     }
 
     ackSuccess(callback, {
@@ -182,11 +186,13 @@ const handleAudioMatchStop = async (socket, io, data, callback) => {
       const { eventId, fingerprinter, ramMatcher } = socket.audioMatch;
       const hashes = fingerprinter.flush();
       const matches = ramMatcher.match(eventId, hashes);
-      socket.emit('audio_match_update', {
+      const update = {
         eventId,
         matches,
         timestamp: new Date().toISOString(),
-      });
+      };
+      socket.emit('audio_match_update', update);
+      socket.to(`event:${eventId}`).emit('audio_match_update', update);
     }
     socket.audioMatch = null;
     ackSuccess(callback, { stopped: true });

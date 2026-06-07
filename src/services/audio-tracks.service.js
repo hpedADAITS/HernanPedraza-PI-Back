@@ -29,8 +29,15 @@ const MAX_UPLOAD_BYTES = 60 * 1024 * 1024;
 const INSERT_CHUNK = 5000;
 const OBJECT_ID = /^[a-f\d]{24}$/i;
 
-function computeAudioSha256(buffer) {
-  return crypto.createHash('sha256').update(buffer).digest('hex');
+async function computeAudioSha256(filePath) {
+  const hash = crypto.createHash('sha256');
+  await new Promise((resolve, reject) => {
+    fs.createReadStream(filePath)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('error', reject)
+      .on('end', resolve);
+  });
+  return hash.digest('hex');
 }
 
 class AudioTracksService {
@@ -44,8 +51,7 @@ class AudioTracksService {
     const tmpFile = await writeTempFile(file);
 
     try {
-      const buffer = await fs.promises.readFile(tmpFile);
-      const audioSha256 = computeAudioSha256(buffer);
+      const audioSha256 = await computeAudioSha256(tmpFile);
 
       // Check for duplicate upload
       const existing = await AudioTrackModel.findOne({
@@ -176,7 +182,10 @@ class AudioTracksService {
   }
 
   async sendMatchedTrackNow(eventId, actor, trackId) {
-    const { eventObjectId } = await this._assertDj(eventId, actor);
+    const { eventObjectId, eventActor } =
+      actor?.type === 'phone-microphone'
+        ? await this._assertPhoneMicrophone(eventId, actor)
+        : await this._assertDj(eventId, actor);
     const track = await AudioTrackModel.findOne({ _id: trackId, eventId: eventObjectId }).lean();
     if (!track) throw new NotFoundError('Audio track not found');
 
@@ -189,7 +198,7 @@ class AudioTracksService {
       .lean();
 
     if (!song) throw new NotFoundError('No queued song matches this audio track');
-    return songsService.sendNow(song._id, eventObjectId, actor);
+    return songsService.sendNow(song._id, eventObjectId, eventActor || actor);
   }
 
   async _assertDj(eventId, actor) {
@@ -200,6 +209,20 @@ class AudioTracksService {
       'You do not have permission to manage audio fingerprints',
     );
     return { userId: context.userId, eventObjectId: context.event._id };
+  }
+
+  async _assertPhoneMicrophone(eventId, actor) {
+    const event = await this._findEvent(eventId);
+    const eventIdString = event._id.toString();
+    const ownerId = event.ownerId.toString();
+    if (actor.eventId !== eventIdString || actor.userId !== ownerId) {
+      throw new ForbiddenError('Invalid phone microphone token');
+    }
+    return {
+      userId: ownerId,
+      eventObjectId: event._id,
+      eventActor: { userId: ownerId, role: 'DJ' },
+    };
   }
 
 
@@ -235,6 +258,10 @@ class AudioTracksService {
       sampleRate: track.sampleRate,
       pointsCount: track.pointsCount,
       hashesCount: track.hashesCount,
+      musicBrainzMetadataSha512: track.musicBrainzMetadataSha512 || null,
+      musicBrainzRecordingId: track.musicBrainzRecordingId || null,
+      musicBrainzReleaseId: track.musicBrainzReleaseId || null,
+      metadataSourceSongId: track.metadataSourceSongId || null,
       createdAt: track.createdAt,
       updatedAt: track.updatedAt,
     };

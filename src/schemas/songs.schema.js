@@ -8,6 +8,9 @@ class SongsSchema {
       title: typeof body.title === 'string' ? body.title.trim() : body.title,
       artist: typeof body.artist === 'string' ? body.artist.trim() : body.artist,
       totalDuration: body.totalDuration ?? body.duration,
+      musicBrainzConfirmed: body.musicBrainzConfirmed === true,
+      skipMusicBrainzLookup: body.skipMusicBrainzLookup === true,
+      musicBrainzMatch: normalizeMusicBrainzMatch(body.musicBrainzMatch),
     };
 
     // Validate
@@ -45,8 +48,35 @@ class SongsSchema {
         data.totalDuration === undefined
           ? undefined
           : Math.floor(Number(data.totalDuration)),
+      musicBrainzConfirmed: data.musicBrainzConfirmed,
+      skipMusicBrainzLookup: data.skipMusicBrainzLookup,
+      musicBrainzMatch: data.musicBrainzMatch,
     };
   }
+}
+
+function normalizeMusicBrainzMatch(match) {
+  if (!match || typeof match !== 'object') return null;
+  const score = Number(match.score);
+  return {
+    source: 'musicbrainz',
+    recordingId: cleanString(match.recordingId),
+    releaseId: cleanString(match.releaseId),
+    title: cleanString(match.title),
+    artist: cleanString(match.artist),
+    coverUrl: cleanString(match.coverUrl),
+    duration: Number.isFinite(Number(match.duration)) && Number(match.duration) >= 0
+      ? Math.floor(Number(match.duration))
+      : null,
+    score: Number.isFinite(score) ? Math.min(1, Math.max(0, score)) : null,
+    matchedOn: ['title', 'artist', 'title_artist'].includes(match.matchedOn)
+      ? match.matchedOn
+      : 'title_artist',
+  };
+}
+
+function cleanString(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 module.exports = new SongsSchema();

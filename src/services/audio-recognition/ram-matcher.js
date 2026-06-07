@@ -21,7 +21,7 @@ const MAX_TRACK_HASHES = 100_000;
 const MAX_INDEXED_HASHES_PER_EVENT = 200_000;
 
 // In-memory fingerprint storage keyed by eventId
-// Format: Map<eventId, { tracks: Map<trackId, TrackInfo>, index: Map<hash, Array<{trackId, sourceTime}>> }>
+// Format: Map<eventId, { tracks: Map<trackId, TrackInfo>, trackIds: string[], index: Map<hash, Array<[trackIndex, sourceTime]>> }>
 const eventIndex = new Map();
 
 // Maximum events to keep in memory. At MAX_INDEXED_HASHES_PER_EVENT each,
@@ -91,7 +91,10 @@ class RamMatcher {
 
     // Build in-memory hash index
     const index = new Map();
+    const trackIdsByIndex = [];
     let totalHashes = 0;
+    let indexedHashes = 0;
+    let truncated = false;
 
     for (const fp of fingerprints) {
       const trackId = fp.trackId.toString();
@@ -107,8 +110,18 @@ class RamMatcher {
       }
 
       totalHashes += hashes.length;
+      const remaining = MAX_INDEXED_HASHES_PER_EVENT - indexedHashes;
+      if (remaining <= 0) {
+        truncated = true;
+        continue;
+      }
 
-      for (const { h, t } of hashes) {
+      const trackIndex = trackIdsByIndex.length;
+      trackIdsByIndex.push(trackId);
+      const rows = hashes.length > remaining ? hashes.slice(0, remaining) : hashes;
+      if (rows.length < hashes.length) truncated = true;
+
+      for (const { h, t } of rows) {
         const key = Number(h);
         if (!Number.isFinite(key)) continue;
 
@@ -116,14 +129,16 @@ class RamMatcher {
         if (!entries) {
           index.set(key, (entries = []));
         }
-        entries.push({ trackId, sourceTime: Number(t) });
+        entries.push([trackIndex, Number(t)]);
       }
+      indexedHashes += rows.length;
     }
 
-    if (totalHashes > MAX_INDEXED_HASHES_PER_EVENT) {
-      logger.warn('RAM matcher event exceeds safe hash limit, applying sampling', {
+    if (truncated) {
+      logger.warn('RAM matcher event exceeds safe hash limit, truncating index', {
         eventId,
         totalHashes,
+        indexedHashes,
         limit: MAX_INDEXED_HASHES_PER_EVENT,
       });
     }
@@ -132,15 +147,16 @@ class RamMatcher {
       eventId,
       fingerprintCount: fingerprints.length,
       totalHashes,
+      indexedHashes,
       indexSize: index.size,
-      estimatedMemoryMB: Math.round((totalHashes * 64) / (1024 * 1024)),
+      estimatedMemoryMB: Math.round((indexedHashes * 32) / (1024 * 1024)),
       trackCount: tracks.length,
     });
 
     // Convert arrays to reduce memory overhead
     // (already done in array form for simplicity)
 
-    return { tracks: trackInfoById, index };
+    return { tracks: trackInfoById, trackIds: trackIdsByIndex, index };
   }
 
   match(eventId, hashes) {
@@ -149,7 +165,7 @@ class RamMatcher {
       return [];
     }
 
-    const { index, tracks } = cached;
+    const { index, tracks, trackIds } = cached;
     const buckets = new Map();
 
     for (const { hash, time } of hashes) {
@@ -160,7 +176,9 @@ class RamMatcher {
       const candidates = index.get(key);
       if (!candidates) continue;
 
-      for (const { trackId, sourceTime } of candidates) {
+      for (const [trackIndex, sourceTime] of candidates) {
+        const trackId = trackIds[trackIndex];
+        if (!trackId) continue;
         const offset = sourceTime - sampleTime;
         let byOffset = buckets.get(trackId);
         if (!byOffset) {

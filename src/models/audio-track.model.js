@@ -18,6 +18,10 @@ const AudioTrackSchema = new Schema(
     title: { type: String, required: true, trim: true },
     artist: { type: String, required: true, trim: true },
     coverUrl: { type: String, trim: true, default: null },
+    musicBrainzMetadataSha512: { type: String, trim: true, default: null, index: true },
+    musicBrainzRecordingId: { type: String, trim: true, default: null },
+    musicBrainzReleaseId: { type: String, trim: true, default: null },
+    metadataSourceSongId: { type: Schema.Types.ObjectId, ref: 'Song', default: null },
     uploadedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',

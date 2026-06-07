@@ -7,7 +7,18 @@ const { isValidId } = require('./shared-validators');
 
 const handleSuggestSong = async (socket, io, data, callback) => {
   try {
-    const { eventId, participantId, title, artist, totalDuration, duration, userId } = data;
+    const {
+      eventId,
+      participantId,
+      title,
+      artist,
+      totalDuration,
+      duration,
+      userId,
+      musicBrainzConfirmed,
+      musicBrainzMatch,
+      skipMusicBrainzLookup,
+    } = data;
     if (!eventId || !participantId || !title || !artist) {
       throw new Error('Missing required fields: eventId, participantId, title, artist');
     }
@@ -16,11 +27,17 @@ const handleSuggestSong = async (socket, io, data, callback) => {
     }
     await assertJoinedEvent(socket, eventId, participantId);
     const song = await songsService.suggestSong(
-      eventId, participantId, title, artist, totalDuration ?? duration, eventActor(socket, userId),
+      eventId,
+      participantId,
+      title,
+      artist,
+      totalDuration ?? duration,
+      eventActor(socket, userId),
+      { musicBrainzConfirmed, musicBrainzMatch, skipMusicBrainzLookup },
     );
     toEventRoom(io, eventId).emit('song_suggested', {
       songId: song._id, title: song.title, artist: song.artist,
-      requestedBy: song.requestedBy, status: song.status,
+      requestedBy: song.requestedBy, recognitionMatch: song.recognitionMatch || null, status: song.status,
       totalDuration: song.totalDuration, duration: song.duration,
       timestamp: new Date().toISOString(),
     });

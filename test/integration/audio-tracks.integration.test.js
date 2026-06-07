@@ -8,6 +8,7 @@ const request = require('supertest');
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = require('../../src/app');
+const { generateToken } = require('../../src/utils/jwt.utils');
 const {
   AudioTrackModel,
   EventMemberModel,
@@ -29,8 +30,15 @@ let fixture;
 let phoneStreamFixture;
 
 const __root = path.resolve(__dirname, '../../../..');
-const houseTrackWav = path.join(__root, 'repo', 'simple_house_140bpm_60s.wav');
-const phoneStreamWav = path.join(__root, 'repo', 'phone_stream_reverb_32kHz.wav');
+const firstExisting = (paths) => paths.find((candidate) => fs.existsSync(candidate)) || paths[0];
+const houseTrackWav = firstExisting([
+  path.join(__root, 'repo', 'simple_house_140bpm_60s.wav'),
+  path.join(__root, 'latest', 'simple_house_140bpm_60s.wav'),
+]);
+const phoneStreamWav = firstExisting([
+  path.join(__root, 'repo', 'phone_stream_reverb_32kHz.wav'),
+  path.join(__root, 'latest', 'phone_stream_reverb_32kHz.wav'),
+]);
 
 const authHeader = (token) => ({ Authorization: `Bearer ${token}` });
 const futureDate = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -171,6 +179,52 @@ describe('Audio track REST integration', () => {
     const matches = await matchHashes(event.id, sparseNoiseHashes);
 
     expect(matches).toEqual([]);
+  });
+
+  test('phone microphone token can send a matched queued track to now playing', async () => {
+    const dj = await createVerifiedDj();
+    const event = await createEvent(dj.token);
+    const created = await uploadTrack(event.id, dj.token).expect(201);
+    const trackId = created.body.data.track.id;
+    const participant = await ParticipantModel.create({
+      eventId: event.id,
+      nickname: 'Phone Listener',
+    });
+
+    const song = await SongModel.create({
+      eventId: event.id,
+      title: 'Fixture Track',
+      artist: 'Fixture Artist',
+      status: 'APPROVED',
+      requestedBy: participant._id,
+      recognitionMatch: {
+        trackId,
+        title: 'Fixture Track',
+        artist: 'Fixture Artist',
+        matchedOn: 'title_artist',
+        score: 1,
+      },
+      sortKey: `test_${Date.now()}`,
+    });
+
+    const phoneToken = generateToken(
+      {
+        userId: dj.user.id,
+        role: 'DJ',
+        type: 'phone-microphone',
+        eventId: event.id,
+      },
+      '15m',
+    );
+
+    await request(app)
+      .post(`/api/v1/events/${event.id}/audio-tracks/${trackId}/send-now`)
+      .set(authHeader(phoneToken))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.data.song._id.toString()).toBe(song._id.toString());
+        expect(res.body.data.song.status).toBe('PLAYING');
+      });
   });
 
   // The permission model test (rejects another DJ, etc.) was deleted as stale:

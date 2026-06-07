@@ -10,6 +10,7 @@ const { FAN_OUT, createHashes, hashPair } = require("./hashes");
 // 100k hashes is ~7 minutes of audio.
 const MAX_POINTS_MEMORY_BYTES = 5 * 1024 * 1024;
 const MAX_HASH_ENTRIES = 100_000;
+const MAX_HASH_TIME_DELTA = 10;
 
 // Backpressure for the live phone-mic path. If a chunk arrives while the
 // previous chunk is still in the input buffer, we drop the oldest buffer
@@ -17,8 +18,9 @@ const MAX_HASH_ENTRIES = 100_000;
 const MAX_BUFFER_SAMPLES = 5 * 16000;
 
 class StreamingFingerprinter {
-  constructor(sampleRate) {
+  constructor(sampleRate, options = {}) {
     if (!Number.isFinite(sampleRate) || sampleRate <= 0) throw new Error(`Invalid sampleRate: ${sampleRate}`);
+    const { keepHashHistory = true } = options;
     this.sampleRate = sampleRate;
     this.windowSize = Math.max(2, Math.floor(WINDOW_SECONDS * sampleRate));
     this.fftSize = 1 << Math.ceil(Math.log2(Math.max(1, this.windowSize)));
@@ -27,10 +29,21 @@ class StreamingFingerprinter {
     this.time = 0;
     this.points = [];
     this.hashes = new Map();
+    this.keepHashHistory = keepHashHistory;
+    this.totalPoints = 0;
     this.droppedWindows = 0;
   }
 
   _maybeCompact() {
+    if (!this.keepHashHistory) {
+      const minTime = this.time - MAX_HASH_TIME_DELTA;
+      let first = 0;
+      while (first < this.points.length && this.points[first][0] < minTime) first++;
+      if (first > 0) this.points = this.points.slice(first);
+      this.hashes.clear();
+      return;
+    }
+
     const maxPoints = Math.floor(MAX_POINTS_MEMORY_BYTES / 32);
     if (this.points.length > maxPoints) {
       const keep = Math.floor(maxPoints * 0.7);
@@ -81,19 +94,21 @@ class StreamingFingerprinter {
     const points = windowPeaks(samples, start, this.sampleRate, this.windowSize, this.fftSize, this.window, this.time++);
     const firstNew = this.points.length;
     this.points.push(...points);
+    this.totalPoints += points.length;
     this._hashNewPoints(firstNew, out);
     this._maybeCompact();
   }
 
   _hashNewPoints(firstNew, out) {
+    const seen = this.keepHashHistory ? this.hashes : new Set();
     for (let j = firstNew; j < this.points.length; j++) {
       const [otherTime, otherFreq] = this.points[j];
       const from = Math.max(0, j - FAN_OUT + 1);
       for (let i = from; i <= j; i++) {
         const [time, freq] = this.points[i];
         const key = hashPair(time, freq, otherTime, otherFreq);
-        if (key !== null && !this.hashes.has(key)) {
-          this.hashes.set(key, time);
+        if (key !== null && !seen.has(key)) {
+          seen.set ? seen.set(key, time) : seen.add(key);
           out.push({ hash: key, time });
         }
       }

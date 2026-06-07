@@ -35,6 +35,9 @@ describe('musicbrainz service', () => {
     );
 
     expect(first).toEqual({
+      source: 'musicbrainz',
+      recordingId: null,
+      releaseId: null,
       title: 'Harder, Better, Faster, Stronger',
       artist: 'Daft Punk',
       coverUrl: null,

@@ -8,6 +8,7 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const {
   SongModel,
   EventModel,
+  AudioTrackModel,
   ParticipantModel,
   UserModel,
   VoteModel,
@@ -15,6 +16,7 @@ const {
 const songsService = require('../../src/services/songs.service');
 const participantsService = require('../../src/services/participants.service');
 const eventPermissionsService = require('../../src/services/event-permissions.service');
+const musicBrainzService = require('../../src/services/musicbrainz.service');
 
 let mongoServer;
 
@@ -29,9 +31,11 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  jest.restoreAllMocks();
   await Promise.all([
     SongModel.deleteMany({}),
     EventModel.deleteMany({}),
+    AudioTrackModel.deleteMany({}),
     ParticipantModel.deleteMany({}),
     UserModel.deleteMany({}),
     VoteModel.deleteMany({}),
@@ -129,6 +133,110 @@ describe('SongsService - Real Implementation Tests', () => {
       // Verify song was saved
       const savedSong = await SongModel.findById(result.id);
       expect(savedSong).toBeDefined();
+    });
+
+    test('stores attendee-confirmed MusicBrainz metadata', async () => {
+      jest.spyOn(musicBrainzService, 'findRecordingMatch');
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const musicBrainzMatch = {
+        source: 'musicbrainz',
+        recordingId: 'mb-recording-1',
+        releaseId: 'mb-release-1',
+        title: 'Matched Song',
+        artist: 'Matched Artist',
+        coverUrl: 'https://example.test/cover.jpg',
+        duration: 181,
+        score: 0.94,
+        matchedOn: 'title_artist',
+      };
+
+      const result = await songsService.suggestSong(
+        event._id.toString(),
+        participant._id.toString(),
+        'Test Song',
+        'Test Artist',
+        undefined,
+        { userId: participant.userId.toString(), role: 'ATTENDEE' },
+        { musicBrainzConfirmed: true, musicBrainzMatch },
+      );
+
+      expect(result.recognitionMatch).toMatchObject(musicBrainzMatch);
+      expect(result.recognitionMatch.metadataSha512).toMatch(/^[a-f0-9]{128}$/);
+      expect(musicBrainzService.findRecordingMatch).not.toHaveBeenCalled();
+    });
+
+    test('assigns accepted MusicBrainz metadata to a fingerprinted track', async () => {
+      const { event, user: djUser } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id, {
+        recognitionMatch: {
+          source: 'musicbrainz',
+          recordingId: 'mb-recording-1',
+          releaseId: 'mb-release-1',
+          metadataSha512: 'a'.repeat(128),
+          title: 'Matched Song',
+          artist: 'Matched Artist',
+          coverUrl: 'https://example.test/cover.jpg',
+          duration: 181,
+          score: 0.94,
+          matchedOn: 'title_artist',
+        },
+      });
+      const track = await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'audio-1',
+        title: 'Old Song',
+        artist: 'Old Artist',
+        coverUrl: null,
+        uploadedBy: djUser._id,
+        duration: 180,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+
+      const result = await songsService.assignMusicBrainzMetadataToTrack(
+        event._id.toString(),
+        song._id.toString(),
+        track._id.toString(),
+        { userId: djUser._id.toString(), role: 'DJ' },
+      );
+
+      expect(result.song.recognitionMatch).toMatchObject({
+        source: 'musicbrainz',
+        trackId: track._id,
+        metadataSha512: 'a'.repeat(128),
+        title: 'Matched Song',
+        artist: 'Matched Artist',
+      });
+      expect(result.track).toMatchObject({
+        title: 'Matched Song',
+        artist: 'Matched Artist',
+        coverUrl: 'https://example.test/cover.jpg',
+        musicBrainzMetadataSha512: 'a'.repeat(128),
+      });
+    });
+
+    test('skips MusicBrainz metadata when attendee declines match', async () => {
+      jest.spyOn(musicBrainzService, 'findRecordingMatch');
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+
+      const result = await songsService.suggestSong(
+        event._id.toString(),
+        participant._id.toString(),
+        'Original Song',
+        'Original Artist',
+        undefined,
+        { userId: participant.userId.toString(), role: 'ATTENDEE' },
+        { skipMusicBrainzLookup: true },
+      );
+
+      expect(result.title).toBe('Original Song');
+      expect(result.artist).toBe('Original Artist');
+      expect(result.recognitionMatch).toBeNull();
+      expect(musicBrainzService.findRecordingMatch).not.toHaveBeenCalled();
     });
   });
 

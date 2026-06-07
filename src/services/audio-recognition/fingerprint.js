@@ -139,7 +139,7 @@ async function fingerprintWavStreamed(file, options = {}) {
     pending = [];
   }
 
-  pointsCount = fingerprinter.points.length;
+  pointsCount = fingerprinter.totalPoints;
   const capped = hashesCount >= MAX_FINGERPRINT_HASHES;
 
   return {

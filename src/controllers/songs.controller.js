@@ -54,6 +54,11 @@ class SongsController {
         data.artist,
         data.totalDuration,
         req.user,
+        {
+          musicBrainzConfirmed: data.musicBrainzConfirmed,
+          musicBrainzMatch: data.musicBrainzMatch,
+          skipMusicBrainzLookup: data.skipMusicBrainzLookup,
+        },
       );
       let participant = null;
       try {
@@ -81,6 +86,65 @@ class SongsController {
       });
     } catch (error) {
       logger.error('Suggest song error:', error);
+      next(error);
+    }
+  }
+
+  async lookupMusicBrainz(req, res, next) {
+    try {
+      const { eventId } = req.params;
+      const data = songsSchema.parseSuggestSong(req.body);
+      const match = await songsService.lookupMusicBrainz(
+        eventId,
+        data.participantId,
+        data.title,
+        data.artist,
+        data.totalDuration,
+        req.user,
+      );
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: { match },
+      });
+    } catch (error) {
+      logger.error('MusicBrainz lookup error:', error);
+      next(error);
+    }
+  }
+
+  async getMusicBrainzMatchCandidates(req, res, next) {
+    try {
+      const { eventId, songId } = req.params;
+      const data = await songsService.getMusicBrainzMatchCandidates(eventId, songId, req.user);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      logger.error('MusicBrainz match candidates error:', error);
+      next(error);
+    }
+  }
+
+  async assignMusicBrainzMetadataToTrack(req, res, next) {
+    try {
+      const { eventId, songId } = req.params;
+      const { trackId } = req.body || {};
+      const data = await songsService.assignMusicBrainzMetadataToTrack(
+        eventId,
+        songId,
+        trackId,
+        req.user,
+      );
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      logger.error('Assign MusicBrainz metadata error:', error);
       next(error);
     }
   }
