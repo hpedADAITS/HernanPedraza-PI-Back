@@ -119,6 +119,110 @@ class SongsService {
     };
   }
 
+  async getFingerprintMatchCandidates(eventId, songId, actorUser) {
+    await this._assertSongAdmin(eventId, actorUser);
+    const song = await this._getSongForEvent(songId, eventId);
+
+    // Always rank against the original attendee query so the DJ can spot the
+    // best library match even when the auto-assigned fingerprint is wrong.
+    const targetTitle = song.title;
+    const targetArtist = song.artist;
+
+    const candidates = await this._findLocalRecognitionMatch(
+      eventId,
+      targetTitle,
+      targetArtist,
+      { strict: false, limit: 25, minScore: 0.05 },
+    );
+
+    const tracks = await AudioTrackModel.find({ eventId: song.eventId }).lean();
+    const trackById = new Map(tracks.map((track) => [String(track._id), track]));
+
+    const enriched = candidates
+      .map((candidate) => {
+        const track = trackById.get(String(candidate.trackId));
+        if (!track) return null;
+        return {
+          ...formatAudioTrack(track),
+          matchScore: candidate.score,
+          titleScore: candidate.titleScore,
+          artistScore: candidate.artistScore,
+          matchedOn: candidate.matchedOn,
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      song: this._formatSong(song),
+      target: { title: targetTitle, artist: targetArtist },
+      recognitionMatch: hasRecognitionMatch(song.recognitionMatch)
+        ? formatRecognitionMatch(song.recognitionMatch)
+        : null,
+      tracks: enriched,
+    };
+  }
+
+  async searchFingerprints(eventId, participantId, title, artist, actorUser) {
+    // Attendees can read fingerprinted tracks (metadata only) to power the
+    // typeahead dropdown. We do NOT reveal the underlying audio or any DJ-only
+    // metadata — just the title/artist/cover that would be useful to confirm
+    // the DJ already has the track.
+    await participantsService.assertParticipantSession(
+      participantId,
+      eventId,
+      actorUser,
+    );
+
+    if (!title?.trim() && !artist?.trim()) {
+      return { matches: [], query: { title: title || '', artist: artist || '' } };
+    }
+
+    const candidates = await this._findLocalRecognitionMatch(
+      eventId,
+      title,
+      artist,
+      { strict: false, limit: 8, minScore: 0.2 },
+    );
+
+    if (!candidates.length) {
+      return { matches: [], query: { title: title || '', artist: artist || '' } };
+    }
+
+    const trackIds = candidates.map((candidate) => candidate.trackId);
+    const tracks = await AudioTrackModel.find({
+      _id: { $in: trackIds },
+      eventId,
+    })
+      .select('title artist coverUrl duration')
+      .lean();
+    const trackById = new Map(tracks.map((track) => [String(track._id), track]));
+
+    const matches = candidates
+      .map((candidate) => {
+        const track = trackById.get(String(candidate.trackId));
+        if (!track) return null;
+        return {
+          trackId: track._id,
+          title: track.title,
+          artist: track.artist,
+          coverUrl: decryptCoverUrl(track.coverUrl),
+          duration: Number.isFinite(Number(track.duration))
+            ? Number(track.duration)
+            : null,
+          matchScore: candidate.score,
+          titleScore: candidate.titleScore,
+          artistScore: candidate.artistScore,
+          matchedOn: candidate.matchedOn,
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      matches,
+      query: { title: title || '', artist: artist || '' },
+    };
+  }
+
   async assignMusicBrainzMetadataToTrack(eventId, songId, trackId, actorUser) {
     await this._assertSongAdmin(eventId, actorUser);
     if (!trackId) throw new ValidationError('Audio track ID is required');
@@ -498,14 +602,88 @@ class SongsService {
       }
     })();
 
+    // Strict local pass: only high-confidence candidates (used to win against MB)
+    const strictLocal = this._findLocalRecognitionMatch(eventId, title, artist, {
+      strict: true,
+      limit: 1,
+    });
+
     const [localMatch, musicBrainzMatch] = await Promise.all([
-      this._findLocalRecognitionMatch(eventId, title, artist),
+      strictLocal,
       safeMusicBrainz,
     ]);
 
-    if (!localMatch) return musicBrainzMatch;
-    if (!musicBrainzMatch) return localMatch;
-    return localMatch.score >= musicBrainzMatch.score ? localMatch : musicBrainzMatch;
+    // MusicBrainz is the primary metadata source — never replace a MB match
+    // with a local one purely on score. Local only takes over as a fallback.
+    if (musicBrainzMatch) {
+      if (localMatch) {
+        logger.debug('MusicBrainz match wins over local candidate', {
+          eventId,
+          musicbrainzScore: musicBrainzMatch.score,
+          localScore: localMatch.score,
+        });
+      }
+      return musicBrainzMatch;
+    }
+
+    if (localMatch) {
+      logger.info('Local fingerprint match used (no MusicBrainz match found)', {
+        eventId,
+        title,
+        artist,
+        score: localMatch.score,
+        matchedOn: localMatch.matchedOn,
+      });
+      return { ...localMatch, fallbackUsed: true };
+    }
+
+    // Lenient fallback: MusicBrainz returned no match and no strict local
+    // candidate passed — widen the threshold and capture the top candidates
+    // so the DJ can review and pick the right track.
+    const lenientCandidates = await this._findLocalRecognitionMatch(
+      eventId,
+      title,
+      artist,
+      { strict: false, limit: 5, minScore: 0.35 },
+    );
+
+    if (!lenientCandidates || lenientCandidates.length === 0) {
+      logger.info('No recognition match found (MusicBrainz empty, no local candidate)', {
+        eventId,
+        title,
+        artist,
+      });
+      return null;
+    }
+
+    const alternates = lenientCandidates
+      .slice(1)
+      .map((candidate) => ({
+        trackId: candidate.trackId,
+        title: candidate.title,
+        artist: candidate.artist,
+        coverUrl: candidate.coverUrl || null,
+        duration: candidate.duration,
+        score: candidate.score,
+        matchedOn: candidate.matchedOn,
+      }));
+
+    const best = lenientCandidates[0];
+    logger.info('Lenient local fingerprint fallback used (MusicBrainz failed)', {
+      eventId,
+      title,
+      artist,
+      candidateCount: lenientCandidates.length,
+      bestScore: best.score,
+      bestMatchedOn: best.matchedOn,
+    });
+
+    return {
+      ...best,
+      matchedOn: best.matchedOn || 'lenient',
+      alternates,
+      fallbackUsed: true,
+    };
   }
 
   async _resolveRecognitionMatch(eventId, title, artist, totalDuration, options) {
@@ -536,31 +714,49 @@ class SongsService {
     return this._findRecognitionMatch(eventId, title, artist, totalDuration);
   }
 
-  async _findLocalRecognitionMatch(eventId, title, artist) {
+  async _findLocalRecognitionMatch(eventId, title, artist, options = {}) {
+    const { strict = true, limit = 1, minScore = 0 } = options;
     const targetTitle = normalizeText(title);
     const targetArtist = normalizeText(artist);
-    if (!targetTitle && !targetArtist) return null;
+    if (!targetTitle && !targetArtist) return strict ? null : [];
 
     const tracks = await AudioTrackModel.find({ eventId })
-      .select('title artist coverUrl')
+      .select('title artist coverUrl duration')
       .lean();
 
-    let best = null;
+    const candidates = [];
     for (const track of tracks) {
-      const titleScore = similarity(targetTitle, normalizeText(track.title));
-      const artistScore = similarity(targetArtist, normalizeText(track.artist));
+      const trackTitle = normalizeText(track.title);
+      const trackArtist = normalizeText(track.artist);
+      const titleScore = similarity(targetTitle, trackTitle);
+      const artistScore = similarity(targetArtist, trackArtist);
       const score = (titleScore * 0.65) + (artistScore * 0.35);
-      const matchedOn =
-        titleScore >= 0.82 && artistScore >= 0.72
-          ? 'title_artist'
-          : titleScore >= 0.86
-            ? 'title'
-            : artistScore >= 0.9
-              ? 'artist'
-              : null;
 
-      if (!matchedOn || (best && score <= best.score)) continue;
-      best = {
+      if (score < minScore) continue;
+
+      let matchedOn = null;
+      if (strict) {
+        matchedOn =
+          titleScore >= 0.82 && artistScore >= 0.72
+            ? 'title_artist'
+            : titleScore >= 0.86
+              ? 'title'
+              : artistScore >= 0.9
+                ? 'artist'
+                : null;
+        if (!matchedOn) continue;
+      } else {
+        matchedOn =
+          titleScore >= 0.82 && artistScore >= 0.72
+            ? 'title_artist'
+            : titleScore >= 0.86
+              ? 'title'
+              : artistScore >= 0.9
+                ? 'artist'
+                : 'lenient';
+      }
+
+      candidates.push({
         source: 'local',
         trackId: track._id,
         title: track.title,
@@ -568,11 +764,15 @@ class SongsService {
         coverUrl: track.coverUrl || null,
         duration: Number.isFinite(Number(track.duration)) ? Number(track.duration) : null,
         score: Number(score.toFixed(3)),
+        titleScore: Number(titleScore.toFixed(3)),
+        artistScore: Number(artistScore.toFixed(3)),
         matchedOn,
-      };
+      });
     }
 
-    return best;
+    candidates.sort((a, b) => b.score - a.score);
+    const capped = candidates.slice(0, limit);
+    return strict ? capped[0] || null : capped;
   }
 
   async _assertSongAdmin(eventId, actorUser) {
@@ -653,9 +853,17 @@ function formatAudioTrack(track) {
 
 function formatRecognitionMatch(match) {
   const plain = match.toObject?.() || match;
+  const alternates = Array.isArray(plain.alternates)
+    ? plain.alternates.map((alt) => ({
+        ...alt,
+        coverUrl: decryptCoverUrl(alt.coverUrl),
+      }))
+    : [];
   return {
     ...plain,
     coverUrl: decryptCoverUrl(plain.coverUrl),
+    alternates,
+    fallbackUsed: Boolean(plain.fallbackUsed),
   };
 }
 

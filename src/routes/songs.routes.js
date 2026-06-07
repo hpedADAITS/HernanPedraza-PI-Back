@@ -16,9 +16,17 @@ router.post(
   '/:eventId/lookup-musicbrainz',
   songsController.lookupMusicBrainz.bind(songsController),
 );
+router.post(
+  '/:eventId/search-fingerprints',
+  songsController.searchFingerprints.bind(songsController),
+);
 router.get(
   '/:eventId/:songId/musicbrainz-match-candidates',
   songsController.getMusicBrainzMatchCandidates.bind(songsController),
+);
+router.get(
+  '/:eventId/:songId/fingerprint-match-candidates',
+  songsController.getFingerprintMatchCandidates.bind(songsController),
 );
 router.post(
   '/:eventId/:songId/assign-musicbrainz-track',

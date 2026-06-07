@@ -128,6 +128,43 @@ class SongsController {
     }
   }
 
+  async getFingerprintMatchCandidates(req, res, next) {
+    try {
+      const { eventId, songId } = req.params;
+      const data = await songsService.getFingerprintMatchCandidates(eventId, songId, req.user);
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      logger.error('Fingerprint match candidates error:', error);
+      next(error);
+    }
+  }
+
+  async searchFingerprints(req, res, next) {
+    try {
+      const { eventId } = req.params;
+      const data = songsSchema.parseSearchFingerprints(req.body);
+      const result = await songsService.searchFingerprints(
+        eventId,
+        data.participantId,
+        data.title,
+        data.artist,
+        req.user,
+      );
+
+      res.status(httpStatus.OK).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      logger.error('Fingerprint search error:', error);
+      next(error);
+    }
+  }
+
   async assignMusicBrainzMetadataToTrack(req, res, next) {
     try {
       const { eventId, songId } = req.params;

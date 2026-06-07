@@ -750,6 +750,74 @@ const swaggerDefinition = {
         },
       },
     },
+    '/songs/{eventId}/search-fingerprints': {
+      post: {
+        tags: ['Songs'],
+        summary: 'Search the DJ fingerprinted library as the attendee types',
+        description: 'Powers the attendee typeahead dropdown. Returns up to 8 ranked candidates with cover art.',
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: 'eventId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['participantId'],
+                properties: {
+                  participantId: { type: 'string' },
+                  title: { type: 'string' },
+                  artist: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Fingerprint matches',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        matches: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              trackId: { type: 'string' },
+                              title: { type: 'string' },
+                              artist: { type: 'string' },
+                              coverUrl: { type: 'string', nullable: true },
+                              matchScore: { type: 'number' },
+                              titleScore: { type: 'number' },
+                              artistScore: { type: 'number' },
+                              matchedOn: { type: 'string' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     '/songs/{eventId}/queue': {
       get: {
         tags: ['Songs'],

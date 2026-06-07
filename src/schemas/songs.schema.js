@@ -60,6 +60,27 @@ class SongsSchema {
       musicBrainzMatch: data.musicBrainzMatch,
     };
   }
+
+  parseSearchFingerprints(body) {
+    if (!body || typeof body !== 'object') {
+      throw new ValidationError('Request body is required');
+    }
+    if (!body.participantId) {
+      throw new ValidationError('Participant ID is required');
+    }
+    const title = typeof body.title === 'string' ? body.title.trim() : '';
+    const artist = typeof body.artist === 'string' ? body.artist.trim() : '';
+    if (title.length > 200 || artist.length > 200) {
+      throw new ValidationError('Search query is too long');
+    }
+    if (title && !isValidSongText(title)) {
+      throw new ValidationError('Title contains invalid characters');
+    }
+    if (artist && !isValidSongText(artist)) {
+      throw new ValidationError('Artist contains invalid characters');
+    }
+    return { participantId: body.participantId, title, artist };
+  }
 }
 
 function normalizeMusicBrainzMatch(match) {

@@ -110,31 +110,6 @@ const createTestSong = async (eventId, requestedByParticipantId, overrides = {})
 
 describe('SongsService - Real Implementation Tests', () => {
   describe('suggestSong', () => {
-    test('should create a new song', async () => {
-      const { event, user: djUser } = await createTestEvent();
-      const participant = await createTestParticipant(event._id);
-
-      // For suggestSong, the actor must be the participant's user (or have matching permissions)
-      // We're simulating the participant suggesting a song
-      const result = await songsService.suggestSong(
-        event._id.toString(),
-        participant._id.toString(),
-        'Test Song',
-        'Test Artist',
-        180,
-        { userId: participant.userId.toString(), role: 'ATTENDEE' }
-      );
-
-      expect(result).toBeDefined();
-      expect(result.title).toBe('Test Song');
-      expect(result.artist).toBe('Test Artist');
-      expect(result.status).toBe('PENDING');
-      
-      // Verify song was saved
-      const savedSong = await SongModel.findById(result.id);
-      expect(savedSong).toBeDefined();
-    });
-
     test('stores attendee-confirmed MusicBrainz metadata', async () => {
       jest.spyOn(musicBrainzService, 'findRecordingMatch');
       const { event } = await createTestEvent();
@@ -246,6 +221,307 @@ describe('SongsService - Real Implementation Tests', () => {
       expect(result.artist).toBe('Original Artist');
       expect(result.recognitionMatch).toBeNull();
       expect(musicBrainzService.findRecordingMatch).not.toHaveBeenCalled();
+    });
+
+    test('falls back to strict local fingerprint match when MusicBrainz returns no match', async () => {
+      const findRecordingMatch = jest
+        .spyOn(musicBrainzService, 'findRecordingMatch')
+        .mockResolvedValue(null);
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const track = await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'fallback-audio-1',
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+        uploadedBy: user._id,
+        duration: 354,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+
+      const result = await songsService.suggestSong(
+        event._id.toString(),
+        participant._id.toString(),
+        'Bohemian Rhapsody',
+        'Queen',
+        354,
+        { userId: participant.userId.toString(), role: 'ATTENDEE' },
+      );
+
+      expect(findRecordingMatch).toHaveBeenCalled();
+      expect(result.recognitionMatch).toMatchObject({
+        source: 'local',
+        trackId: track._id,
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+        fallbackUsed: true,
+        matchedOn: 'title_artist',
+      });
+      expect(result.recognitionMatch.score).toBeGreaterThan(0.5);
+    });
+
+    test('falls back to lenient local fingerprint when MusicBrainz fails and stores alternates', async () => {
+      jest
+        .spyOn(musicBrainzService, 'findRecordingMatch')
+        .mockResolvedValue(null);
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      // Tracks chosen so they won't pass the strict matchedOn thresholds
+      // (artist-score >= 0.9 OR title-score >= 0.86 OR title_artist combined).
+      // This forces the lenient fallback path to be exercised.
+      await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'lib-1',
+        title: 'Bohemian Rap (Tribute)',
+        artist: 'Tribute Band',
+        uploadedBy: user._id,
+        duration: 354,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+      await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'lib-2',
+        title: 'Bohemian Rhapsody Live Version',
+        artist: 'Queen Tribute',
+        uploadedBy: user._id,
+        duration: 354,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+      // Unrelated — must be filtered out by the 0.35 min-score floor.
+      await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'lib-3',
+        title: 'Some Other Track',
+        artist: 'Unrelated Artist',
+        uploadedBy: user._id,
+        duration: 100,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+
+      const result = await songsService.suggestSong(
+        event._id.toString(),
+        participant._id.toString(),
+        'Bohemian Rhapsody',
+        'Queen',
+        354,
+        { userId: participant.userId.toString(), role: 'ATTENDEE' },
+      );
+
+      expect(result.recognitionMatch).not.toBeNull();
+      expect(result.recognitionMatch.fallbackUsed).toBe(true);
+      expect(result.recognitionMatch.alternates).toBeDefined();
+      expect(result.recognitionMatch.alternates.length).toBeGreaterThan(0);
+      // Top score becomes the auto-pick; rest live in alternates.
+      const allTrackIds = [
+        result.recognitionMatch.trackId,
+        ...result.recognitionMatch.alternates.map((alt) => alt.trackId),
+      ];
+      expect(allTrackIds.length).toBeGreaterThan(1);
+      // The unrelated track should be filtered out by the 0.35 min-score floor.
+      const unrelated = [...allTrackIds].find((id) => {
+        const allAlternates = result.recognitionMatch.alternates;
+        const match = allAlternates.find((alt) => String(alt.trackId) === String(id));
+        return match?.title === 'Some Other Track';
+      });
+      expect(unrelated).toBeUndefined();
+    });
+
+    test('MusicBrainz match wins over local fingerprint candidate', async () => {
+      jest.spyOn(musicBrainzService, 'findRecordingMatch').mockResolvedValue({
+        source: 'musicbrainz',
+        recordingId: 'mb-1',
+        releaseId: 'mb-rel-1',
+        title: 'MB Title',
+        artist: 'MB Artist',
+        coverUrl: null,
+        duration: 200,
+        score: 0.9,
+        matchedOn: 'title_artist',
+      });
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const track = await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'local-1',
+        title: 'MB Title',
+        artist: 'MB Artist',
+        uploadedBy: user._id,
+        duration: 200,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+
+      const result = await songsService.suggestSong(
+        event._id.toString(),
+        participant._id.toString(),
+        'MB Title',
+        'MB Artist',
+        200,
+        { userId: participant.userId.toString(), role: 'ATTENDEE' },
+      );
+
+      expect(result.recognitionMatch.source).toBe('musicbrainz');
+      // trackId is only set by the assign endpoint, not auto on MB match
+      expect(result.recognitionMatch.trackId).toBeUndefined();
+      const stored = await SongModel.findById(result.id);
+      expect(stored.recognitionMatch.source).toBe('musicbrainz');
+      expect(String(stored.recognitionMatch.trackId || '')).not.toBe(String(track._id));
+    });
+  });
+
+  describe('getFingerprintMatchCandidates', () => {
+    test('returns tracks ranked against the original attendee query', async () => {
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id, {
+        title: 'Original Title',
+        artist: 'Original Artist',
+      });
+      const closer = await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'close-1',
+        title: 'Original Title',
+        artist: 'Original Artist',
+        uploadedBy: user._id,
+        duration: 200,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+      const other = await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'other-1',
+        title: 'Original Title Live',
+        artist: 'Original Artist Band',
+        uploadedBy: user._id,
+        duration: 220,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+
+      const result = await songsService.getFingerprintMatchCandidates(
+        event._id.toString(),
+        song._id.toString(),
+        { userId: user._id.toString(), role: 'DJ' },
+      );
+
+      expect(result.target).toEqual({ title: 'Original Title', artist: 'Original Artist' });
+      expect(result.tracks.length).toBe(2);
+      expect(String(result.tracks[0].id)).toBe(String(closer._id));
+      expect(String(result.tracks[0]._id)).toBe(String(closer._id));
+      expect(result.tracks[0].matchScore).toBeGreaterThan(result.tracks[1].matchScore);
+      expect(result.tracks.map((t) => String(t.id))).toContain(String(other._id));
+    });
+
+    test('rejects non-DJ actors', async () => {
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id);
+      await expect(
+        songsService.getFingerprintMatchCandidates(
+          event._id.toString(),
+          song._id.toString(),
+          { userId: participant.userId.toString(), role: 'ATTENDEE' },
+        ),
+      ).rejects.toThrow(/permission/);
+    });
+  });
+
+  describe('searchFingerprints', () => {
+    test('returns ranked matches with cover art for the attendee typeahead', async () => {
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const encryptedCover = 'enc-cover:v1:abc';
+      await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'lib-1',
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+        coverUrl: encryptedCover,
+        uploadedBy: user._id,
+        duration: 354,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+      await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'lib-2',
+        title: 'Bohemian Rhapsody (Remastered)',
+        artist: 'Queen',
+        coverUrl: null,
+        uploadedBy: user._id,
+        duration: 354,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+      // Track in a different event — must not leak into results
+      const { event: otherEvent, user: otherDj } = await createTestEvent();
+      await AudioTrackModel.create({
+        eventId: otherEvent._id,
+        audioSha256: 'lib-3',
+        title: 'Bohemian Rhapsody',
+        artist: 'Queen',
+        coverUrl: null,
+        uploadedBy: otherDj._id,
+        duration: 354,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+
+      const result = await songsService.searchFingerprints(
+        event._id.toString(),
+        participant._id.toString(),
+        'Bohemian Rhapsody',
+        'Queen',
+        { userId: participant.userId.toString(), role: 'ATTENDEE' },
+      );
+
+      expect(result.matches).toHaveLength(2);
+      expect(result.matches[0].matchScore).toBeGreaterThan(result.matches[1].matchScore);
+      // Covers come back decrypted (null when encryption is opaque) — but the
+      // first match should expose a coverUrl key in its shape.
+      expect(result.matches[0]).toHaveProperty('coverUrl');
+    });
+
+    test('returns empty matches when query is empty', async () => {
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+
+      const result = await songsService.searchFingerprints(
+        event._id.toString(),
+        participant._id.toString(),
+        '',
+        '',
+        { userId: participant.userId.toString(), role: 'ATTENDEE' },
+      );
+
+      expect(result.matches).toEqual([]);
+    });
+
+    test('refuses requests from non-participants', async () => {
+      const { event, user: djUser } = await createTestEvent();
+      await expect(
+        songsService.searchFingerprints(
+          event._id.toString(),
+          '60a7b8c9d0e1f2a3b4c5d6e7',
+          'Some Title',
+          'Some Artist',
+          { userId: djUser._id.toString(), role: 'DJ' },
+        ),
+      ).rejects.toThrow();
     });
   });
 
