@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const {
   EventModel,
   ParticipantModel,
+  UserModel,
 } = require('../models/schema');
 const { logger } = require('../utils');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../errors');
@@ -154,6 +155,24 @@ class ParticipantsService {
   async updateProfile(participantId, updates, actorUser) {
     const participant = await ParticipantModel.findById(participantId);
     if (!participant) {
+      /* DJ fallback: DJs have no Participant document, so the front-end
+         stores their User id in currentParticipant._id and calls this
+         endpoint with it. Allow a profile-picture update to flow through
+         to the User record when the caller is the DJ themselves and only
+         the picture is being changed (nickname / socialPrefs don't apply
+         to DJs on this route). */
+      if (
+        updates.profilePicture !== undefined &&
+        updates.nickname === undefined &&
+        !updates.socialPrefs &&
+        actorUser?.userId &&
+        participantId.toString() === actorUser.userId.toString()
+      ) {
+        return this._updateDjProfilePicture(
+          actorUser.userId,
+          updates.profilePicture,
+        );
+      }
       throw new NotFoundError('Participant not found');
     }
 
@@ -210,6 +229,32 @@ class ParticipantsService {
     logger.info(`Participant profile updated: ${participantId}`);
 
     return this._formatParticipant(participant);
+  }
+
+  async _updateDjProfilePicture(userId, profilePicture) {
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+    user.profilePicture = profilePicture;
+    await user.save();
+    logger.info(`DJ profile picture updated: ${userId}`);
+    return this._formatDjAsParticipant(user);
+  }
+
+  _formatDjAsParticipant(user) {
+    /* Shape the DJ response so the front-end can spread it into its
+       currentParticipant snapshot without special-casing. eventId is
+       null because DJs are not per-event Participants; the
+       controller's socket emit guards on eventId and will no-op. */
+    return {
+      _id: user._id.toString(),
+      id: user._id.toString(),
+      userId: user._id.toString(),
+      nickname: user.displayName,
+      profilePicture: user.profilePicture,
+      eventId: null,
+    };
   }
 
   async getParticipant(participantId) {
