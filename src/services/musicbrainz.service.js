@@ -12,6 +12,7 @@ const MIN_CANDIDATE_SCORE = 0.35;
 const MAX_REQUESTS_PER_SECOND = 1;
 const MIN_REQUEST_INTERVAL_MS = 1550;
 const FAILURE_BACKOFF_MS = 60 * 1000;
+const MAX_TRANSPORT_ATTEMPTS = 2;
 const RECORDING_SEARCH_LIMIT = '4';
 const USER_AGENT =
   process.env.MUSICBRAINZ_USER_AGENT ||
@@ -138,46 +139,66 @@ class MusicBrainzService {
 
   async _getJson(path, params) {
     const run = this.requestTail.then(async () => {
-      if (Date.now() < this.unavailableUntil) throw new Error('MusicBrainz backoff active');
-
-      const waitMs = Math.max(0, MIN_REQUEST_INTERVAL_MS - (Date.now() - this.lastRequestAt));
-      if (waitMs) await sleep(waitMs);
-      this.lastRequestAt = Date.now();
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      try {
-        const url = new URL(`${BASE_URL}${path}`);
-        Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-        logger.info('MusicBrainz API request', {
-          path,
-          maxRequestsPerSecond: MAX_REQUESTS_PER_SECOND,
-          minIntervalMs: MIN_REQUEST_INTERVAL_MS,
-        });
-        const response = await fetch(url, {
-          headers: {
-            Accept: 'application/json',
-            'User-Agent': USER_AGENT,
-          },
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          const error = new Error(`MusicBrainz ${response.status}`);
-          error.status = response.status;
-          throw error;
+      let lastError = null;
+      for (let attempt = 1; attempt <= MAX_TRANSPORT_ATTEMPTS; attempt += 1) {
+        try {
+          return await this._attemptFetchJson(path, params, attempt);
+        } catch (error) {
+          lastError = error;
+          if (!isRetryableTransportError(error) || attempt === MAX_TRANSPORT_ATTEMPTS) {
+            if (isBackoffError(error)) this.unavailableUntil = Date.now() + FAILURE_BACKOFF_MS;
+            throw error;
+          }
+          logger.warn('MusicBrainz transport error; retrying once', {
+            path,
+            attempt,
+            message: error.message,
+            cause: error.cause ? error.cause.code || error.cause.message || String(error.cause) : null,
+          });
         }
-        logger.info('MusicBrainz API response OK', { path, status: response.status });
-        return response.json();
-      } catch (error) {
-        if (isBackoffError(error)) this.unavailableUntil = Date.now() + FAILURE_BACKOFF_MS;
-        throw error;
-      } finally {
-        clearTimeout(timeout);
       }
+      throw lastError;
     });
 
     this.requestTail = run.catch(() => {});
     return run;
+  }
+
+  async _attemptFetchJson(path, params, attempt) {
+    if (Date.now() < this.unavailableUntil) throw new Error('MusicBrainz backoff active');
+
+    const waitMs = Math.max(0, MIN_REQUEST_INTERVAL_MS - (Date.now() - this.lastRequestAt));
+    if (waitMs) await sleep(waitMs);
+    this.lastRequestAt = Date.now();
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const url = new URL(`${BASE_URL}${path}`);
+      Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+      logger.info('MusicBrainz API request', {
+        path,
+        attempt,
+        maxRequestsPerSecond: MAX_REQUESTS_PER_SECOND,
+        minIntervalMs: MIN_REQUEST_INTERVAL_MS,
+      });
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': USER_AGENT,
+        },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const error = new Error(`MusicBrainz ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      logger.info('MusicBrainz API response OK', { path, attempt, status: response.status });
+      return response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async _fetchCoverArt(releaseId) {
@@ -281,6 +302,13 @@ function isBackoffError(error) {
     || error?.message === 'MusicBrainz backoff active'
     || error?.status === 429
     || error?.status >= 500;
+}
+
+function isRetryableTransportError(error) {
+  return error?.message === 'fetch failed'
+    || error?.cause?.code === 'ECONNRESET'
+    || error?.cause?.code === 'ETIMEDOUT'
+    || error?.cause?.code === 'UND_ERR_SOCKET';
 }
 
 function readArtistCredit(credits) {

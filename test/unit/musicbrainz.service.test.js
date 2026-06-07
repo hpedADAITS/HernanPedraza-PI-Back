@@ -131,6 +131,38 @@ describe('musicbrainz service', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
+  test('retries one transport failure through the limiter', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    global.fetch = jest.fn()
+      .mockRejectedValueOnce(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } }))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          recordings: [{
+            id: 'mb-recording-1',
+            title: 'Song',
+            score: 100,
+            length: 180000,
+            'artist-credit': [{ artist: { name: 'Artist' } }],
+          }],
+        }),
+      });
+
+    const lookup = loadService().findRecordingMatches('Song', 'Artist', 180);
+    await Promise.resolve();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(1549);
+    await Promise.resolve();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(1);
+    await Promise.resolve();
+    await expect(lookup).resolves.toHaveLength(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
   test('skips placeholder metadata without calling MusicBrainz', async () => {
     global.fetch = jest.fn();
 
@@ -143,16 +175,19 @@ describe('musicbrainz service', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test('backs off after transport failures', async () => {
+  test('backs off after retried transport failures', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     global.fetch = jest.fn().mockRejectedValue(new TypeError('fetch failed'));
 
     const service = loadService();
-    await expect(service.findRecordingMatch('Song A', 'Artist A', 180)).resolves.toBeNull();
+    const first = service.findRecordingMatch('Song A', 'Artist A', 180);
+    await Promise.resolve();
+    jest.advanceTimersByTime(1550);
+    await expect(first).resolves.toBeNull();
     await expect(service.findRecordingMatch('Song B', 'Artist B', 180)).resolves.toBeNull();
 
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
   test('returns null when MusicBrainz is unavailable', async () => {
