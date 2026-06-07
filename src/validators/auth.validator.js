@@ -5,6 +5,7 @@
 
 const { ValidationError } = require('../errors');
 const { messages } = require('../constants');
+const { isValidPassword } = require('../schemas/validation-rules');
 
 /**
  * Valida formato email
@@ -33,6 +34,9 @@ function validatePassword(password) {
   }
   if (password.length > 128) {
     throw new ValidationError(messages.VALIDATION.PASSWORD_TOO_LONG);
+  }
+  if (!isValidPassword(password)) {
+    throw new ValidationError(messages.VALIDATION.INVALID_PASSWORD);
   }
 }
 
@@ -88,6 +92,10 @@ function validateLogin(data) {
 
   validateEmail(email);
   if (typeof password !== 'string' || password.length === 0) {
+    throw new ValidationError(messages.VALIDATION.INVALID_PASSWORD);
+  }
+  validatePassword(password);
+  if (email.trim().toLowerCase() === password.trim().toLowerCase()) {
     throw new ValidationError(messages.VALIDATION.INVALID_PASSWORD);
   }
 }

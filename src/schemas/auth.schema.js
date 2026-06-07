@@ -1,5 +1,6 @@
 const { ValidationError } = require('../errors');
 const { messages } = require('../constants');
+const { isValidPassword } = require('./validation-rules');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -22,6 +23,9 @@ class AuthSchema {
     }
     if (password.length > 128) {
       throw new ValidationError(messages.VALIDATION.PASSWORD_TOO_LONG);
+    }
+    if (!isValidPassword(password)) {
+      throw new ValidationError(messages.VALIDATION.INVALID_PASSWORD);
     }
   }
 
@@ -59,6 +63,10 @@ class AuthSchema {
     }
     this.validateEmail(email);
     if (typeof password !== 'string' || password.length === 0) {
+      throw new ValidationError(messages.VALIDATION.INVALID_PASSWORD);
+    }
+    this.validatePassword(password);
+    if (email.trim().toLowerCase() === password.trim().toLowerCase()) {
       throw new ValidationError(messages.VALIDATION.INVALID_PASSWORD);
     }
   }

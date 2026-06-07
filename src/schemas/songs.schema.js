@@ -1,4 +1,5 @@
 const { ValidationError } = require('../errors');
+const { isValidSongText } = require('./validation-rules');
 
 class SongsSchema {
   parseSuggestSong(body) {
@@ -26,6 +27,9 @@ class SongsSchema {
     if (data.title.length > 200) {
       throw new ValidationError('Song title must be less than 200 characters');
     }
+    if (!isValidSongText(data.title)) {
+      throw new ValidationError('Song title contains invalid characters');
+    }
     if (!data.artist || typeof data.artist !== 'string') {
       throw new ValidationError('Artist name is required');
     }
@@ -34,6 +38,9 @@ class SongsSchema {
     }
     if (data.artist.length > 200) {
       throw new ValidationError('Artist name must be less than 200 characters');
+    }
+    if (!isValidSongText(data.artist)) {
+      throw new ValidationError('Artist name contains invalid characters');
     }
     if (
       data.totalDuration !== undefined &&

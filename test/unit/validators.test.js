@@ -4,6 +4,7 @@ const {
   participantsSchema,
   songsSchema,
 } = require('../../src/schemas');
+const { validateLogin } = require('../../src/validators/auth.validator');
 const { isValidId, isValidVoteValue } = require('../../src/socket/shared-validators');
 
 const expectInvalid = (fn, message) => expect(fn).toThrow(message);
@@ -20,11 +21,34 @@ describe('Current validators and schemas', () => {
 
     test('validates password and display name bounds', () => {
       expect(() => authSchema.validatePassword('password123')).not.toThrow();
+      expect(() => authSchema.validatePassword('StrongPass123!')).not.toThrow();
       expectInvalid(() => authSchema.validatePassword('1234567'), 'Password must be at least 8 characters');
+      expectInvalid(() => authSchema.validatePassword('A'.repeat(129)), 'Password must be less than 128 characters');
+      expectInvalid(() => authSchema.validatePassword('pass\nword1'), 'Invalid password');
+      expectInvalid(() => authSchema.validatePassword('        '), 'Invalid password');
 
       expect(() => authSchema.validateDisplayName('John Doe')).not.toThrow();
       expectInvalid(() => authSchema.validateDisplayName('J'), 'Display name must be at least 2 characters');
       expectInvalid(() => authSchema.validateDisplayName('A'.repeat(51)), 'Display name must be less than 50 characters');
+    });
+
+    test('validates login passwords on the server', () => {
+      expect(() => validateLogin({
+        email: 'dj@example.com',
+        password: 'StrongPass123!',
+      })).not.toThrow();
+      expectInvalid(() => validateLogin({
+        email: 'dj@example.com',
+        password: '1234567',
+      }), 'Password must be at least 8 characters');
+      expectInvalid(() => validateLogin({
+        email: 'dj@example.com',
+        password: 'pass\tword1',
+      }), 'Invalid password');
+      expectInvalid(() => validateLogin({
+        email: 'same@example.com',
+        password: 'same@example.com',
+      }), 'Invalid password');
     });
 
     test('rejects non-public registration roles', () => {
@@ -78,6 +102,8 @@ describe('Current validators and schemas', () => {
 
       expectInvalid(() => songsSchema.parseSuggestSong({ participantId: 'p', title: '', artist: 'A' }), 'Song title is required');
       expectInvalid(() => songsSchema.parseSuggestSong({ participantId: 'p', title: 'T', artist: '' }), 'Artist name is required');
+      expectInvalid(() => songsSchema.parseSuggestSong({ participantId: 'p', title: '<script>', artist: 'A' }), 'Song title contains invalid characters');
+      expectInvalid(() => songsSchema.parseSuggestSong({ participantId: 'p', title: 'T', artist: 'Bad\u0000Artist' }), 'Artist name contains invalid characters');
     });
   });
 
@@ -96,6 +122,9 @@ describe('Current validators and schemas', () => {
       });
 
       expectInvalid(() => participantsSchema.parseJoinEvent({ nickname: 'A' }), 'Nickname must be at least 2 characters');
+      expectInvalid(() => participantsSchema.parseJoinEvent({ nickname: 'Ada', password: 'bad\npass1' }), 'Invalid password');
+      expectInvalid(() => participantsSchema.parseSetPassword({ password: 'short' }), 'Password must be at least 8 characters');
+      expectInvalid(() => participantsSchema.parseSetPassword({ password: 'bad\tpass1' }), 'Invalid password');
       expectInvalid(() => participantsSchema.parseUpdateProfile({}), 'No participant profile updates provided');
       expectInvalid(() => participantsSchema.parseJoinEvent({ nickname: 'Ada', socialPrefs: { showDisplayName: 'yes' } }), 'socialPrefs.showDisplayName must be a boolean');
     });

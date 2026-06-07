@@ -220,6 +220,14 @@ describe('Auth Flows Integration', () => {
       expect(res.status).toBe(401);
     });
 
+    test('rejects malformed password before credential lookup', async () => {
+      const res = await loginUser({
+        email: VALID_USER.email,
+        password: 'bad\npass1',
+      });
+      expect(res.status).toBe(400);
+    });
+
     test('rejects unknown email with 401 (no enumeration leak)', async () => {
       const res = await loginUser({
         email: 'nobody@example.com',

@@ -4,6 +4,7 @@ const { ackSuccess, ackError } = require('./ack');
 const { songsService } = require('../services');
 const { assertJoinedEvent, eventActor, emitQueueUpdated, rejectLegacyCommand, toEventRoom } = require('./room');
 const { isValidId } = require('./shared-validators');
+const { songsSchema } = require('../schemas');
 
 const handleSuggestSong = async (socket, io, data, callback) => {
   try {
@@ -12,12 +13,7 @@ const handleSuggestSong = async (socket, io, data, callback) => {
       participantId,
       title,
       artist,
-      totalDuration,
-      duration,
       userId,
-      musicBrainzConfirmed,
-      musicBrainzMatch,
-      skipMusicBrainzLookup,
     } = data;
     if (!eventId || !participantId || !title || !artist) {
       throw new Error('Missing required fields: eventId, participantId, title, artist');
@@ -25,15 +21,20 @@ const handleSuggestSong = async (socket, io, data, callback) => {
     if (!isValidId(eventId) || !isValidId(participantId)) {
       throw new Error('Invalid ID format');
     }
+    const parsed = songsSchema.parseSuggestSong(data);
     await assertJoinedEvent(socket, eventId, participantId);
     const song = await songsService.suggestSong(
       eventId,
-      participantId,
-      title,
-      artist,
-      totalDuration ?? duration,
+      parsed.participantId,
+      parsed.title,
+      parsed.artist,
+      parsed.totalDuration,
       eventActor(socket, userId),
-      { musicBrainzConfirmed, musicBrainzMatch, skipMusicBrainzLookup },
+      {
+        musicBrainzConfirmed: parsed.musicBrainzConfirmed,
+        musicBrainzMatch: parsed.musicBrainzMatch,
+        skipMusicBrainzLookup: parsed.skipMusicBrainzLookup,
+      },
     );
     toEventRoom(io, eventId).emit('song_suggested', {
       songId: song._id, title: song.title, artist: song.artist,

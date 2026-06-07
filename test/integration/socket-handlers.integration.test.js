@@ -238,6 +238,29 @@ describe('Socket.IO Handler Integration Tests', () => {
         })
       );
     });
+
+    test('should reject malformed suggestion text', async () => {
+      const callback = jest.fn();
+
+      await socketEvents.handleSuggestSong(
+        socket,
+        ioServer,
+        {
+          eventId: testEvent._id.toString(),
+          participantId: testParticipant._id.toString(),
+          title: '<script>',
+          artist: 'Artist',
+        },
+        callback
+      );
+
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.stringContaining('Song title contains invalid characters'),
+        })
+      );
+    });
   });
 
   /* ============ APPROVE SONG HANDLER ============ */

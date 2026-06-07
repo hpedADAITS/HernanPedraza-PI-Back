@@ -1,4 +1,5 @@
 const { ValidationError } = require('../errors');
+const { isValidPassword } = require('./validation-rules');
 
 class ParticipantsSchema {
   parseJoinEvent(body) {
@@ -29,6 +30,12 @@ class ParticipantsSchema {
     if (data.password !== undefined && data.password.length < 8) {
       throw new ValidationError('Password must be at least 8 characters');
     }
+    if (data.password !== undefined && data.password.length > 128) {
+      throw new ValidationError('Password must be less than 128 characters');
+    }
+    if (data.password !== undefined && !isValidPassword(data.password)) {
+      throw new ValidationError('Invalid password');
+    }
 
     return data;
   }
@@ -46,6 +53,9 @@ class ParticipantsSchema {
     }
     if (data.password.length > 128) {
       throw new ValidationError('Password must be less than 128 characters');
+    }
+    if (!isValidPassword(data.password)) {
+      throw new ValidationError('Invalid password');
     }
 
     return data;
