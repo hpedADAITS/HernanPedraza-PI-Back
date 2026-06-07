@@ -261,6 +261,101 @@ class EmailService {
   }
 
   /**
+   * Send an event invite to a friend. The email contains the event code
+   * the recipient needs to join. The front never shows the email — this is
+   * the only place the address is composed for delivery.
+   */
+  async sendEventInviteEmail({ toEmail, inviter, invitee, eventName, eventCode, message }) {
+    const idempotencyKey = `event-invite/${toEmail}/${Date.now()}`;
+    const eventLabel = eventName ? `“${eventName}”` : 'the event';
+
+    if (!this.resend) {
+      logger.info(
+        `Email service disabled; would send event invite to ${toEmail} for ${eventLabel} (code ${eventCode})`,
+      );
+      return { success: true };
+    }
+
+    try {
+      const { data, error } = await this.resend.emails.send({
+        from: this.fromEmail,
+        to: [toEmail],
+        subject: `${inviter.displayName || 'A friend'} invited you to ${eventLabel} on Syncrequest`,
+        html: this.getEventInviteEmailTemplate({
+          inviterName: inviter.displayName || 'A friend',
+          inviteeName: invitee?.displayName || 'there',
+          eventName: eventLabel,
+          eventCode,
+          message: message || null,
+        }),
+        idempotencyKey: idempotencyKey.substring(0, 256),
+      });
+
+      if (error) {
+        logger.error('Failed to send event invite:', error);
+        return { success: false, error: error.message || 'send failed' };
+      }
+
+      logger.info(`Event invite sent to ${toEmail} (messageId: ${data.id})`);
+      return { success: true, messageId: data.id };
+    } catch (error) {
+      logger.error('Event invite send error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  getEventInviteEmailTemplate({ inviterName, inviteeName, eventName, eventCode, message }) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const joinUrl = `${frontendUrl}/?joinCode=${encodeURIComponent(eventCode)}`;
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>You're invited to a Syncrequest event</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0a0e27;font-family:Arial,sans-serif;color:#cbd5e1;">
+  <center role="main" style="width:100%;background-color:#0a0e27;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#0a0e27;">
+      <tr>
+        <td align="center" style="padding:40px 20px;">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px;margin:0 auto;">
+            <tr>
+              <td align="center" style="padding:32px 0;border-bottom:1px solid rgba(255,255,255,0.1);">
+                <img src="https://raw.githubusercontent.com/hpedADAITS/HernanPedraza-PI-Front/refs/heads/main/src/assets/logo_white.png" alt="Syncrequest" style="width:180px;height:auto;display:block;filter:brightness(1000%);" />
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:40px 24px;">
+                <h2 style="color:#e2e8f0;font-size:20px;margin-bottom:16px;">Hi ${this.escapeHtml(inviteeName)},</h2>
+                <p style="color:#cbd5e1;font-size:16px;line-height:1.7;margin-bottom:24px;">
+                  <strong>${this.escapeHtml(inviterName)}</strong> has invited you to join ${this.escapeHtml(eventName)} on Syncrequest.
+                </p>
+                ${message
+                  ? `<blockquote style="border-left:3px solid #67e8f9;color:#94a3b8;padding:8px 16px;margin:0 0 24px 0;font-style:italic;">${this.escapeHtml(message)}</blockquote>`
+                  : ''}
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 32px auto;background:linear-gradient(135deg,rgba(30,58,138,0.2) 0%,rgba(12,30,74,0.2) 100%);border:1px solid rgba(96,165,250,0.2);border-radius:12px;padding:24px;">
+                  <tr><td align="center" style="color:#7dd3fc;font-size:14px;font-weight:600;letter-spacing:1px;">EVENT CODE</td></tr>
+                  <tr><td align="center" style="color:#e2e8f0;font-size:32px;font-weight:800;letter-spacing:6px;padding:8px 0;font-family:'Courier New',monospace;">${this.escapeHtml(eventCode)}</td></tr>
+                </table>
+                <a href="${joinUrl}" style="display:inline-block;background:linear-gradient(135deg,#2563eb 0%,#1e40af 100%);color:white;text-decoration:none;padding:16px 32px;border-radius:8px;font-size:16px;font-weight:600;">Join the event</a>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding-top:32px;border-top:1px solid rgba(255,255,255,0.1);color:#64748b;font-size:13px;">
+                <p>You received this email because someone you accepted as a friend on Syncrequest invited you to a private event.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </center>
+</body>
+</html>`;
+  }
+
+  /**
    * Escape HTML special characters
    * @param {string} text - Text to escape
    * @returns {string} Escaped text

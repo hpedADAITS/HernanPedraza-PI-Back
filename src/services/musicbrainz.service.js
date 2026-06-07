@@ -1,8 +1,11 @@
 const { logger } = require('../utils');
 
 const BASE_URL = 'https://musicbrainz.org/ws/2';
+const COVER_ART_BASE_URL = 'https://coverartarchive.org';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 2500;
+const COVER_ART_TIMEOUT_MS = 3000;
+const COVER_ART_REQUEST_INTERVAL_MS = 800;
 const MAX_CACHE_SIZE = 250;
 const MIN_SCORE = 0.72;
 const MIN_REQUEST_INTERVAL_MS = 1500;
@@ -15,6 +18,7 @@ class MusicBrainzService {
     this.cache = new Map();
     this.inFlight = new Map();
     this.lastRequestAt = 0;
+    this.lastCoverArtAt = 0;
     this.requestTail = Promise.resolve();
   }
 
@@ -41,9 +45,20 @@ class MusicBrainzService {
         offset: '0',
         fmt: 'json',
       });
-      const match = this._bestRecording(data?.recordings || [], targetTitle, targetArtist, totalDuration);
-      this._setCached(cacheKey, match);
-      return match;
+      const recording = this._bestRecording(data?.recordings || [], targetTitle, targetArtist, totalDuration);
+      if (!recording) {
+        this._setCached(cacheKey, null);
+        return null;
+      }
+      const releaseId = readFirstReleaseId(data?.recordings || [], targetTitle, targetArtist, totalDuration);
+      if (releaseId) {
+        const coverUrl = await this._fetchCoverArt(releaseId);
+        if (coverUrl) {
+          recording.coverUrl = coverUrl;
+        }
+      }
+      this._setCached(cacheKey, recording);
+      return recording;
     } catch (error) {
       logger.warn('MusicBrainz lookup failed', { message: error.message });
       this._setCached(cacheKey, null);
@@ -80,6 +95,35 @@ class MusicBrainzService {
 
     this.requestTail = run.catch(() => {});
     return run;
+  }
+
+  async _fetchCoverArt(releaseId) {
+    try {
+      const waitMs = Math.max(0, COVER_ART_REQUEST_INTERVAL_MS - (Date.now() - this.lastCoverArtAt));
+      if (waitMs) await sleep(waitMs);
+      this.lastCoverArtAt = Date.now();
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), COVER_ART_TIMEOUT_MS);
+      try {
+        const response = await fetch(`${COVER_ART_BASE_URL}/release/${encodeURIComponent(releaseId)}`, {
+          headers: { 'User-Agent': USER_AGENT },
+          signal: controller.signal,
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        const front = pickFrontImage(data?.images);
+        if (!front) return null;
+        /* Prefer a high-res derivative (~1200px). If absent, fall back to the
+           original URL — Cover Art Archive will serve it at native size. */
+        return pickHiresUrl(front) || front.image || null;
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (error) {
+      logger.debug('Cover Art Archive fetch failed', { message: error.message });
+      return null;
+    }
   }
 
   _bestRecording(recordings, targetTitle, targetArtist, totalDuration) {
@@ -167,6 +211,46 @@ function similarity(a, b) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readFirstReleaseId(recordings, targetTitle, targetArtist, totalDuration) {
+  let best = null;
+  for (const recording of recordings) {
+    const artist = readArtistCredit(recording['artist-credit']);
+    const titleScore = similarity(targetTitle, normalizeText(recording.title));
+    const artistScore = similarity(targetArtist, normalizeText(artist));
+    const durationScore = durationSimilarity(totalDuration, recording.length);
+    const mbScore = Math.min(Number(recording.score) || 0, 100) / 100;
+    const score = (titleScore * 0.45) + (artistScore * 0.35) + (mbScore * 0.15) + (durationScore * 0.05);
+    if (score < MIN_SCORE) continue;
+    if (best && score <= best.score) continue;
+    const firstRelease = Array.isArray(recording.releases) ? recording.releases[0] : null;
+    if (!firstRelease?.id) continue;
+    best = { score, releaseId: firstRelease.id };
+  }
+  return best?.releaseId || null;
+}
+
+function pickFrontImage(images) {
+  if (!Array.isArray(images) || images.length === 0) return null;
+  /* Cover Art Archive's `front: true` is the canonical front cover. If no
+     image is flagged as front, fall back to the first image in the array. */
+  const flagged = images.find((img) => img && img.front);
+  return flagged || images[0] || null;
+}
+
+function pickHiresUrl(image) {
+  if (!image?.thumbnails) return null;
+  /* Try largest first, then walk down. CAA sizes are small, large, 250, 500,
+     1200 (when available). We want ~1200 for sharp 3D cube textures. */
+  const order = ['1200', 'large', '500', '250', 'small'];
+  for (const size of order) {
+    const candidate = image.thumbnails[size];
+    if (typeof candidate === 'string' && candidate) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 module.exports = new MusicBrainzService();
