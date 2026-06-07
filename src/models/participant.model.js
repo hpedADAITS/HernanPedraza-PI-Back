@@ -41,6 +41,20 @@ const ParticipantSchema = new Schema(
     // Track how many songs this participant has had approved
     approvalCount: { type: Number, default: 0 },
 
+    /* Privacy / social-pref state. When `showDisplayName` is false the
+       participant's public nickname becomes "Participant <anonymousNumber>"
+       and `nickname` reflects that mask; the original value is preserved in
+       `realNickname` so toggling the pref back on restores it. The same
+       pattern is used for `showProfilePicture` / `realProfilePicture`. */
+    anonymousNumber: { type: Number, default: null, index: true },
+    realNickname: { type: String, default: null },
+    realProfilePicture: { type: String, default: null },
+    socialPrefs: {
+      showDisplayName: { type: Boolean, default: true },
+      showProfilePicture: { type: Boolean, default: true },
+      allowFriendRequests: { type: Boolean, default: true },
+    },
+
     leftAt: { type: Date },
   },
   { timestamps: true },

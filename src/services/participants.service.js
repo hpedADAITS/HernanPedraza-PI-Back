@@ -27,10 +27,12 @@ class ParticipantsService {
     userId,
     options = {},
   ) {
-    const { dbSession } = options;
+    const { dbSession, socialPrefs } = options;
     const nicknameTrimmed = nickname.trim();
     const nicknameLower = nicknameTrimmed.toLowerCase();
     await this.ensureNicknameIsNotAccessCode(nicknameTrimmed);
+
+    const mergedPrefs = this._mergeSocialPrefs(socialPrefs);
 
     const existing = await ParticipantModel.findOne({
       eventId,
@@ -60,6 +62,9 @@ class ParticipantsService {
         existing.profilePicture = profilePicture ?? existing.profilePicture;
         existing.joinedAt = new Date();
         existing.lastSeenAt = new Date();
+        if (mergedPrefs) {
+          this._applySocialPrefs(existing, mergedPrefs, profilePicture, nicknameTrimmed);
+        }
         await existing.save({ session: dbSession });
 
         logger.info(`Protected participant resumed event: ${eventId} - ${nickname}`);
@@ -82,6 +87,9 @@ class ParticipantsService {
       existing.profilePicture = profilePicture ?? existing.profilePicture;
       existing.joinedAt = new Date();
       existing.lastSeenAt = new Date();
+      if (mergedPrefs) {
+        this._applySocialPrefs(existing, mergedPrefs, profilePicture, nicknameTrimmed);
+      }
       await existing.save({ session: dbSession });
 
       logger.info(`Participant rejoined event: ${eventId} - ${nickname}`);
@@ -96,7 +104,15 @@ class ParticipantsService {
       userId,
       joinedAt: new Date(),
       lastSeenAt: new Date(),
+      socialPrefs: mergedPrefs || {
+        showDisplayName: true,
+        showProfilePicture: true,
+        allowFriendRequests: true,
+      },
     });
+    if (mergedPrefs) {
+      await this._applySocialPrefs(participant, mergedPrefs, profilePicture, nicknameTrimmed);
+    }
 
     await participant.save({ session: dbSession });
     logger.info(`Participant joined event: ${eventId} - ${nickname}`);
@@ -153,11 +169,41 @@ class ParticipantsService {
       if (existing) {
         throw new ValidationError('Nickname already taken in this event');
       }
+      /* The explicit rename is the new "real" nickname — remember it so a
+         social-pref flip back to "show name" can restore it. */
+      participant.realNickname = updates.nickname;
       participant.nickname = updates.nickname;
+      if (!participant.socialPrefs?.showDisplayName) {
+        /* Mask is still on: the public nickname should be the masked form. */
+        const masked = formatAnonymousName(participant.anonymousNumber);
+        if (masked) participant.nickname = masked;
+      }
     }
 
     if (updates.profilePicture !== undefined) {
+      participant.realProfilePicture = updates.profilePicture;
       participant.profilePicture = updates.profilePicture;
+      if (participant.socialPrefs && participant.socialPrefs.showProfilePicture === false) {
+        participant.profilePicture = null;
+      }
+    }
+
+    if (updates.socialPrefs) {
+      const mergedPrefs = {
+        showDisplayName:
+          updates.socialPrefs.showDisplayName !== undefined
+            ? updates.socialPrefs.showDisplayName
+            : (participant.socialPrefs?.showDisplayName ?? true),
+        showProfilePicture:
+          updates.socialPrefs.showProfilePicture !== undefined
+            ? updates.socialPrefs.showProfilePicture
+            : (participant.socialPrefs?.showProfilePicture ?? true),
+        allowFriendRequests:
+          updates.socialPrefs.allowFriendRequests !== undefined
+            ? updates.socialPrefs.allowFriendRequests
+            : (participant.socialPrefs?.allowFriendRequests ?? true),
+      };
+      await this._applySocialPrefs(participant, mergedPrefs, participant.realProfilePicture, participant.realNickname);
     }
 
     await participant.save();
@@ -443,6 +489,8 @@ class ParticipantsService {
       isPremium: participant.isPremium,
       passwordProtected: Boolean(participant.passwordHash || participant.passwordSetAt),
       leftAt: participant.leftAt,
+      anonymousNumber: participant.anonymousNumber || null,
+      socialPrefs: participant.socialPrefs || null,
     };
   }
 
@@ -503,6 +551,60 @@ class ParticipantsService {
     this._assertParticipantOwner(participant, actorUser);
   }
 
+  _mergeSocialPrefs(socialPrefs) {
+    if (!socialPrefs || typeof socialPrefs !== 'object') return null;
+    return {
+      showDisplayName:
+        typeof socialPrefs.showDisplayName === 'boolean'
+          ? socialPrefs.showDisplayName
+          : true,
+      showProfilePicture:
+        typeof socialPrefs.showProfilePicture === 'boolean'
+          ? socialPrefs.showProfilePicture
+          : true,
+      allowFriendRequests:
+        typeof socialPrefs.allowFriendRequests === 'boolean'
+          ? socialPrefs.allowFriendRequests
+          : true,
+    };
+  }
+
+  /* Persist the social-pref state and rewrite the public nickname and
+     profile picture so the rest of the system (and other clients) see the
+     masked form. `realNickname` / `realProfilePicture` keep the originals
+     so the toggle is reversible. The "anonymous number" is the count of
+     active participants in the event at the time the mask was applied, +1
+     for a stable display position. */
+  async _applySocialPrefs(participant, prefs, currentProfilePicture, currentNickname) {
+    participant.socialPrefs = prefs;
+    if (currentNickname) {
+      participant.realNickname = currentNickname;
+    }
+    if (currentProfilePicture !== undefined) {
+      participant.realProfilePicture = currentProfilePicture;
+    }
+    if (prefs.showDisplayName) {
+      participant.nickname = participant.realNickname || participant.nickname;
+    } else {
+      if (!participant.anonymousNumber) {
+        participant.anonymousNumber = await this._nextAnonymousNumber(participant.eventId);
+      }
+      participant.nickname = formatAnonymousName(participant.anonymousNumber);
+    }
+    if (prefs.showProfilePicture) {
+      participant.profilePicture = participant.realProfilePicture ?? participant.profilePicture;
+    } else {
+      participant.profilePicture = null;
+    }
+  }
+
+  async _nextAnonymousNumber(eventId) {
+    const taken = await ParticipantModel.countDocuments(
+      await this._activeParticipantQuery(eventId),
+    );
+    return taken + 1;
+  }
+
   async _assertParticipantAdminPermission(participant, actorUser) {
     const { userId, role } = this._normalizeActorUser(actorUser);
 
@@ -520,4 +622,13 @@ class ParticipantsService {
   }
 }
 
+const ANONYMOUS_LABEL = 'Participant';
+
+function formatAnonymousName(number) {
+  if (!Number.isFinite(number) || number < 1) return null;
+  return `${ANONYMOUS_LABEL} ${number}`;
+}
+
 module.exports = new ParticipantsService();
+module.exports.ANONYMOUS_LABEL = ANONYMOUS_LABEL;
+module.exports.formatAnonymousName = formatAnonymousName;

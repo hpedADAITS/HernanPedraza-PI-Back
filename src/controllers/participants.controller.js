@@ -51,6 +51,7 @@ class ParticipantsController {
         data.password,
         req.user.userId,
         {
+          socialPrefs: data.socialPrefs,
           onDuplicateActive: (existingParticipant) => {
             if (!io) return;
             io.to(`event:${eventId}`).emit('attendee_password_prompt_requested', {

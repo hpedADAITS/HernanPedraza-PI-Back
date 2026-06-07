@@ -10,6 +10,7 @@ class ParticipantsSchema {
         typeof body.profilePicture === 'string' ? body.profilePicture : null,
       password:
         typeof body.password === 'string' ? body.password : undefined,
+      socialPrefs: parseSocialPrefs(body.socialPrefs),
     };
 
     // Validate
@@ -58,9 +59,14 @@ class ParticipantsSchema {
         typeof body.profilePicture === 'string' || body.profilePicture === null
           ? body.profilePicture
           : undefined,
+      socialPrefs: parseSocialPrefs(body.socialPrefs),
     };
 
-    if (data.nickname === undefined && data.profilePicture === undefined) {
+    const hasExplicitUpdate =
+      data.nickname !== undefined
+      || data.profilePicture !== undefined
+      || data.socialPrefs !== undefined;
+    if (!hasExplicitUpdate) {
       throw new ValidationError('No participant profile updates provided');
     }
     if (data.nickname !== undefined && data.nickname.length < 2) {
@@ -149,6 +155,25 @@ class ParticipantsSchema {
 
     return { isPremium: body.isPremium };
   }
+}
+
+const SOCIAL_PREF_KEYS = ['showDisplayName', 'showProfilePicture', 'allowFriendRequests'];
+
+function parseSocialPrefs(input) {
+  if (input === undefined || input === null) return undefined;
+  if (typeof input !== 'object' || Array.isArray(input)) {
+    throw new ValidationError('socialPrefs must be an object');
+  }
+  const parsed = {};
+  for (const key of SOCIAL_PREF_KEYS) {
+    if (input[key] === undefined) continue;
+    if (typeof input[key] !== 'boolean') {
+      throw new ValidationError(`socialPrefs.${key} must be a boolean`);
+    }
+    parsed[key] = input[key];
+  }
+  if (Object.keys(parsed).length === 0) return undefined;
+  return parsed;
 }
 
 module.exports = new ParticipantsSchema();

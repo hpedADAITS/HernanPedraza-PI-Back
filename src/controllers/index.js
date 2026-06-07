@@ -5,6 +5,7 @@ const songsController = require('./songs.controller');
 const participantsController = require('./participants.controller');
 const attendeeSessionController = require('./attendee-session.controller');
 const votesController = require('./votes.controller');
+const friendsController = require('./friends.controller');
 
 module.exports = {
   authController,
@@ -14,4 +15,5 @@ module.exports = {
   participantsController,
   attendeeSessionController,
   votesController,
+  friendsController,
 };

@@ -8,6 +8,9 @@ const { SongModel } = require('./song.model');
 const { VoteModel } = require('./vote.model');
 const { AudioTrackModel } = require('./audio-track.model');
 const { AudioFingerprintModel } = require('./audio-fingerprint.model');
+const { FriendRequestModel } = require('./friend-request.model');
+const { FriendshipModel } = require('./friendship.model');
+const { EventInviteModel } = require('./event-invite.model');
 const {
   ALL_EVENT_PERMISSIONS,
   defaultPermissionsForRole,
@@ -70,6 +73,9 @@ module.exports = {
   VoteModel,
   AudioTrackModel,
   AudioFingerprintModel,
+  FriendRequestModel,
+  FriendshipModel,
+  EventInviteModel,
   connectMongo,
   stripMongoDbPath,
   defaultPermissionsForRole,

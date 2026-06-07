@@ -7,6 +7,7 @@ const participantsRoutes = require('./participants.routes');
 const attendeeSessionRoutes = require('./attendee-session.routes');
 const votesRoutes = require('./votes.routes');
 const debugRoutes = require('./debug.routes');
+const friendsRoutes = require('./friends.routes');
 
 const router = Router();
 
@@ -34,5 +35,6 @@ router.use('/participants', participantsRoutes);
 router.use('/attendee-session', attendeeSessionRoutes);
 router.use('/votes', votesRoutes);
 router.use('/debug', debugRoutes);
+router.use('/friends', friendsRoutes);
 
 module.exports = router;

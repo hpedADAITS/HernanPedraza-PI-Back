@@ -20,6 +20,7 @@ class AttendeeSessionController {
         data.profilePicture,
         data.password,
         {
+          socialPrefs: data.socialPrefs,
           onDuplicateActive: (participant) => {
             if (!io) return;
             io.to(`event:${eventId}`).emit('attendee_password_prompt_requested', {
