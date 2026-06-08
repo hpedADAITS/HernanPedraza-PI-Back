@@ -519,6 +519,7 @@ class SongsService {
     return {
       ...this._formatSong(song),
       voteScore: song.voteScore,
+      downvoteCount: song.downvoteCount || 0,
       voteCount: song.voteCount,
     };
   }
@@ -587,6 +588,7 @@ class SongsService {
       requestedBy: song.requestedBy,
       status: song.status,
       voteScore: song.voteScore,
+      downvoteCount: song.downvoteCount || 0,
       voteCount: song.voteCount,
       queuePosition: song.queuePosition,
       isPremiumSuggestion: song.isPremiumSuggestion,

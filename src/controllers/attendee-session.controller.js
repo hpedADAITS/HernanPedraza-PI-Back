@@ -1,4 +1,4 @@
-const { attendeeSessionService } = require('../services');
+const { attendeeSessionService, songsService, votesService } = require('../services');
 const { participantsSchema } = require('../schemas');
 const { httpStatus } = require('../constants');
 const { logger } = require('../utils');
@@ -8,6 +8,46 @@ let io = null;
 class AttendeeSessionController {
   setIO(socketIO) {
     io = socketIO;
+  }
+
+  async emitQueueUpdated(eventId) {
+    if (!io || !eventId) return;
+    const snapshot = await songsService.getQueueSnapshotForEvent(eventId);
+    io.to(`event:${eventId}`).emit('queue_updated', {
+      eventId,
+      ...snapshot,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  async recheckVoteThresholds(eventId) {
+    if (!eventId) return;
+    const result = await votesService.recomputeActiveSongsForEvent(eventId);
+    for (const song of result.changedSongs || []) {
+      io?.to(`event:${eventId}`).emit('votes_updated', {
+        eventId,
+        songId: song.id || song._id,
+        voteScore: song.voteScore,
+        downvoteCount: song.downvoteCount,
+        voteCount: song.voteCount,
+        status: song.status,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    for (const song of result.rejectedSongs || []) {
+      io?.to(`event:${eventId}`).emit('song_rejected', {
+        eventId,
+        songId: song.id || song._id,
+        title: song.title,
+        artist: song.artist,
+        status: song.status,
+        reason: song.removalReason || 'Rejected by downvotes',
+        timestamp: new Date().toISOString(),
+      });
+    }
+    if ((result.changedSongs || []).length > 0 || (result.rejectedSongs || []).length > 0) {
+      await this.emitQueueUpdated(eventId);
+    }
   }
 
   async joinEvent(req, res, next) {
@@ -32,6 +72,8 @@ class AttendeeSessionController {
           },
         },
       );
+
+      await this.recheckVoteThresholds(eventId);
 
       res.status(httpStatus.CREATED).json({
         success: true,

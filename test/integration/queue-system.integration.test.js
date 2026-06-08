@@ -527,7 +527,8 @@ describe('Queue System - Auto-Reject by Downvotes', () => {
     // Song should be auto-rejected and removed from queue
     const rejectedSong = await SongModel.findById(song.id);
     expect(rejectedSong.status).toBe('REJECTED');
-    expect(rejectedSong.voteScore).toBe(-4);
+    expect(rejectedSong.voteScore).toBe(0);
+    expect(rejectedSong.downvoteCount).toBe(4);
 
     queue = await getQueue(event.id, dj.token);
     expect(queue).toHaveLength(0);
@@ -564,7 +565,8 @@ describe('Queue System - Auto-Reject by Downvotes', () => {
     // Song should be auto-rejected
     const rejectedSong = await SongModel.findById(song.id);
     expect(rejectedSong.status).toBe('REJECTED');
-    expect(rejectedSong.voteScore).toBe(-4);
+    expect(rejectedSong.voteScore).toBe(0);
+    expect(rejectedSong.downvoteCount).toBe(4);
 
     // Should not appear in pending or queue
     const pending = await getPending(event.id, dj.token);
@@ -572,6 +574,89 @@ describe('Queue System - Auto-Reject by Downvotes', () => {
 
     const queue = await getQueue(event.id, dj.token);
     expect(queue).toHaveLength(0);
+  });
+
+  test('participant leave immediately rechecks downvote threshold', async () => {
+    const dj = await createConfirmedDj();
+    const event = await createEvent(dj.token);
+
+    const voters = [];
+    for (let i = 0; i < 5; i++) {
+      const attendee = await createAttendee(i + 700);
+      const participant = await joinEvent(event.id, attendee.token, `Leaver${i}`);
+      voters.push({ participant, token: attendee.token });
+    }
+
+    const song = await suggestSong(
+      event.id,
+      voters[0].participant._id,
+      voters[0].token,
+      'Leave Reject',
+      'Artist',
+    );
+    await approveSong(event.id, song.id, dj.token);
+
+    for (const voter of voters.slice(0, 2)) {
+      await castVote(song.id, voter.participant._id, voter.token, -1);
+    }
+
+    let stored = await SongModel.findById(song.id);
+    expect(stored.status).toBe('APPROVED');
+    expect(stored.downvoteCount).toBe(2);
+
+    await request(app)
+      .post(`/api/v1/participants/${voters[4].participant._id}/leave`)
+      .set(authHeader(voters[4].token))
+      .expect(200);
+
+    stored = await SongModel.findById(song.id);
+    expect(stored.status).toBe('REJECTED');
+    expect(stored.voteScore).toBe(0);
+    expect(stored.downvoteCount).toBe(2);
+  });
+
+  test('premium vote setting toggle recomputes active songs', async () => {
+    const dj = await createConfirmedDj();
+    const event = await createEvent(dj.token);
+
+    await request(app)
+      .put(`/api/v1/events/${event.id}`)
+      .set(authHeader(dj.token))
+      .send({ settings: { premiumVotesEnabled: false } })
+      .expect(200);
+
+    const voters = [];
+    for (let i = 0; i < 4; i++) {
+      const attendee = await createAttendee(i + 800);
+      const participant = await joinEvent(event.id, attendee.token, `PremiumToggle${i}`);
+      voters.push({ participant, token: attendee.token });
+    }
+
+    await ParticipantModel.findByIdAndUpdate(voters[0].participant._id, { isPremium: true });
+
+    const song = await suggestSong(
+      event.id,
+      voters[0].participant._id,
+      voters[0].token,
+      'Premium Reject',
+      'Artist',
+    );
+    await approveSong(event.id, song.id, dj.token);
+    await castVote(song.id, voters[0].participant._id, voters[0].token, -1);
+
+    let stored = await SongModel.findById(song.id);
+    expect(stored.status).toBe('APPROVED');
+    expect(stored.downvoteCount).toBe(1);
+
+    await request(app)
+      .put(`/api/v1/events/${event.id}`)
+      .set(authHeader(dj.token))
+      .send({ settings: { premiumVotesEnabled: true } })
+      .expect(200);
+
+    stored = await SongModel.findById(song.id);
+    expect(stored.status).toBe('REJECTED');
+    expect(stored.downvoteCount).toBe(2);
   });
 });
 
@@ -652,7 +737,8 @@ describe('Queue System - Attendee Cannot Control Playback', () => {
 
     const rejectedSong = await SongModel.findById(song.id);
     expect(rejectedSong.status).toBe('REJECTED');
-    expect(rejectedSong.voteScore).toBe(-2);
+    expect(rejectedSong.voteScore).toBe(0);
+    expect(rejectedSong.downvoteCount).toBe(2);
 
     const updatedEvent = await EventModel.findById(event.id);
     expect(updatedEvent.currentSongId).toBeUndefined();

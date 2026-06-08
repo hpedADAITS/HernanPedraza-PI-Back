@@ -10,6 +10,7 @@ const EventSettingsSchema = new Schema(
     requireApproval: { type: Boolean, default: false },
     votingEnabled: { type: Boolean, default: true },
     allowDownvotes: { type: Boolean, default: true },
+    premiumVotesEnabled: { type: Boolean, default: true },
     maxRequestsPerParticipant: { type: Number, default: 3, min: 0 },
   },
   { _id: false },

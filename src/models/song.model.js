@@ -58,6 +58,7 @@ const SongSchema = new Schema(
     },
 
     voteScore: { type: Number, default: 0, index: true },
+    downvoteCount: { type: Number, default: 0, index: true },
     voteCount: { type: Number, default: 0 },
 
     queuePosition: { type: Number, index: true },

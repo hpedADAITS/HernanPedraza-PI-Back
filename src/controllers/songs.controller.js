@@ -264,6 +264,7 @@ class SongsController {
         recognitionMatch: song.recognitionMatch || null,
         status: song.status,
         voteScore: song.voteScore,
+        downvoteCount: song.downvoteCount || 0,
         voteCount: song.voteCount,
         totalDuration: song.totalDuration,
         duration: song.duration,

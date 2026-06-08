@@ -25,7 +25,8 @@ const handleCastVote = async (socket, io, data, callback) => {
     const song = result.song;
     toEventRoom(io, eventId).emit('votes_updated', {
       eventId, songId, participantId, value,
-      voteScore: song?.voteScore, voteCount: song?.voteCount, status: song?.status,
+      voteScore: song?.voteScore, downvoteCount: song?.downvoteCount,
+      voteCount: song?.voteCount, status: song?.status,
       timestamp: new Date().toISOString(),
     });
     if (result.autoRejected) {
@@ -58,12 +59,14 @@ const handleRemoveVote = async (socket, io, data, callback) => {
     const song = result.song;
     toEventRoom(io, eventId).emit('vote_removed', {
       eventId, songId, participantId,
-      voteScore: song?.voteScore, voteCount: song?.voteCount,
+      voteScore: song?.voteScore, downvoteCount: song?.downvoteCount,
+      voteCount: song?.voteCount,
       timestamp: new Date().toISOString(),
     });
     toEventRoom(io, eventId).emit('votes_updated', {
       eventId, songId, participantId, value: 0,
-      voteScore: song?.voteScore, voteCount: song?.voteCount, status: song?.status,
+      voteScore: song?.voteScore, downvoteCount: song?.downvoteCount,
+      voteCount: song?.voteCount, status: song?.status,
       timestamp: new Date().toISOString(),
     });
     await emitQueueUpdated(io, eventId);

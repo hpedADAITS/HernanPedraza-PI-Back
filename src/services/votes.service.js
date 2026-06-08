@@ -36,28 +36,23 @@ class VotesService {
       { checkCooldown: true, actorUser },
     );
 
-    /* Get voter's premium status for vote weight */
+    /* Get voter's premium status captured at vote time */
     const voter = await participantsService.getParticipantById(participantId);
-    const voteWeight = voter?.isPremium ? PREMIUM_VOTE_WEIGHT : REGULAR_VOTE_WEIGHT;
 
     /* Check if participant already voted */
     let existingVote = await VoteModel.findOne({ songId, participantId });
 
     if (existingVote) {
       /* Update existing vote */
-      const oldValue = existingVote.value;
-      const oldWeightedValue = oldValue * (existingVote.isPremiumVote ? PREMIUM_VOTE_WEIGHT : REGULAR_VOTE_WEIGHT);
       const wasRejected = song.status === 'REJECTED';
       existingVote.value = value;
       existingVote.isPremiumVote = voter?.isPremium || false;
       await existingVote.save();
 
-      /* Update song vote score with weight difference */
-      song.voteScore = song.voteScore - oldWeightedValue + (value * voteWeight);
-      await this._applyAutoReject(song, settings);
+      await this._recalculateSongVoteState(song, settings);
       await song.save();
 
-      logger.info(`Vote updated for song ${songId}: ${oldValue}(${oldWeightedValue}) -> ${value}(${voteWeight}), new score: ${song.voteScore}`);
+      logger.info(`Vote updated for song ${songId}: ${value}, new score: ${song.voteScore}, downvotes: ${song.downvoteCount}`);
       const formattedVote = this._formatVote(existingVote);
       return {
         ...formattedVote,
@@ -77,14 +72,11 @@ class VotesService {
 
     await vote.save();
 
-    /* Update song vote score with weight */
     const wasRejected = song.status === 'REJECTED';
-    song.voteScore += value * voteWeight;
-    song.voteCount += 1;
-    await this._applyAutoReject(song, settings);
+    await this._recalculateSongVoteState(song, settings);
     await song.save();
 
-    logger.info(`Vote cast for song ${songId}: ${value}(${voteWeight}), new score: ${song.voteScore}`);
+    logger.info(`Vote cast for song ${songId}: ${value}, new score: ${song.voteScore}, downvotes: ${song.downvoteCount}`);
     const formattedVote = this._formatVote(vote);
     return {
       ...formattedVote,
@@ -112,11 +104,8 @@ class VotesService {
       throw new NotFoundError('Vote not found');
     }
 
-    /* Update song vote score */
     if (song) {
-      const voteWeight = vote.isPremiumVote ? PREMIUM_VOTE_WEIGHT : REGULAR_VOTE_WEIGHT;
-      song.voteScore -= vote.value * voteWeight;
-      song.voteCount = Math.max(0, (song.voteCount || 0) - 1);
+      await this._recalculateSongVoteState(song);
       await song.save();
     }
 
@@ -138,6 +127,7 @@ class VotesService {
         artist: s.artist,
         votes: s.voteScore,
         count: s.voteCount,
+        downvotes: s.downvoteCount || 0,
       })),
       stats: {
         total_votes: songs.reduce((sum, s) => sum + Math.abs(s.voteScore), 0),
@@ -178,10 +168,33 @@ class VotesService {
     return event.settings || {};
   }
 
-  async _applyAutoReject(song) {
-    if (!['PENDING', 'APPROVED', 'PLAYING'].includes(song.status) || song.voteScore >= 0) return;
+  _voteWeight(vote, settings = {}) {
+    if (settings.premiumVotesEnabled === false) return REGULAR_VOTE_WEIGHT;
+    return vote.isPremiumVote ? PREMIUM_VOTE_WEIGHT : REGULAR_VOTE_WEIGHT;
+  }
 
-    if (song.voteScore <= await this._getAutoRejectThreshold(song.eventId)) {
+  async _recalculateSongVoteState(song, settings = null) {
+    const resolvedSettings = settings || (await this._getEventSettings(song.eventId));
+    const votes = await VoteModel.find({ songId: song._id }).select('value isPremiumVote').lean();
+
+    song.voteScore = 0;
+    song.downvoteCount = 0;
+    song.voteCount = votes.length;
+
+    for (const vote of votes) {
+      const weight = this._voteWeight(vote, resolvedSettings);
+      if (vote.value === 1) song.voteScore += weight;
+      if (vote.value === -1) song.downvoteCount += weight;
+    }
+
+    await this._applyAutoReject(song);
+    return song;
+  }
+
+  async _applyAutoReject(song) {
+    if (!['PENDING', 'APPROVED', 'PLAYING'].includes(song.status)) return;
+
+    if ((song.downvoteCount || 0) >= await this._getAutoRejectThreshold(song.eventId)) {
       const wasPlaying = song.status === 'PLAYING';
       song.status = 'REJECTED';
       song.autoRejectedAt = new Date();
@@ -198,7 +211,41 @@ class VotesService {
 
   async _getAutoRejectThreshold(eventId) {
     const attendees = await participantsService.countActiveParticipants(eventId);
-    return -Math.max(1, Math.ceil(attendees / 2));
+    return Math.max(1, Math.ceil(attendees / 2));
+  }
+
+  async recomputeActiveSongsForEvent(eventId) {
+    const songs = await SongModel.find({
+      eventId,
+      status: { $in: ['PENDING', 'APPROVED', 'PLAYING'] },
+    });
+    const settings = await this._getEventSettings(eventId);
+    const changedSongs = [];
+    const rejectedSongs = [];
+
+    for (const song of songs) {
+      const before = {
+        voteScore: song.voteScore || 0,
+        downvoteCount: song.downvoteCount || 0,
+        voteCount: song.voteCount || 0,
+        status: song.status,
+      };
+      await this._recalculateSongVoteState(song, settings);
+      if (
+        before.voteScore !== song.voteScore ||
+        before.downvoteCount !== (song.downvoteCount || 0) ||
+        before.voteCount !== song.voteCount ||
+        before.status !== song.status
+      ) {
+        await song.save();
+        changedSongs.push(this._formatSongVoteState(song));
+        if (before.status !== 'REJECTED' && song.status === 'REJECTED') {
+          rejectedSongs.push(this._formatSongVoteState(song));
+        }
+      }
+    }
+
+    return { changedSongs, rejectedSongs };
   }
 
   _formatSongVoteState(song) {
@@ -210,6 +257,7 @@ class VotesService {
       artist: song.artist,
       status: song.status,
       voteScore: song.voteScore,
+      downvoteCount: song.downvoteCount || 0,
       voteCount: song.voteCount,
       autoRejectedAt: song.autoRejectedAt,
       removalReason: song.removalReason,

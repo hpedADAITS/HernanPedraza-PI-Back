@@ -58,6 +58,7 @@ class VotesController {
         participantId: data.participantId,
         value: data.value,
         voteScore: song.voteScore,
+        downvoteCount: song.downvoteCount,
         voteCount: song.voteCount,
         status: song.status,
       });
@@ -95,6 +96,7 @@ class VotesController {
         songId,
         participantId,
         voteScore: song.voteScore,
+        downvoteCount: song.downvoteCount,
         voteCount: song.voteCount,
       });
       this.emitVoteEvent(eventId, 'votes_updated', {
@@ -102,6 +104,7 @@ class VotesController {
         participantId,
         value: 0,
         voteScore: song.voteScore,
+        downvoteCount: song.downvoteCount,
         voteCount: song.voteCount,
       });
       await this.emitQueueUpdated(eventId);

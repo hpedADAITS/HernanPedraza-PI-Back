@@ -38,6 +38,7 @@ class EventsService {
         requireApproval: false,
         votingEnabled: true,
         allowDownvotes: true,
+        premiumVotesEnabled: true,
         maxRequestsPerParticipant: 3,
       },
     });

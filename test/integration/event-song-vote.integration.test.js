@@ -473,7 +473,8 @@ describe('Event, participant, song and vote integration flow', () => {
         expect(res.body.data.top_voted[0]).toMatchObject({
           title: 'Digital Love',
           artist: 'Daft Punk',
-          votes: -1,
+          votes: 0,
+          downvotes: 1,
           count: 1,
         });
       });
@@ -598,11 +599,10 @@ describe('Event, participant, song and vote integration flow', () => {
     }
 
     const rejected = await SongModel.findById(song.id);
-    expect(rejected).toMatchObject({
-      status: 'REJECTED',
-      voteScore: -4,
-      removalReason: 'Rejected by downvotes',
-    });
+    expect(rejected.status).toBe('REJECTED');
+    expect(rejected.voteScore).toBe(0);
+    expect(rejected.downvoteCount).toBe(4);
+    expect(rejected.removalReason).toBe('Rejected by downvotes');
     expect(rejected.autoRejectedAt).toBeInstanceOf(Date);
 
     await request(app)

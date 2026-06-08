@@ -165,7 +165,7 @@ describe('VotesService - Real Implementation Tests', () => {
   });
 
   describe('castVote score accounting', () => {
-    test('should keep voteCount stable when participant changes vote', async () => {
+    test('should keep voteCount stable and move score into downvoteCount when participant changes vote', async () => {
       const { event } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
       const song = await createTestSong(event._id, participant._id);
@@ -175,8 +175,25 @@ describe('VotesService - Real Implementation Tests', () => {
       await votesService.castVote(song._id, participant._id, -1, actor);
 
       const updatedSong = await SongModel.findById(song._id);
-      expect(updatedSong.voteScore).toBe(-1);
+      expect(updatedSong.voteScore).toBe(0);
+      expect(updatedSong.downvoteCount).toBe(1);
       expect(updatedSong.voteCount).toBe(1);
+    });
+
+    test('should keep upvote score when another participant downvotes', async () => {
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const otherParticipant = await createTestParticipant(event._id);
+      await Promise.all(Array.from({ length: 2 }, () => createTestParticipant(event._id)));
+      const song = await createTestSong(event._id, participant._id);
+
+      await votesService.castVote(song._id, participant._id, 1, { userId: participant.userId?.toString() });
+      await votesService.castVote(song._id, otherParticipant._id, -1, { userId: otherParticipant.userId?.toString() });
+
+      const updatedSong = await SongModel.findById(song._id);
+      expect(updatedSong.voteScore).toBe(1);
+      expect(updatedSong.downvoteCount).toBe(1);
+      expect(updatedSong.voteCount).toBe(2);
     });
   });
 
@@ -191,7 +208,7 @@ describe('VotesService - Real Implementation Tests', () => {
       ).rejects.toThrow('Song not found');
     });
 
-    test('should remove vote and update score', async () => {
+    test('should remove vote and recompute score from source votes', async () => {
       const { event } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
       const song = await createTestSong(event._id, participant._id, { voteScore: 3, voteCount: 2 });
@@ -212,10 +229,10 @@ describe('VotesService - Real Implementation Tests', () => {
       const deletedVote = await VoteModel.findById(vote._id);
       expect(deletedVote).toBeNull();
 
-      // Verify song score was updated
       const updatedSong = await SongModel.findById(song._id);
-      expect(updatedSong.voteScore).toBe(2);
-      expect(updatedSong.voteCount).toBe(1);
+      expect(updatedSong.voteScore).toBe(0);
+      expect(updatedSong.downvoteCount).toBe(0);
+      expect(updatedSong.voteCount).toBe(0);
     });
 
     test('should not restore an auto-rejected song when downvote is removed', async () => {
@@ -230,6 +247,7 @@ describe('VotesService - Real Implementation Tests', () => {
       const updatedSong = await SongModel.findById(song._id);
       expect(updatedSong.status).toBe('REJECTED');
       expect(updatedSong.voteScore).toBe(0);
+      expect(updatedSong.downvoteCount).toBe(0);
       expect(updatedSong.voteCount).toBe(0);
     });
   });
@@ -303,7 +321,7 @@ describe('VotesService - Real Implementation Tests', () => {
       await Promise.all(Array.from({ length: 7 }, () => createTestParticipant(event._id)));
       const song = await createTestSong(event._id, participant._id, {
         status: 'PENDING',
-        voteScore: -4,
+        downvoteCount: 4,
       });
 
       await votesService._applyAutoReject(song);
@@ -317,7 +335,7 @@ describe('VotesService - Real Implementation Tests', () => {
       await Promise.all(Array.from({ length: 7 }, () => createTestParticipant(event._id)));
       const song = await createTestSong(event._id, participant._id, {
         status: 'APPROVED',
-        voteScore: -4,
+        downvoteCount: 4,
       });
 
       await votesService._applyAutoReject(song);
@@ -331,7 +349,7 @@ describe('VotesService - Real Implementation Tests', () => {
       await Promise.all(Array.from({ length: 7 }, () => createTestParticipant(event._id)));
       const song = await createTestSong(event._id, participant._id, {
         status: 'PLAYING',
-        voteScore: -4,
+        downvoteCount: 4,
       });
       event.currentSongId = song._id;
       await event.save();
@@ -349,7 +367,7 @@ describe('VotesService - Real Implementation Tests', () => {
       await Promise.all(Array.from({ length: 7 }, () => createTestParticipant(event._id)));
       const song = await createTestSong(event._id, participant._id, {
         status: 'PENDING',
-        voteScore: -3,
+        downvoteCount: 3,
       });
 
       await votesService._applyAutoReject(song);
@@ -364,7 +382,7 @@ describe('VotesService - Real Implementation Tests', () => {
 
       const song = await createTestSong(event._id, participant._id, {
         status: 'PENDING',
-        voteScore: -3,
+        downvoteCount: 3,
       });
 
       await votesService._applyAutoReject(song);

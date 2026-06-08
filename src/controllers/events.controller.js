@@ -1,4 +1,4 @@
-const { eventsService } = require('../services');
+const { eventsService, songsService, votesService } = require('../services');
 const { logger } = require('../utils');
 const { httpStatus } = require('../constants');
 const { eventsSchema } = require('../schemas');
@@ -42,6 +42,38 @@ class EventsController {
       ...payload,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  async emitQueueUpdated(eventId) {
+    if (!io || !eventId) return;
+    const snapshot = await songsService.getQueueSnapshotForEvent(eventId);
+    io.to(roomForEvent(eventId)).emit('queue_updated', {
+      eventId,
+      ...snapshot,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  emitVoteRecomputeEvents(eventId, result) {
+    if (!io || !eventId || !result) return;
+    for (const song of result.changedSongs || []) {
+      this.emitEventUpdate(eventId, 'votes_updated', {
+        songId: song.id || song._id,
+        voteScore: song.voteScore,
+        downvoteCount: song.downvoteCount,
+        voteCount: song.voteCount,
+        status: song.status,
+      });
+    }
+    for (const song of result.rejectedSongs || []) {
+      this.emitEventUpdate(eventId, 'song_rejected', {
+        songId: song.id || song._id,
+        title: song.title,
+        artist: song.artist,
+        status: song.status,
+        reason: song.removalReason || 'Rejected by downvotes',
+      });
+    }
   }
 
   async createEvent(req, res, next) {
@@ -143,6 +175,11 @@ class EventsController {
       );
 
       this.emitEventUpdate(eventId, 'event_updated', { event });
+      if (data.settings && data.settings.premiumVotesEnabled !== undefined) {
+        const recompute = await votesService.recomputeActiveSongsForEvent(eventId);
+        this.emitVoteRecomputeEvents(eventId, recompute);
+        await this.emitQueueUpdated(eventId);
+      }
 
       res.status(httpStatus.OK).json({
         success: true,
