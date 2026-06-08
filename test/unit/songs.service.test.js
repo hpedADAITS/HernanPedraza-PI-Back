@@ -468,6 +468,43 @@ describe('SongsService - Real Implementation Tests', () => {
       expect(stored.recognitionMatch.source).toBe('musicbrainz');
       expect(String(stored.recognitionMatch.trackId || '')).not.toBe(String(track._id));
     });
+
+    test('persists MusicBrainz canonical title/artist (not attendee text) when attendee typed different metadata', async () => {
+      jest.spyOn(musicBrainzService, 'findRecordingMatch').mockResolvedValue({
+        source: 'musicbrainz',
+        recordingId: 'mb-canonical',
+        releaseId: 'mb-rel-canonical',
+        title: 'Canonical MB Title',
+        artist: 'Canonical MB Artist',
+        coverUrl: 'https://example.test/canonical.jpg',
+        duration: 210,
+        score: 0.95,
+        matchedOn: 'title_artist',
+      });
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+
+      const result = await songsService.suggestSong(
+        event._id.toString(),
+        participant._id.toString(),
+        'Attendee Mistype Title',
+        'Attendee Mistype Artist',
+        180,
+        { userId: participant.userId.toString(), role: 'ATTENDEE' },
+      );
+
+      // The ack/broadcast shape must carry canonical MB metadata, not the
+      // attendee's typo. Without this, the queue and now-playing payloads
+      // broadcast the attendee text instead of the DJ library / MB metadata.
+      expect(result).toMatchObject({
+        title: 'Canonical MB Title',
+        artist: 'Canonical MB Artist',
+        totalDuration: 210,
+      });
+      const stored = await SongModel.findById(result.id).lean();
+      expect(textCrypto.isEncrypted(stored.title)).toBe(true);
+      expect(textCrypto.isEncrypted(stored.artist)).toBe(true);
+    });
   });
 
   describe('getFingerprintMatchCandidates', () => {

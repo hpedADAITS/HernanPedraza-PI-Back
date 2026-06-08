@@ -108,19 +108,17 @@ class SongsService {
     const selectedFingerprint = options.fingerprintTrackId
       ? await this._resolveSelectedFingerprintMatch(eventId, options.fingerprintTrackId)
       : null;
-    const songTitle = selectedFingerprint?.title || title;
-    const songArtist = selectedFingerprint?.artist || artist;
     const recognitionMatch = selectedFingerprint || await this._resolveRecognitionMatch(
       eventId,
-      songTitle,
-      songArtist,
+      title,
+      artist,
       totalDuration,
       options,
     );
-    const resolvedDuration = selectedFingerprint?.duration ?? (
-      Number.isFinite(Number(totalDuration))
-      ? Number(totalDuration)
-      : recognitionMatch?.duration ?? undefined
+    const songTitle = recognitionMatch?.title || title;
+    const songArtist = recognitionMatch?.artist || artist;
+    const resolvedDuration = selectedFingerprint?.duration ?? recognitionMatch?.duration ?? (
+      Number.isFinite(Number(totalDuration)) ? Number(totalDuration) : undefined
     );
 
     const eventDoc = await EventModel.findById(eventId).select('ownerId').lean();
