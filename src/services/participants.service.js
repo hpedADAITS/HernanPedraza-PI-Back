@@ -588,7 +588,7 @@ class ParticipantsService {
 
   async _activeParticipantQuery(eventId) {
     const event = await EventModel.findById(eventId).select('ownerId').lean();
-    const query = { eventId, leftAt: null };
+    const query = { eventId, leftAt: null, isBanned: false };
     if (event?.ownerId) query.userId = { $ne: event.ownerId };
     return query;
   }

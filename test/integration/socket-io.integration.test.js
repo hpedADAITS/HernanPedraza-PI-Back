@@ -312,7 +312,8 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       expect(vote.value).toBe(-1);
 
       const dbSong = await SongModel.findById(testSong._id);
-      expect(dbSong.voteScore).toBe(-1);
+      expect(dbSong.voteScore).toBe(0);
+      expect(dbSong.downvoteCount).toBe(1);
       expect(dbSong.voteCount).toBe(1);
     });
 
@@ -328,7 +329,8 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       expect(vote.value).toBe(-1);
 
       dbSong = await SongModel.findById(testSong._id);
-      expect(dbSong.voteScore).toBe(-1); // Changed from +1 to -1
+      expect(dbSong.voteScore).toBe(0); // Upvote score removed
+      expect(dbSong.downvoteCount).toBe(1);
       expect(dbSong.voteCount).toBe(1); // Still only 1 vote (replaced)
     });
 
