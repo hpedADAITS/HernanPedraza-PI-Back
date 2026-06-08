@@ -81,6 +81,11 @@ function extractFloat32Pcm(payload) {
 function emitMatchDiff(socket, io, eventId, diff) {
   if (!diff) return;
   const base = { eventId, timestamp: new Date().toISOString() };
+  const emitLegacyUpdate = (matches) => {
+    const update = { ...base, matches };
+    socket.emit('audio_match_update', update);
+    if (io) toEventRoom(io, eventId).emit('audio_match_update', update);
+  };
 
   // Map session diff events to socket-level events. We keep the legacy
   // `audio_match_update` event for the simplest "top match" payload so
@@ -96,10 +101,7 @@ function emitMatchDiff(socket, io, eventId, diff) {
         state: diff.state,
         candidate: diff.payload,
       });
-      socket.emit('audio_match_update', {
-        ...base,
-        matches: [toLegacyMatch(diff.payload)],
-      });
+      emitLegacyUpdate([toLegacyMatch(diff.payload)]);
       break;
     case SESSION_EVENT.HOLD_STARTED:
       socket.emit('audio_match_hold', {
@@ -108,10 +110,7 @@ function emitMatchDiff(socket, io, eventId, diff) {
         candidate: diff.payload,
         holdStartedAt: Date.now(),
       });
-      socket.emit('audio_match_update', {
-        ...base,
-        matches: [toLegacyMatch(diff.payload)],
-      });
+      emitLegacyUpdate([toLegacyMatch(diff.payload)]);
       break;
     case SESSION_EVENT.HOLD_UPDATED:
       socket.emit('audio_match_hold_updated', {
@@ -119,10 +118,7 @@ function emitMatchDiff(socket, io, eventId, diff) {
         state: diff.state,
         candidate: diff.payload,
       });
-      socket.emit('audio_match_update', {
-        ...base,
-        matches: [toLegacyMatch(diff.payload)],
-      });
+      emitLegacyUpdate([toLegacyMatch(diff.payload)]);
       break;
     case SESSION_EVENT.LOCKED:
       socket.emit('audio_match_locked', {
@@ -130,6 +126,7 @@ function emitMatchDiff(socket, io, eventId, diff) {
         state: diff.state,
         candidate: diff.payload,
       });
+      emitLegacyUpdate([toLegacyMatch(diff.payload)]);
       // Broadcast the lock to the whole event room so other clients
       // (DJ dashboard, attendee coverflow) can react.
       if (io) {
@@ -147,10 +144,7 @@ function emitMatchDiff(socket, io, eventId, diff) {
         reason: diff.payload?.reason || 'released',
         previousCandidate: diff.payload || null,
       });
-      socket.emit('audio_match_update', {
-        ...base,
-        matches: [],
-      });
+      emitLegacyUpdate([]);
       if (io) {
         toEventRoom(io, eventId).emit('audio_match_released', {
           ...base,
@@ -170,7 +164,7 @@ function emitMatchDiff(socket, io, eventId, diff) {
       break;
     case SESSION_EVENT.IDLE:
       socket.emit('audio_match_idle', { ...base, reason: diff.payload?.reason });
-      socket.emit('audio_match_update', { ...base, matches: [] });
+      emitLegacyUpdate([]);
       break;
     default:
       // Unknown event — do not emit anything.
@@ -499,4 +493,5 @@ module.exports = {
   handleAudioMatchStop,
   assertAudioEventAccess,
   extractFloat32Pcm,
+  emitMatchDiff,
 };

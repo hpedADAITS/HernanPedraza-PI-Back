@@ -127,26 +127,9 @@ class MatchSession {
 
     const diffs = [];
     const ranked = this.ramMatcher.match(this.eventId, this.accumulatedHashes);
-    const target = await findUpNextQueueTrack(this.eventId);
-    if (!target?.trackId) {
-      diffs.push(...this._dropCandidate('no_queue_target'));
-      this.lastDiff = diffs;
-      return diffs;
-    }
-
-    const targetMatch = ranked.find((match) => String(match.trackId) === String(target.trackId));
-    if (!targetMatch) {
-      diffs.push(...this._dropCandidate('up_next_not_matching', {
-        targetTrackId: target.trackId,
-        targetSongId: target.songId,
-      }));
-      this.lastDiff = diffs;
-      return diffs;
-    }
-
-    const enriched = await enrichMatchesWithQueueContext(this.eventId, [targetMatch]);
+    const enriched = await enrichMatchesWithQueueContext(this.eventId, ranked);
     const verdict = isConfidentWinner(enriched, this.confidenceOverrides);
-    const top = verdict.top;
+    const top = verdict.winner;
     const totalHashes = this.accumulatedHashes.length;
 
     if (!top) {
@@ -209,14 +192,19 @@ class MatchSession {
 
     const target = await findUpNextQueueTrack(this.eventId);
     if (this.candidate) {
-      if (target?.trackId && String(target.trackId) !== String(this.candidate.trackId)) {
+      const candidateIsPlaying = Boolean(this.candidate.queueContext?.hasPlaying);
+      if (
+        target?.trackId &&
+        String(target.trackId) !== String(this.candidate.trackId) &&
+        !candidateIsPlaying
+      ) {
         diffs.push(
           ...this._dropCandidate('queue_target_changed', {
             targetTrackId: target.trackId,
             targetSongId: target.songId,
           }),
         );
-      } else if (!target?.trackId && this.state !== STATE.LOCKED) {
+      } else if (!target?.trackId && this.state !== STATE.LOCKED && !candidateIsPlaying) {
         diffs.push(...this._dropCandidate('no_queue_target'));
       }
     }

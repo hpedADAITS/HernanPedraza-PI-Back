@@ -19,30 +19,38 @@ function match(trackId, score = 12) {
   };
 }
 
-function withQueueContext(candidate, songId = `song-${candidate.trackId}`) {
+function withQueueContext(candidate, songId = `song-${candidate.trackId}`, status = 'APPROVED') {
+  const isPlaying = status === 'PLAYING';
   return {
     ...candidate,
     queueContext: {
       trackId: candidate.trackId,
       hasMatch: true,
       isInQueue: true,
-      hasApproved: true,
-      hasPlaying: false,
-      nextApproved: {
+      hasApproved: !isPlaying,
+      hasPlaying: isPlaying,
+      nextApproved: isPlaying ? null : {
         songId,
         trackId: candidate.trackId,
         title: candidate.title,
         artist: candidate.artist,
         status: 'APPROVED',
       },
-      approvedCount: 1,
+      playing: isPlaying ? {
+        songId,
+        trackId: candidate.trackId,
+        title: candidate.title,
+        artist: candidate.artist,
+        status: 'PLAYING',
+      } : null,
+      approvedCount: isPlaying ? 0 : 1,
       isPlayableNow: true,
-      suggestedAction: 'send_now',
+      suggestedAction: isPlaying ? 'already_playing' : 'send_now',
     },
   };
 }
 
-describe('MatchSession up-next targeting', () => {
+describe('MatchSession microphone recognition', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     queueLinker.enrichMatchesWithQueueContext.mockImplementation(async (_eventId, matches) =>
@@ -50,7 +58,7 @@ describe('MatchSession up-next targeting', () => {
     );
   });
 
-  test('locks only the up-next queued track, not a stronger unrelated match', async () => {
+  test('locks the strongest microphone match instead of forcing the up-next track', async () => {
     queueLinker.findUpNextQueueTrack.mockResolvedValue({
       songId: 'song-target',
       trackId: 'target',
@@ -70,7 +78,57 @@ describe('MatchSession up-next targeting', () => {
       EVENT.HOLD_STARTED,
       EVENT.LOCKED,
     ]);
-    expect(diffs.at(-1).payload.trackId).toBe('target');
+    expect(diffs.at(-1).payload.trackId).toBe('other');
+  });
+
+  test('locks a playing microphone match without an approved up-next target', async () => {
+    queueLinker.findUpNextQueueTrack.mockResolvedValue(null);
+    queueLinker.enrichMatchesWithQueueContext.mockImplementation(async (_eventId, matches) =>
+      matches.map((candidate) => withQueueContext(candidate, `song-${candidate.trackId}`, 'PLAYING')),
+    );
+    const ramMatcher = {
+      match: jest.fn(() => [match('playing', 30)]),
+    };
+    const session = new MatchSession({
+      eventId: 'event-1',
+      ramMatcher,
+      options: { holdWindowMs: 0, minPersistentChunks: 1, minMatchQueryHashes: 1 },
+    });
+
+    const diffs = await session.addChunk([{ hash: 1, time: 1 }]);
+
+    expect(diffs.map((diff) => diff.event)).toEqual([
+      EVENT.HOLD_STARTED,
+      EVENT.LOCKED,
+    ]);
+    expect(diffs.at(-1).payload).toMatchObject({
+      trackId: 'playing',
+      queueContext: {
+        hasPlaying: true,
+        suggestedAction: 'already_playing',
+      },
+    });
+  });
+
+  test('does not hold a low-confidence microphone candidate', async () => {
+    queueLinker.findUpNextQueueTrack.mockResolvedValue(null);
+    const ramMatcher = {
+      match: jest.fn(() => [{
+        ...match('noisy', 8),
+        totalAligned: 40,
+        offsetConcentration: 0.2,
+      }]),
+    };
+    const session = new MatchSession({
+      eventId: 'event-1',
+      ramMatcher,
+      options: { holdWindowMs: 0, minPersistentChunks: 1, minMatchQueryHashes: 1 },
+    });
+
+    const diffs = await session.addChunk([{ hash: 1, time: 1 }]);
+
+    expect(diffs).toEqual([]);
+    expect(session.getState().state).toBe('idle');
   });
 
   test('pauses while locked and wakes when the queue target changes', async () => {
