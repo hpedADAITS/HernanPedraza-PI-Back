@@ -264,7 +264,7 @@ describe('Audio track REST integration', () => {
 
     await request(app)
       .post(`/api/v1/events/${event.id}/audio-tracks/${trackId}/send-now`)
-      .set(authHeader(phoneToken))
+      .send({ token: phoneToken })
       .expect(200)
       .expect((res) => {
         expect(res.body.data.song._id.toString()).toBe(song._id.toString());

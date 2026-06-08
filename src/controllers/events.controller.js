@@ -304,15 +304,15 @@ class EventsController {
           ? req.body.deviceName.trim()
           : 'Phone microphone';
 
-      const rawAuth = req.get('authorization')?.replace(/^Bearer\s+/i, '');
-      if (!rawAuth) {
-        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Token required in Authorization header' } });
+      const token = getPhoneMicrophoneToken(req);
+      if (!token) {
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Phone microphone token is required' } });
       }
 
       const microphone = await eventsService.connectPhoneMicrophone(
         eventId,
         deviceName,
-        rawAuth,
+        token,
       );
 
       this.emitEventUpdate(eventId, 'phone_microphone_connected', {
@@ -328,6 +328,10 @@ class EventsController {
       next(error);
     }
   }
+}
+
+function getPhoneMicrophoneToken(req) {
+  return req.body?.token || req.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
 }
 
 module.exports = new EventsController();

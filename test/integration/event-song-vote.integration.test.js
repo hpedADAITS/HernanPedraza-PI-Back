@@ -124,8 +124,7 @@ describe('Event, participant, song and vote integration flow', () => {
 
     await request(app)
       .post(`/api/v1/events/${event.id}/phone-microphone/connect`)
-      .set(authHeader(token))
-      .send({ deviceName: 'Android microphone' })
+      .send({ deviceName: 'Android microphone', token })
       .expect(200)
       .expect((res) => {
         expect(res.body.data.microphone).toMatchObject({

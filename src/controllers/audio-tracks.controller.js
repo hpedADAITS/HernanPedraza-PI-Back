@@ -67,10 +67,10 @@ class AudioTracksController {
   async sendMatchedTrackNow(req, res, next) {
     try {
       logger.info('sendMatchedTrackNow called', { eventId: req.params.eventId, trackId: req.params.trackId });
-      const rawAuth = req.get('authorization')?.replace(/^Bearer\s+/i, '');
-      const actor = req.user || (rawAuth ? verifyPhoneMicrophoneToken(rawAuth, req.params.eventId) : null);
+      const token = getPhoneMicrophoneToken(req);
+      const actor = req.user || (token ? verifyPhoneMicrophoneToken(token, req.params.eventId) : null);
       if (!actor) {
-        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Token required in Authorization header' } });
+        return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Phone microphone token is required' } });
       }
       const song = await audioTracksService.sendMatchedTrackNow(
         req.params.eventId,
@@ -107,6 +107,10 @@ class AudioTracksController {
 function parseCsv(value) {
   if (typeof value !== 'string') return [];
   return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function getPhoneMicrophoneToken(req) {
+  return req.body?.token || req.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
 }
 
 function verifyPhoneMicrophoneToken(token, eventId) {
