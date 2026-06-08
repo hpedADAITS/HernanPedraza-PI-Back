@@ -71,6 +71,35 @@ async function findQueueContextForTrack(eventId, trackId) {
   };
 }
 
+async function findUpNextQueueTrack(eventId) {
+  const eventIdString = normalizeEventId(eventId);
+  if (!eventIdString) return null;
+
+  const song = await SongModel.findOne({
+    eventId: eventIdString,
+    status: 'APPROVED',
+    'recognitionMatch.trackId': { $exists: true, $ne: null },
+  })
+    .select(
+      '_id eventId title artist status queuePosition pinned voteScore ' +
+        'startedPlayingAt totalDuration duration recognitionMatch requestedBy createdAt sortKey isPremiumSuggestion',
+    )
+    .sort({
+      pinned: -1,
+      voteScore: -1,
+      isPremiumSuggestion: -1,
+      sortKey: 1,
+    })
+    .lean();
+
+  if (!song) return null;
+  await decryptSongTitles([song], eventIdString);
+  return {
+    ...formatQueueSongSummary(song),
+    trackId: normalizeTrackId(song.recognitionMatch?.trackId),
+  };
+}
+
 // Batch version — the match session enriches a small (≤ 5) ranked list
 // of candidates per emit, so a single $in query is plenty. We keep the
 // results keyed by trackId for O(1) lookup in the socket hot path.
@@ -308,6 +337,7 @@ function formatQueueSongSummary(song) {
 
 module.exports = {
   findQueueContextForTrack,
+  findUpNextQueueTrack,
   enrichMatchesWithQueueContext,
   bindRecognitionMatchToPendingSong,
   ACTIVE_STATUSES,

@@ -2,6 +2,7 @@ const { participantsService, songsService } = require('../services');
 const { logger } = require('../utils');
 const { httpStatus } = require('../constants');
 const { songsSchema } = require('../schemas');
+const matchSessionRegistry = require('../services/audio-recognition/match-session-registry');
 
 let io = null;
 
@@ -38,6 +39,10 @@ class SongsController {
     io.to(roomForEvent(eventId)).emit('queue_updated', {
       eventId,
       ...snapshot,
+      timestamp: new Date().toISOString(),
+    });
+    await matchSessionRegistry.applyQueueEventToEvent(eventId, {
+      type: 'queue_updated',
       timestamp: new Date().toISOString(),
     });
   }

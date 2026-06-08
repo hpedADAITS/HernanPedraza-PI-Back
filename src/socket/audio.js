@@ -4,7 +4,7 @@
 
 const { logger } = require('../utils');
 const { ackSuccess, ackError } = require('./ack');
-const { audioTracksService, sharedRamMatcher } = require('../services');
+const { audioTracksService, sharedRamMatcher, songsService } = require('../services');
 const {
   TARGET_SAMPLE_RATE,
   resampleLinear,
@@ -26,6 +26,11 @@ const QUEUE_EVENT_NAMES = [
   'song_now_playing',
   'queue_updated',
 ];
+
+const LIVE_MATCH_OPTIONS = {
+  holdWindowMs: 1800,
+  minPersistentChunks: 2,
+};
 
 function assertAudioEventAccess(socket, eventId) {
   if (!isValidId(eventId)) throw new Error('Invalid event ID');
@@ -162,6 +167,65 @@ function emitMatchDiff(socket, io, eventId, diff) {
   }
 }
 
+async function emitMatchDiffAndActions(socket, io, eventId, diff) {
+  emitMatchDiff(socket, io, eventId, diff);
+  if (diff?.event !== SESSION_EVENT.LOCKED) return;
+  await sendLockedUpNextNow(socket, io, eventId, diff.payload);
+}
+
+async function sendLockedUpNextNow(socket, io, eventId, candidate) {
+  const trackId = candidate?.trackId;
+  if (!trackId || !candidate.queueContext?.nextApproved) return;
+  if (socket.audioMatch?.autoSentTrackId === trackId) return;
+
+  try {
+    socket.audioMatch.autoSentTrackId = trackId;
+    const song = await audioTracksService.sendMatchedTrackNow(eventId, socket.user, trackId);
+    const payload = {
+      eventId,
+      songId: song._id,
+      title: song.title,
+      artist: song.artist,
+      recognitionMatch: song.recognitionMatch || null,
+      trackId,
+      status: song.status,
+      totalDuration: song.totalDuration || 0,
+      duration: song.duration || 0,
+      albumArt: song.recognitionMatch?.coverUrl || null,
+      playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
+      timestamp: new Date().toISOString(),
+    };
+
+    toEventRoom(io, eventId).emit('song_now_playing', payload);
+    toEventRoom(io, eventId).emit('queue_updated', {
+      eventId,
+      ...(await songsService.getQueueSnapshotForEvent(eventId)),
+      timestamp: new Date().toISOString(),
+    });
+    await matchSessionRegistry.applyQueueEventToEvent(eventId, {
+      type: 'song_now_playing',
+      songId: String(song._id),
+      trackId,
+      status: song.status,
+      timestamp: new Date().toISOString(),
+    });
+    await matchSessionRegistry.applyQueueEventToEvent(eventId, {
+      type: 'queue_updated',
+      trackId,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    socket.audioMatch.autoSentTrackId = '';
+    logger.warn('Auto send matched up-next track failed', {
+      eventId,
+      trackId,
+      message: error.message,
+    });
+    const resetDiffs = socket.audioMatch?.session?.reset?.() || [];
+    for (const resetDiff of resetDiffs) emitMatchDiff(socket, io, eventId, resetDiff);
+  }
+}
+
 function toLegacyMatch(candidate) {
   if (!candidate) return null;
   return {
@@ -196,6 +260,7 @@ const handleAudioMatchStart = async (socket, io, data, callback) => {
     const session = new MatchSession({
       eventId,
       ramMatcher: sharedRamMatcher,
+      options: LIVE_MATCH_OPTIONS,
     });
     // Deliver queue/DJ driven transitions (release on track change, lock
     // confirmation) back to this socket so the phone can pause/resume its
@@ -236,7 +301,11 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
           if (socket.user?.type === 'phone-microphone' && eventId) {
             logger.info('Auto-starting audio matcher for phone microphone', { eventId, sampleRate });
             await sharedRamMatcher.loadEvent(eventId);
-            const session = new MatchSession({ eventId, ramMatcher: sharedRamMatcher });
+            const session = new MatchSession({
+              eventId,
+              ramMatcher: sharedRamMatcher,
+              options: LIVE_MATCH_OPTIONS,
+            });
             const unregister = matchSessionRegistry.register(eventId, session, (diff) =>
               emitMatchDiff(socket, io, eventId, diff),
             );
@@ -312,7 +381,7 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
       if (matchSession) {
         const diffs = await matchSession.addChunk(hashes);
         for (const diff of diffs) {
-          emitMatchDiff(socket, io, session.eventId, diff);
+          await emitMatchDiffAndActions(socket, io, session.eventId, diff);
         }
         // Re-evaluate the lock condition on a debounce so a candidate
         // that has been held long enough promotes to "locked" even if
@@ -325,7 +394,7 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
           session.lastReEvalAt = now;
           const reDiff = await matchSession.reEvaluate();
           for (const diff of reDiff) {
-            emitMatchDiff(socket, io, session.eventId, diff);
+            await emitMatchDiffAndActions(socket, io, session.eventId, diff);
           }
         }
       } else {
@@ -380,7 +449,7 @@ const handleAudioMatchStop = async (socket, io, data, callback) => {
         if (tailHashes.length) {
           const diffs = await matchSession.addChunk(tailHashes);
           for (const diff of diffs) {
-            emitMatchDiff(socket, io, eventId, diff);
+            await emitMatchDiffAndActions(socket, io, eventId, diff);
           }
         }
         // Reset the session so any subscribed listeners see the

@@ -20,6 +20,7 @@ const {
 } = require('./auth');
 const { participantsService, songsService, textCrypto } = require('../services');
 const { EventModel } = require('../models');
+const matchSessionRegistry = require('../services/audio-recognition/match-session-registry');
 
 const eventActor = (socket, payloadUserId) => {
   const actor = socketActor(socket, payloadUserId);
@@ -48,6 +49,10 @@ const emitQueueUpdated = async (io, eventId) => {
   toEventRoom(io, eventId).emit('queue_updated', {
     eventId,
     ...snapshot,
+    timestamp: new Date().toISOString(),
+  });
+  await matchSessionRegistry.applyQueueEventToEvent(eventId, {
+    type: 'queue_updated',
     timestamp: new Date().toISOString(),
   });
 };

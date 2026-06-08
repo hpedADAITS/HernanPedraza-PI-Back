@@ -35,7 +35,11 @@
 // the protocol additive and the diffs testable.
 
 const { isConfidentWinner, resolveThresholds, evaluateAbsoluteGates } = require('./match-thresholds');
-const { enrichMatchesWithQueueContext, bindRecognitionMatchToPendingSong } = require('./queue-linker');
+const {
+  enrichMatchesWithQueueContext,
+  bindRecognitionMatchToPendingSong,
+  findUpNextQueueTrack,
+} = require('./queue-linker');
 const { logger } = require('../../utils');
 
 const STATE = Object.freeze({
@@ -111,6 +115,7 @@ class MatchSession {
   // Feed the session the hashes from one streaming chunk. Returns a
   // list of diffs the socket layer can act on.
   async addChunk(hashes) {
+    if (this.state === STATE.LOCKED) return [];
     if (!Array.isArray(hashes) || hashes.length === 0) {
       return [];
     }
@@ -122,7 +127,24 @@ class MatchSession {
 
     const diffs = [];
     const ranked = this.ramMatcher.match(this.eventId, this.accumulatedHashes);
-    const enriched = await enrichMatchesWithQueueContext(this.eventId, ranked);
+    const target = await findUpNextQueueTrack(this.eventId);
+    if (!target?.trackId) {
+      diffs.push(...this._dropCandidate('no_queue_target'));
+      this.lastDiff = diffs;
+      return diffs;
+    }
+
+    const targetMatch = ranked.find((match) => String(match.trackId) === String(target.trackId));
+    if (!targetMatch) {
+      diffs.push(...this._dropCandidate('up_next_not_matching', {
+        targetTrackId: target.trackId,
+        targetSongId: target.songId,
+      }));
+      this.lastDiff = diffs;
+      return diffs;
+    }
+
+    const enriched = await enrichMatchesWithQueueContext(this.eventId, [targetMatch]);
     const verdict = isConfidentWinner(enriched, this.confidenceOverrides);
     const top = verdict.top;
     const totalHashes = this.accumulatedHashes.length;
@@ -185,6 +207,20 @@ class MatchSession {
 
     const diffs = [];
 
+    const target = await findUpNextQueueTrack(this.eventId);
+    if (this.candidate) {
+      if (target?.trackId && String(target.trackId) !== String(this.candidate.trackId)) {
+        diffs.push(
+          ...this._dropCandidate('queue_target_changed', {
+            targetTrackId: target.trackId,
+            targetSongId: target.songId,
+          }),
+        );
+      } else if (!target?.trackId && this.state !== STATE.LOCKED) {
+        diffs.push(...this._dropCandidate('no_queue_target'));
+      }
+    }
+
     if (
       type === 'song_now_playing' &&
       event.trackId &&
@@ -213,6 +249,13 @@ class MatchSession {
       if (enriched[0]) {
         const before = this.candidate.queueContext;
         this.candidate = { ...this.candidate, ...enriched[0] };
+        if (
+          this.state === STATE.LOCKED &&
+          !this.candidate.queueContext?.hasPlaying &&
+          !this.candidate.queueContext?.hasApproved
+        ) {
+          diffs.push(this._dropCandidate('candidate_left_queue')[0]);
+        }
         if (queueContextChanged(before, this.candidate.queueContext)) {
           diffs.push(this._makeDiff(EVENT.QUEUE_UPDATED, { trackId: this.candidate.trackId }));
         }

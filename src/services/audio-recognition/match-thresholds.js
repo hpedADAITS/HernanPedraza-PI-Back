@@ -31,14 +31,15 @@ const DEFAULTS = {
 };
 
 function resolveThresholds(overrides = {}) {
+  const values = overrides || {};
   const base = config?.matcher || {};
   return {
-    minScore: Number.isFinite(overrides.minScore) ? overrides.minScore : (base.minScore ?? DEFAULTS.minScore),
-    minOffsetConcentration: Number.isFinite(overrides.minOffsetConcentration)
-      ? overrides.minOffsetConcentration
+    minScore: Number.isFinite(values.minScore) ? values.minScore : (base.minScore ?? DEFAULTS.minScore),
+    minOffsetConcentration: Number.isFinite(values.minOffsetConcentration)
+      ? values.minOffsetConcentration
       : (base.minOffsetConcentration ?? DEFAULTS.minOffsetConcentration),
-    minMarginRatio: Number.isFinite(overrides.minMarginRatio)
-      ? overrides.minMarginRatio
+    minMarginRatio: Number.isFinite(values.minMarginRatio)
+      ? values.minMarginRatio
       : (base.minMarginRatio ?? DEFAULTS.minMarginRatio),
   };
 }
