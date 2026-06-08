@@ -386,6 +386,25 @@ describe('Event, participant, song and vote integration flow', () => {
       .send({ nickname: ' ada ' })
       .expect(400);
 
+    await ParticipantModel.insertMany([
+      {
+        eventId: event.id,
+        userId: attendee.body.data.user.id,
+        nickname: 'Passive 1',
+        nicknameLower: 'passive 1',
+        joinedAt: new Date(),
+        lastSeenAt: new Date(),
+      },
+      {
+        eventId: event.id,
+        userId: attendee.body.data.user.id,
+        nickname: 'Passive 2',
+        nicknameLower: 'passive 2',
+        joinedAt: new Date(),
+        lastSeenAt: new Date(),
+      },
+    ]);
+
     const suggestion = await request(app)
       .post(`/api/v1/songs/${event.id}/suggest`)
       .set(authHeader(attendeeToken))
@@ -519,7 +538,7 @@ describe('Event, participant, song and vote integration flow', () => {
     expect(storedSong.voteCount).toBe(0);
   });
 
-  test('auto-rejects a queued song at eight downvotes', async () => {
+  test('auto-rejects a queued song at half attendee downvotes', async () => {
     const dj = await createConfirmedDj();
     const attendee = await register(ATTENDEE_USER).expect(201);
     const attendeeToken = attendee.body.data.token;
@@ -570,7 +589,7 @@ describe('Event, participant, song and vote integration flow', () => {
         expect(res.body.data.song.status).toBe('APPROVED');
       });
 
-    for (const voter of voters) {
+    for (const voter of voters.slice(0, 4)) {
       await request(app)
         .post('/api/v1/votes')
         .set(authHeader(attendeeToken))
@@ -581,7 +600,7 @@ describe('Event, participant, song and vote integration flow', () => {
     const rejected = await SongModel.findById(song.id);
     expect(rejected).toMatchObject({
       status: 'REJECTED',
-      voteScore: -8,
+      voteScore: -4,
       removalReason: 'Rejected by downvotes',
     });
     expect(rejected.autoRejectedAt).toBeInstanceOf(Date);

@@ -3,7 +3,6 @@ const { logger } = require('../utils');
 const { ValidationError, NotFoundError } = require('../errors');
 const participantsService = require('./participants.service');
 
-const AUTO_REJECT_SCORE = -8;
 const AUTO_REJECT_REASON = 'Rejected by downvotes';
 
 // Premium vote weights more
@@ -179,19 +178,27 @@ class VotesService {
     return event.settings || {};
   }
 
-  async _applyAutoReject(song, settings = null) {
-    const resolvedSettings = settings || (await this._getEventSettings(song.eventId));
-    const threshold = resolvedSettings.skipThreshold ?? AUTO_REJECT_SCORE;
-    
-    if (
-      song.voteScore <= threshold &&
-      ['PENDING', 'APPROVED'].includes(song.status)
-    ) {
+  async _applyAutoReject(song) {
+    if (!['PENDING', 'APPROVED', 'PLAYING'].includes(song.status) || song.voteScore >= 0) return;
+
+    if (song.voteScore <= await this._getAutoRejectThreshold(song.eventId)) {
+      const wasPlaying = song.status === 'PLAYING';
       song.status = 'REJECTED';
       song.autoRejectedAt = new Date();
       song.removedAt = song.autoRejectedAt;
       song.removalReason = AUTO_REJECT_REASON;
+      if (wasPlaying) {
+        await EventModel.updateOne(
+          { _id: song.eventId, currentSongId: song._id },
+          { $unset: { currentSongId: '' } },
+        );
+      }
     }
+  }
+
+  async _getAutoRejectThreshold(eventId) {
+    const attendees = await participantsService.countActiveParticipants(eventId);
+    return -Math.max(1, Math.ceil(attendees / 2));
   }
 
   _formatSongVoteState(song) {

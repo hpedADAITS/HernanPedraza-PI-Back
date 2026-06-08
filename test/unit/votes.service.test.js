@@ -219,7 +219,7 @@ describe('VotesService - Real Implementation Tests', () => {
     });
 
     test('should not restore an auto-rejected song when downvote is removed', async () => {
-      const { event } = await createTestEvent({ settings: { skipThreshold: -1 } });
+      const { event } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
       const song = await createTestSong(event._id, participant._id, { status: 'APPROVED' });
       const actor = { userId: participant.userId?.toString() };
@@ -297,12 +297,13 @@ describe('VotesService - Real Implementation Tests', () => {
   });
 
   describe('auto-rejection logic', () => {
-    test('should auto-reject PENDING song at score -8', async () => {
+    test('should auto-reject PENDING song at half attendee downvotes', async () => {
       const { event } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
+      await Promise.all(Array.from({ length: 7 }, () => createTestParticipant(event._id)));
       const song = await createTestSong(event._id, participant._id, {
         status: 'PENDING',
-        voteScore: -8,
+        voteScore: -4,
       });
 
       await votesService._applyAutoReject(song);
@@ -310,12 +311,13 @@ describe('VotesService - Real Implementation Tests', () => {
       expect(song.status).toBe('REJECTED');
     });
 
-    test('should auto-reject APPROVED at score -8', async () => {
+    test('should auto-reject APPROVED at half attendee downvotes', async () => {
       const { event } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
+      await Promise.all(Array.from({ length: 7 }, () => createTestParticipant(event._id)));
       const song = await createTestSong(event._id, participant._id, {
         status: 'APPROVED',
-        voteScore: -8,
+        voteScore: -4,
       });
 
       await votesService._applyAutoReject(song);
@@ -323,25 +325,31 @@ describe('VotesService - Real Implementation Tests', () => {
       expect(song.status).toBe('REJECTED');
     });
 
-    test('should not auto-reject PLAYING songs even with negative score', async () => {
+    test('should auto-reject PLAYING song at half attendee downvotes', async () => {
       const { event } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
+      await Promise.all(Array.from({ length: 7 }, () => createTestParticipant(event._id)));
       const song = await createTestSong(event._id, participant._id, {
         status: 'PLAYING',
-        voteScore: -10,
+        voteScore: -4,
       });
+      event.currentSongId = song._id;
+      await event.save();
 
       await votesService._applyAutoReject(song);
 
-      expect(song.status).toBe('PLAYING');
+      expect(song.status).toBe('REJECTED');
+      const updatedEvent = await EventModel.findById(event._id);
+      expect(updatedEvent.currentSongId).toBeUndefined();
     });
 
     test('should not change if score is above threshold', async () => {
       const { event } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
+      await Promise.all(Array.from({ length: 7 }, () => createTestParticipant(event._id)));
       const song = await createTestSong(event._id, participant._id, {
         status: 'PENDING',
-        voteScore: -7,
+        voteScore: -3,
       });
 
       await votesService._applyAutoReject(song);
@@ -349,18 +357,14 @@ describe('VotesService - Real Implementation Tests', () => {
       expect(song.status).toBe('PENDING');
     });
 
-    test('should use custom skipThreshold from event settings', async () => {
+    test('should round half attendee threshold up', async () => {
       const { event } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
-      
-      // Update event with custom skip threshold
-      await EventModel.findByIdAndUpdate(event._id, {
-        settings: { skipThreshold: -5 }
-      });
+      await Promise.all(Array.from({ length: 4 }, () => createTestParticipant(event._id)));
 
       const song = await createTestSong(event._id, participant._id, {
         status: 'PENDING',
-        voteScore: -5, // Would be rejected with threshold -5
+        voteScore: -3,
       });
 
       await votesService._applyAutoReject(song);

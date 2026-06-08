@@ -11,10 +11,6 @@ const EventSettingsSchema = new Schema(
     votingEnabled: { type: Boolean, default: true },
     allowDownvotes: { type: Boolean, default: true },
     maxRequestsPerParticipant: { type: Number, default: 3, min: 0 },
-    
-    // Customizable skip threshold (default: -8)
-    // When voteScore drops to this value, song auto-rejects
-    skipThreshold: { type: Number, default: -8, min: -15, max: -1 },
   },
   { _id: false },
 );

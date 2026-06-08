@@ -493,7 +493,7 @@ describe('Queue System - DJ Controls', () => {
 });
 
 describe('Queue System - Auto-Reject by Downvotes', () => {
-  test('song auto-rejected at -8 score is removed from queue', async () => {
+  test('song auto-rejected at half attendee downvotes is removed from queue', async () => {
     const dj = await createConfirmedDj();
     const event = await createEvent(dj.token);
 
@@ -519,21 +519,21 @@ describe('Queue System - Auto-Reject by Downvotes', () => {
     let queue = await getQueue(event.id, dj.token);
     expect(queue).toHaveLength(1);
 
-    // All 8 downvote
-    for (const voter of voters) {
+    // Half of attendees downvote
+    for (const voter of voters.slice(0, 4)) {
       await castVote(song.id, voter.participant._id, voter.token, -1);
     }
 
     // Song should be auto-rejected and removed from queue
     const rejectedSong = await SongModel.findById(song.id);
     expect(rejectedSong.status).toBe('REJECTED');
-    expect(rejectedSong.voteScore).toBe(-8);
+    expect(rejectedSong.voteScore).toBe(-4);
 
     queue = await getQueue(event.id, dj.token);
     expect(queue).toHaveLength(0);
   });
 
-  test('pending song at -8 score is auto-rejected', async () => {
+  test('pending song at half attendee downvotes is auto-rejected', async () => {
     const dj = await createConfirmedDj();
     const event = await createEvent(dj.token);
 
@@ -556,15 +556,15 @@ describe('Queue System - Auto-Reject by Downvotes', () => {
 
     expect(song.status).toBe('PENDING');
 
-    // All 8 downvote
-    for (const voter of voters) {
+    // Half of attendees downvote
+    for (const voter of voters.slice(0, 4)) {
       await castVote(song.id, voter.participant._id, voter.token, -1);
     }
 
     // Song should be auto-rejected
     const rejectedSong = await SongModel.findById(song.id);
     expect(rejectedSong.status).toBe('REJECTED');
-    expect(rejectedSong.voteScore).toBe(-8);
+    expect(rejectedSong.voteScore).toBe(-4);
 
     // Should not appear in pending or queue
     const pending = await getPending(event.id, dj.token);
@@ -619,6 +619,46 @@ describe('Queue System - Attendee Cannot Control Playback', () => {
     // Song should still be PLAYING
     const stillPlaying = await SongModel.findById(song.id);
     expect(stillPlaying.status).toBe('PLAYING');
+  });
+
+  test('playing song auto-rejected at half attendee downvotes is removed from queue', async () => {
+    const dj = await createConfirmedDj();
+    const event = await createEvent(dj.token);
+
+    const voters = [];
+    for (let i = 0; i < 4; i++) {
+      const attendee = await createAttendee(i + 500);
+      const participant = await joinEvent(event.id, attendee.token, `NowHater${i}`);
+      voters.push({ participant, token: attendee.token });
+    }
+
+    const song = await suggestSong(
+      event.id,
+      voters[0].participant._id,
+      voters[0].token,
+      'Reject Live',
+      'Artist',
+    );
+    await approveSong(event.id, song.id, dj.token);
+    await bindFingerprintMatch(event.id, song, 'Reject Live', 'Artist', dj.userId);
+    await request(app)
+      .post(`/api/v1/songs/${event.id}/${song.id}/send-now`)
+      .set(authHeader(dj.token))
+      .expect(200);
+
+    for (const voter of voters.slice(0, 2)) {
+      await castVote(song.id, voter.participant._id, voter.token, -1);
+    }
+
+    const rejectedSong = await SongModel.findById(song.id);
+    expect(rejectedSong.status).toBe('REJECTED');
+    expect(rejectedSong.voteScore).toBe(-2);
+
+    const updatedEvent = await EventModel.findById(event.id);
+    expect(updatedEvent.currentSongId).toBeUndefined();
+
+    const queue = await getQueue(event.id, dj.token);
+    expect(queue).toHaveLength(0);
   });
 
   test('attendees cannot send songs now', async () => {
