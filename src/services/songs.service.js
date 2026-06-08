@@ -105,23 +105,30 @@ class SongsService {
     const participant = await participantsService.getParticipantById(participantId);
     const isPremiumSuggestion = participant?.isPremium || false;
 
-    const recognitionMatch = await this._resolveRecognitionMatch(
+    const selectedFingerprint = options.fingerprintTrackId
+      ? await this._resolveSelectedFingerprintMatch(eventId, options.fingerprintTrackId)
+      : null;
+    const songTitle = selectedFingerprint?.title || title;
+    const songArtist = selectedFingerprint?.artist || artist;
+    const recognitionMatch = selectedFingerprint || await this._resolveRecognitionMatch(
       eventId,
-      title,
-      artist,
+      songTitle,
+      songArtist,
       totalDuration,
       options,
     );
-    const resolvedDuration = Number.isFinite(Number(totalDuration))
+    const resolvedDuration = selectedFingerprint?.duration ?? (
+      Number.isFinite(Number(totalDuration))
       ? Number(totalDuration)
-      : recognitionMatch?.duration ?? undefined;
+      : recognitionMatch?.duration ?? undefined
+    );
 
     const eventDoc = await EventModel.findById(eventId).select('ownerId').lean();
     if (!eventDoc) throw new NotFoundError('Event not found');
 
     const [encryptedTitle, encryptedArtist] = await Promise.all([
-      textCrypto.encryptText(title, eventDoc),
-      textCrypto.encryptText(artist, eventDoc),
+      textCrypto.encryptText(songTitle, eventDoc),
+      textCrypto.encryptText(songArtist, eventDoc),
     ]);
     if (recognitionMatch) {
       await encryptRecognitionMatchInPlace(recognitionMatch, eventDoc);
@@ -142,7 +149,7 @@ class SongsService {
     const song = new SongModel(songData);
 
     await song.save();
-    logger.info(`Song suggested: ${title} by ${artist}`);
+    logger.info(`Song suggested: ${songTitle} by ${songArtist}`);
 
     // Decrypt the just-saved fields so the returned formatter shape
     // (used by the controller's REST response and the socket
@@ -753,13 +760,14 @@ class SongsService {
     const recognitionMatch = hasRecognitionMatch(song.recognitionMatch)
       ? formatRecognitionMatch(song.recognitionMatch)
       : null;
+    const canonical = canonicalSongMetadata(song, recognitionMatch);
 
     return {
       _id: song._id,
       id: song._id,
       eventId: song.eventId,
-      title: song.title,
-      artist: song.artist,
+      title: canonical.title,
+      artist: canonical.artist,
       recognitionMatch,
       requestedBy: song.requestedBy,
       status: song.status,
@@ -768,8 +776,8 @@ class SongsService {
       voteCount: song.voteCount,
       queuePosition: song.queuePosition,
       isPremiumSuggestion: song.isPremiumSuggestion,
-      totalDuration,
-      duration: totalDuration,
+      totalDuration: canonical.totalDuration,
+      duration: canonical.totalDuration,
       pinned: song.pinned,
       startedPlayingAt: song.startedPlayingAt,
       playingStartedAt: song.startedPlayingAt,
@@ -913,6 +921,29 @@ class SongsService {
     return this._findRecognitionMatch(eventId, title, artist, totalDuration);
   }
 
+  async _resolveSelectedFingerprintMatch(eventId, trackId) {
+    const track = await AudioTrackModel.findOne({ _id: trackId, eventId })
+      .select('title artist coverUrl duration')
+      .lean();
+    if (!track) throw new ValidationError('Selected fingerprint track was not found');
+
+    const eventDoc = await EventModel.findById(eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) await decryptMetadataInPlace(track, eventDoc);
+
+    return {
+      source: 'fingerprint',
+      trackId: track._id,
+      title: track.title,
+      artist: track.artist,
+      coverUrl: track.coverUrl || null,
+      duration: Number.isFinite(Number(track.duration)) ? Number(track.duration) : null,
+      score: 1,
+      matchedOn: 'fingerprint',
+    };
+  }
+
   async _findLocalRecognitionMatch(eventId, title, artist, options = {}) {
     const { strict = true, limit = 1, minScore = 0 } = options;
     const targetTitle = normalizeText(title);
@@ -1031,6 +1062,24 @@ function normalizeText(value) {
 
 function hasRecognitionMatch(match) {
   return Boolean(match?.title && match?.artist && Number.isFinite(Number(match.score)));
+}
+
+function canonicalSongMetadata(song, recognitionMatch) {
+  const matchedTrack = recognitionMatch?.trackId;
+  const matchDuration = Number(recognitionMatch?.duration);
+  const songDuration = Number(song.totalDuration ?? song.duration);
+  let totalDuration = song.totalDuration ?? song.duration;
+  if (matchedTrack && Number.isFinite(matchDuration)) {
+    totalDuration = matchDuration;
+  } else if (Number.isFinite(songDuration)) {
+    totalDuration = songDuration;
+  }
+
+  return {
+    title: matchedTrack && recognitionMatch.title ? recognitionMatch.title : song.title,
+    artist: matchedTrack && recognitionMatch.artist ? recognitionMatch.artist : song.artist,
+    totalDuration,
+  };
 }
 
 function isMusicBrainzMatch(match) {

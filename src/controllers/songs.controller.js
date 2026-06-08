@@ -63,6 +63,7 @@ class SongsController {
           musicBrainzConfirmed: data.musicBrainzConfirmed,
           musicBrainzMatch: data.musicBrainzMatch,
           skipMusicBrainzLookup: data.skipMusicBrainzLookup,
+          fingerprintTrackId: data.fingerprintTrackId,
         },
       );
       let participant = null;

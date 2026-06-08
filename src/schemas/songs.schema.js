@@ -12,6 +12,7 @@ class SongsSchema {
       musicBrainzConfirmed: body.musicBrainzConfirmed === true,
       skipMusicBrainzLookup: body.skipMusicBrainzLookup === true,
       musicBrainzMatch: normalizeMusicBrainzMatch(body.musicBrainzMatch),
+      fingerprintTrackId: cleanObjectId(body.fingerprintTrackId),
     };
 
     // Validate
@@ -58,6 +59,7 @@ class SongsSchema {
       musicBrainzConfirmed: data.musicBrainzConfirmed,
       skipMusicBrainzLookup: data.skipMusicBrainzLookup,
       musicBrainzMatch: data.musicBrainzMatch,
+      fingerprintTrackId: data.fingerprintTrackId,
     };
   }
 
@@ -105,6 +107,16 @@ function normalizeMusicBrainzMatch(match) {
 
 function cleanString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function cleanObjectId(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^[0-9a-fA-F]{24}$/.test(trimmed)) {
+    throw new ValidationError('Fingerprint track ID is invalid');
+  }
+  return trimmed;
 }
 
 module.exports = new SongsSchema();

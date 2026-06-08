@@ -10,6 +10,7 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const {
   SongModel,
   EventModel,
+  AudioTrackModel,
   ParticipantModel,
   UserModel,
   VoteModel,
@@ -69,6 +70,7 @@ describe('Socket.IO Handler Integration Tests', () => {
     // Clean database
     await SongModel.deleteMany({});
     await EventModel.deleteMany({});
+    await AudioTrackModel.deleteMany({});
     await ParticipantModel.deleteMany({});
     await UserModel.deleteMany({});
     await VoteModel.deleteMany({});
@@ -146,6 +148,7 @@ describe('Socket.IO Handler Integration Tests', () => {
   afterEach(async () => {
     await SongModel.deleteMany({});
     await EventModel.deleteMany({});
+    await AudioTrackModel.deleteMany({});
     await ParticipantModel.deleteMany({});
     await UserModel.deleteMany({});
     await VoteModel.deleteMany({});
@@ -190,9 +193,55 @@ describe('Socket.IO Handler Integration Tests', () => {
       expect(broadcastedEvents[0].data.title).toBe('New Song');
 
       // Verify in database
-      const song = await SongModel.findOne({ title: 'New Song' });
+      const suggested = callback.mock.calls[0][0].data;
+      const song = await SongModel.findById(suggested._id);
       expect(song).toBeDefined();
       expect(song.status).toBe('PENDING');
+    });
+
+    test('uses selected fingerprint metadata when suggesting via socket', async () => {
+      const callback = jest.fn();
+      const track = await AudioTrackModel.create({
+        eventId: testEvent._id,
+        audioSha256: 'socket-selected-track',
+        title: 'Socket Canonical Title',
+        artist: 'Socket Canonical Artist',
+        uploadedBy: ownerUser._id,
+        duration: 188,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+
+      await socketEvents.handleSuggestSong(
+        socket,
+        ioServer,
+        {
+          eventId: testEvent._id.toString(),
+          participantId: testParticipant._id.toString(),
+          title: 'Socket Attendee Typo',
+          artist: 'Socket Attendee Artist',
+          fingerprintTrackId: track._id.toString(),
+          skipMusicBrainzLookup: true,
+        },
+        callback,
+      );
+
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            title: 'Socket Canonical Title',
+            artist: 'Socket Canonical Artist',
+            totalDuration: 188,
+          }),
+        }),
+      );
+      expect(broadcastedEvents[0].data).toMatchObject({
+        title: 'Socket Canonical Title',
+        artist: 'Socket Canonical Artist',
+        totalDuration: 188,
+      });
     });
 
     test('should handle suggestion error and acknowledge with error', async () => {

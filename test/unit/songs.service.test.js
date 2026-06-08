@@ -239,6 +239,49 @@ describe('SongsService - Real Implementation Tests', () => {
       expect(musicBrainzService.findRecordingMatch).not.toHaveBeenCalled();
     });
 
+    test('uses selected DJ fingerprint metadata over attendee text', async () => {
+      jest.spyOn(musicBrainzService, 'findRecordingMatch');
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const track = await AudioTrackModel.create({
+        eventId: event._id,
+        audioSha256: 'selected-library-track',
+        title: 'Canonical Library Title',
+        artist: 'Canonical Library Artist',
+        uploadedBy: user._id,
+        duration: 222,
+        sampleRate: 8000,
+        pointsCount: 1,
+        hashesCount: 1,
+      });
+
+      const result = await songsService.suggestSong(
+        event._id.toString(),
+        participant._id.toString(),
+        'Attendee Typo Title',
+        'Attendee Typo Artist',
+        111,
+        { userId: participant.userId.toString(), role: 'ATTENDEE' },
+        { fingerprintTrackId: track._id.toString(), skipMusicBrainzLookup: true },
+      );
+
+      expect(result).toMatchObject({
+        title: 'Canonical Library Title',
+        artist: 'Canonical Library Artist',
+        totalDuration: 222,
+      });
+      expect(result.recognitionMatch).toMatchObject({
+        source: 'fingerprint',
+        trackId: track._id,
+        title: 'Canonical Library Title',
+        artist: 'Canonical Library Artist',
+        duration: 222,
+        score: 1,
+        matchedOn: 'fingerprint',
+      });
+      expect(musicBrainzService.findRecordingMatch).not.toHaveBeenCalled();
+    });
+
     test('falls back to strict local fingerprint match when MusicBrainz returns no match', async () => {
       const findRecordingMatch = jest
         .spyOn(musicBrainzService, 'findRecordingMatch')
@@ -998,6 +1041,46 @@ describe('SongsService - Real Implementation Tests', () => {
       expect(result.queue).toBeDefined();
       expect(result.nowPlaying).toBeDefined();
       expect(result.nowPlaying.songId).toBeDefined();
+    });
+
+    test('uses DJ library metadata in queue and now playing display', async () => {
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const track = await createTestAudioTrack(event._id, user._id, {
+        title: 'Canonical Queue Title',
+        artist: 'Canonical Queue Artist',
+        duration: 244,
+      });
+
+      await createTestSong(event._id, participant._id, {
+        title: 'Attendee Queue Typo',
+        artist: 'Attendee Queue Artist',
+        totalDuration: 99,
+        status: 'PLAYING',
+        startedPlayingAt: new Date(),
+        recognitionMatch: {
+          source: 'fingerprint',
+          trackId: track._id,
+          title: track.title,
+          artist: track.artist,
+          duration: track.duration,
+          score: 1,
+          matchedOn: 'fingerprint',
+        },
+      });
+
+      const result = await songsService.getQueueSnapshotForEvent(event._id.toString());
+
+      expect(result.queue[0]).toMatchObject({
+        title: 'Canonical Queue Title',
+        artist: 'Canonical Queue Artist',
+        totalDuration: 244,
+      });
+      expect(result.nowPlaying).toMatchObject({
+        title: 'Canonical Queue Title',
+        artist: 'Canonical Queue Artist',
+        totalDuration: 244,
+      });
     });
 
     test('should return null nowPlaying when nothing is playing', async () => {

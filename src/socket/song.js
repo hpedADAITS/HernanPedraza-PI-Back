@@ -47,6 +47,7 @@ const handleSuggestSong = async (socket, io, data, callback) => {
         musicBrainzConfirmed: parsed.musicBrainzConfirmed,
         musicBrainzMatch: parsed.musicBrainzMatch,
         skipMusicBrainzLookup: parsed.skipMusicBrainzLookup,
+        fingerprintTrackId: parsed.fingerprintTrackId,
       },
     );
     toEventRoom(io, eventId).emit('song_suggested', {
