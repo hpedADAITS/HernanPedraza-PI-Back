@@ -166,6 +166,18 @@ const handleDisconnect = (socket, io) => {
       participantId: socket.participantId,
     });
   }
+
+  /* The phone microphone socket never joins the event room — it only
+     emits audio chunks — so we have to broadcast to the room via the
+     server-side `io` reference. Notify the rest of the event that the
+     audio source has dropped so the UI can show a disconnected state. */
+  if (socket.user?.type === 'phone-microphone' && socket.user?.eventId) {
+    io.to(`event:${socket.user.eventId}`).emit('phone_microphone_disconnected', {
+      eventId: socket.user.eventId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   logger.info(`Socket ${socket.id} disconnected`);
 };
 
