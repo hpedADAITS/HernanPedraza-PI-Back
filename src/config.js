@@ -89,4 +89,53 @@ module.exports = {
   /* Logger */
   logLevel: process.env.LOG_LEVEL || 'info',
   logFile: process.env.LOG_FILE || 'logs/app.log',
+
+  /* Audio fingerprint matcher tolerance.
+   *
+   * Each gate rejects a different class of false positive:
+   *   - minScore               : absolute lower bound (noise floor)
+   *   - minOffsetConcentration : top-offset / total-aligned ratio — a real
+   *                              match concentrates hashes at one
+   *                              (sample, source) time delta; random
+   *                              collisions spread across many offsets
+   *   - minMarginRatio         : top score / second score — guards against
+   *                              two equally-strong candidates
+   *   - holdWindowMs           : how long a candidate is held before it is
+   *                              promoted to a locked match. Long enough
+   *                              to absorb chunk-to-chunk jitter and let
+   *                              the queue catch up.
+   *   - minPersistentChunks    : a candidate must lead the ranking in at
+   *                              least this many consecutive chunks before
+   *                              the hold starts. Filters single-chunk
+   *                              spikes caused by noise.
+   *   - minMatchQueryHashes    : minimum unique hashes that must be in the
+   *                              accumulated window before a candidate can
+   *                              lock. Prevents locking on a tiny sample.
+   *
+   * All values are tunable via env vars for live ops. They default to
+   * conservative-but-usable values; the integration tests pin them so a
+   * tuning change never silently flips a test. */
+  matcher: {
+    minScore: numberFromEnv('MATCHER_MIN_SCORE', 4),
+    minOffsetConcentration: numberFromEnv('MATCHER_MIN_OFFSET_CONCENTRATION', 0.5),
+    minMarginRatio: numberFromEnv('MATCHER_MIN_MARGIN_RATIO', 1.5),
+    holdWindowMs: numberFromEnv('MATCHER_HOLD_WINDOW_MS', 20_000),
+    minPersistentChunks: numberFromEnv('MATCHER_MIN_PERSISTENT_CHUNKS', 3),
+    minMatchQueryHashes: numberFromEnv('MATCHER_MIN_QUERY_HASHES', 30),
+    /* How often the streaming matcher re-runs against the accumulated
+       hold window. The matcher was already throttled at
+       AUDIO_MATCH_INTERVAL_MS in audio.js; this is a separate debounce so
+       we don't pay the cost of re-scoring on every chunk. */
+    reMatchDebounceMs: numberFromEnv('MATCHER_RE_MATCH_DEBOUNCE_MS', 700),
+  },
 };
+
+function numberFromEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new Error(`${name} must be a finite number, got: ${raw}`);
+  }
+  return value;
+}

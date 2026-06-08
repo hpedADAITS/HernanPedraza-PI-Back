@@ -5,6 +5,19 @@ const { songsService } = require('../services');
 const { assertJoinedEvent, eventActor, emitQueueUpdated, rejectLegacyCommand, toEventRoom } = require('./room');
 const { isValidId } = require('./shared-validators');
 const { songsSchema } = require('../schemas');
+const matchSessionRegistry = require('../services/audio-recognition/match-session-registry');
+
+// Whenever we fan out a queue-related event to the room, also notify
+// the in-process match-session registry so every live audio match
+// stream can re-evaluate the queue context for its current candidate.
+async function notifyMatchSessions(eventId, type, payload) {
+  if (!eventId || !type) return;
+  await matchSessionRegistry.applyQueueEventToEvent(eventId, {
+    type,
+    timestamp: new Date().toISOString(),
+    ...payload,
+  });
+}
 
 const handleSuggestSong = async (socket, io, data, callback) => {
   try {
@@ -42,6 +55,11 @@ const handleSuggestSong = async (socket, io, data, callback) => {
       totalDuration: song.totalDuration, duration: song.duration,
       timestamp: new Date().toISOString(),
     });
+    await notifyMatchSessions(eventId, 'song_suggested', {
+      songId: song._id,
+      status: song.status,
+      trackId: song.recognitionMatch?.trackId || null,
+    });
     logger.info('Song suggested via Socket.IO', { songId: song._id, eventId });
     ackSuccess(callback, song);
   } catch (error) {
@@ -63,6 +81,11 @@ const handleApproveSong = async (socket, io, data, callback) => {
       recognitionMatch: song.recognitionMatch || null, status: song.status,
       totalDuration: song.totalDuration, duration: song.duration,
       timestamp: new Date().toISOString(),
+    });
+    await notifyMatchSessions(eventId, 'song_approved', {
+      songId: song._id,
+      status: song.status,
+      trackId: song.recognitionMatch?.trackId || null,
     });
     await emitQueueUpdated(io, eventId);
     logger.info('Song approved via Socket.IO', { songId, eventId });
@@ -86,6 +109,11 @@ const handleRejectSong = async (socket, io, data, callback) => {
       status: song.status, reason,
       timestamp: new Date().toISOString(),
     });
+    await notifyMatchSessions(eventId, 'song_rejected', {
+      songId: song._id,
+      status: song.status,
+      trackId: null,
+    });
     await emitQueueUpdated(io, eventId);
     logger.info('Song rejected via Socket.IO', { songId, eventId, reason });
     ackSuccess(callback, song);
@@ -107,6 +135,11 @@ const handleSkipSong = async (socket, io, data, callback) => {
       songId: song._id, title: song.title, artist: song.artist,
       status: song.status, reason,
       timestamp: new Date().toISOString(),
+    });
+    await notifyMatchSessions(eventId, 'song_skipped', {
+      songId: song._id,
+      status: song.status,
+      trackId: song.recognitionMatch?.trackId || null,
     });
     await emitQueueUpdated(io, eventId);
     logger.info('Song skipped via Socket.IO', { songId, eventId, reason });
@@ -131,6 +164,11 @@ const handleSendNow = async (socket, io, data, callback) => {
       totalDuration: song.totalDuration || 0, duration: song.duration || 0,
       playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
       timestamp: new Date().toISOString(),
+    });
+    await notifyMatchSessions(eventId, 'song_now_playing', {
+      songId: song._id,
+      status: song.status,
+      trackId: song.recognitionMatch?.trackId || null,
     });
     await emitQueueUpdated(io, eventId);
     logger.info('Song sent now via Socket.IO', { songId, eventId });

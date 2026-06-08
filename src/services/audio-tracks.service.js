@@ -18,6 +18,8 @@ const { encodeHashRows } = require('./audio-recognition/fingerprint-codec');
 const { matchHashes, RamMatcher } = require('./audio-recognition/ram-matcher');
 const { parseWavHeader, TARGET_SAMPLE_RATE } = require('./audio-recognition/wav');
 const musicBrainzService = require('./musicbrainz.service');
+const { evaluateAbsoluteGates } = require('./audio-recognition/match-thresholds');
+const { enrichMatchesWithQueueContext } = require('./audio-recognition/queue-linker');
 
 // Shared RamMatcher instance for socket-level matching
 const sharedRamMatcher = new RamMatcher();
@@ -213,14 +215,26 @@ class AudioTracksService {
         },
       });
       const hashes = collected.map(({ hash, time }) => ({ hash, time }));
-      return matchHashes(eventObjectId, hashes);
+      return this.matchHashes(eventObjectId, hashes);
     } finally {
       fs.promises.rm(tmpFile, { force: true }).catch(() => {});
     }
   }
 
+  // The REST entry-point. It applies the *absolute* tolerance gates
+  // (min score + offset concentration) so a noise query can never
+  // surface a fake winner, but it deliberately does NOT apply the
+  // margin-to-runner-up gate — that is reserved for the streaming
+  // path, where a clear single winner is the UX contract. The REST
+  // endpoint can return multiple candidates so the DJ can pick
+  // manually. All results are enriched with queue context so the
+  // caller learns whether the track is already in the queue.
   async matchHashes(eventId, hashes) {
-    return matchHashes(eventId, hashes);
+    const eventIdString = eventId ? String(eventId) : '';
+    const ranked = await matchHashes(eventIdString, hashes);
+    const surviving = ranked.filter((match) => evaluateAbsoluteGates(match).passed);
+    if (!surviving.length) return [];
+    return enrichMatchesWithQueueContext(eventIdString, surviving);
   }
 
   async sendMatchedTrackNow(eventId, actor, trackId) {

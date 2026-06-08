@@ -195,14 +195,27 @@ class RamMatcher {
     for (const [trackId, byOffset] of buckets) {
       let bestOffset = 0;
       let bestScore = 0;
+      let totalAligned = 0;
       for (const [offset, count] of byOffset) {
+        totalAligned += count;
         if (count > bestScore) {
           bestScore = count;
           bestOffset = offset;
         }
       }
       if (bestScore < MIN_MATCH_SCORE) continue;
-      scored.push({ trackId, offset: bestOffset, score: bestScore });
+      // totalAligned and offsetConcentration are additive fields — older
+      // callers that destructure { trackId, score } keep working. The
+      // confidence gate (match-thresholds.js) uses offsetConcentration
+      // to reject false positives whose hashes are spread thinly across
+      // many time deltas.
+      scored.push({
+        trackId,
+        offset: bestOffset,
+        score: bestScore,
+        totalAligned,
+        offsetConcentration: totalAligned > 0 ? bestScore / totalAligned : 0,
+      });
     }
 
     scored.sort((a, b) => b.score - a.score);

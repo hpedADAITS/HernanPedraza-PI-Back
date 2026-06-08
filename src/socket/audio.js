@@ -11,6 +11,21 @@ const {
 } = require('../services/audio-recognition/wav');
 const { StreamingFingerprinter } = require('../services/audio-recognition/streaming');
 const { isValidId } = require('./shared-validators');
+const { MatchSession, EVENT: SESSION_EVENT, STATE: SESSION_STATE } = require('../services/audio-recognition/match-session');
+const matchSessionRegistry = require('../services/audio-recognition/match-session-registry');
+const { toEventRoom } = require('./rooms');
+
+// Events the match session listens to. These are server-broadcast
+// events fanned out to the whole event room, so we hook them via the
+// session's applyQueueEvent() from a single subscription per socket.
+const QUEUE_EVENT_NAMES = [
+  'song_suggested',
+  'song_approved',
+  'song_rejected',
+  'song_skipped',
+  'song_now_playing',
+  'queue_updated',
+];
 
 function assertAudioEventAccess(socket, eventId) {
   if (!isValidId(eventId)) throw new Error('Invalid event ID');
@@ -47,20 +62,161 @@ function extractFloat32Pcm(payload) {
   throw new Error(`Unsupported audio chunk payload: ${typeof payload}`);
 }
 
+function emitMatchDiff(socket, io, eventId, diff) {
+  if (!diff) return;
+  const base = { eventId, timestamp: new Date().toISOString() };
+
+  // Map session diff events to socket-level events. We keep the legacy
+  // `audio_match_update` event for the simplest "top match" payload so
+  // the existing front-end reducer continues to receive something it
+  // can render. The new stateful events (audio_match_hold,
+  // audio_match_locked, audio_match_released) carry the queue context.
+  const queueContext = diff.payload?.queueContext;
+
+  switch (diff.event) {
+    case SESSION_EVENT.CANDIDATE:
+      socket.emit('audio_match_candidate', {
+        ...base,
+        state: diff.state,
+        candidate: diff.payload,
+      });
+      socket.emit('audio_match_update', {
+        ...base,
+        matches: [toLegacyMatch(diff.payload)],
+      });
+      break;
+    case SESSION_EVENT.HOLD_STARTED:
+      socket.emit('audio_match_hold', {
+        ...base,
+        state: diff.state,
+        candidate: diff.payload,
+        holdStartedAt: Date.now(),
+      });
+      socket.emit('audio_match_update', {
+        ...base,
+        matches: [toLegacyMatch(diff.payload)],
+      });
+      break;
+    case SESSION_EVENT.HOLD_UPDATED:
+      socket.emit('audio_match_hold_updated', {
+        ...base,
+        state: diff.state,
+        candidate: diff.payload,
+      });
+      socket.emit('audio_match_update', {
+        ...base,
+        matches: [toLegacyMatch(diff.payload)],
+      });
+      break;
+    case SESSION_EVENT.LOCKED:
+      socket.emit('audio_match_locked', {
+        ...base,
+        state: diff.state,
+        candidate: diff.payload,
+      });
+      // Broadcast the lock to the whole event room so other clients
+      // (DJ dashboard, attendee coverflow) can react.
+      if (io) {
+        toEventRoom(io, eventId).emit('audio_match_locked', {
+          ...base,
+          state: diff.state,
+          candidate: diff.payload,
+        });
+      }
+      break;
+    case SESSION_EVENT.RELEASED:
+      socket.emit('audio_match_released', {
+        ...base,
+        state: diff.state,
+        reason: diff.payload?.reason || 'released',
+        previousCandidate: diff.payload || null,
+      });
+      socket.emit('audio_match_update', {
+        ...base,
+        matches: [],
+      });
+      if (io) {
+        toEventRoom(io, eventId).emit('audio_match_released', {
+          ...base,
+          state: diff.state,
+          reason: diff.payload?.reason || 'released',
+          previousCandidate: diff.payload || null,
+        });
+      }
+      break;
+    case SESSION_EVENT.QUEUE_UPDATED:
+      socket.emit('audio_match_queue_updated', {
+        ...base,
+        state: diff.state,
+        trackId: diff.payload?.trackId,
+        queueContext,
+      });
+      break;
+    case SESSION_EVENT.IDLE:
+      socket.emit('audio_match_idle', { ...base, reason: diff.payload?.reason });
+      socket.emit('audio_match_update', { ...base, matches: [] });
+      break;
+    default:
+      // Unknown event — do not emit anything.
+      break;
+  }
+}
+
+function toLegacyMatch(candidate) {
+  if (!candidate) return null;
+  return {
+    trackId: candidate.trackId,
+    title: candidate.title,
+    artist: candidate.artist,
+    coverUrl: candidate.coverUrl,
+    duration: candidate.duration,
+    offset: candidate.offset || 0,
+    score: candidate.score,
+    totalAligned: candidate.totalAligned,
+    offsetConcentration: candidate.offsetConcentration,
+    queueContext: candidate.queueContext,
+  };
+}
+
 const handleAudioMatchStart = async (socket, io, data, callback) => {
   try {
     const { eventId, sampleRate } = data || {};
     logger.info('Audio match start', { eventId, sampleRate: sampleRate ?? 'not provided' });
     await assertAudioEventAccess(socket, eventId);
     await sharedRamMatcher.loadEvent(eventId);
+
+    // Tear down any prior session cleanly (e.g. client retried the
+    // start call). Releasing the prior hold lets listeners settle
+    // before the new session emits its first candidate.
+    if (socket.audioMatch?.unregister) socket.audioMatch.unregister();
+    if (socket.audioMatch?.session) {
+      socket.audioMatch.session.reset();
+    }
+
+    const session = new MatchSession({
+      eventId,
+      ramMatcher: sharedRamMatcher,
+    });
+    // Deliver queue/DJ driven transitions (release on track change, lock
+    // confirmation) back to this socket so the phone can pause/resume its
+    // stream even though those diffs originate outside the chunk loop.
+    const unregister = matchSessionRegistry.register(eventId, session, (diff) =>
+      emitMatchDiff(socket, io, eventId, diff),
+    );
+
     socket.audioMatch = {
       eventId,
       fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE, { keepHashHistory: false }),
       ramMatcher: sharedRamMatcher,
       inputSampleRate: sampleRate,
       lastEmitAt: 0,
+      session,
+      unregister,
     };
-    ackSuccess(callback, { eventId });
+    ackSuccess(callback, {
+      eventId,
+      session: session.getState(),
+    });
   } catch (error) {
     logger.error('Error starting audio matcher:', error);
     ackError(callback, error);
@@ -80,12 +236,18 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
           if (socket.user?.type === 'phone-microphone' && eventId) {
             logger.info('Auto-starting audio matcher for phone microphone', { eventId, sampleRate });
             await sharedRamMatcher.loadEvent(eventId);
+            const session = new MatchSession({ eventId, ramMatcher: sharedRamMatcher });
+            const unregister = matchSessionRegistry.register(eventId, session, (diff) =>
+              emitMatchDiff(socket, io, eventId, diff),
+            );
             socket.audioMatch = {
               eventId,
               fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE, { keepHashHistory: false }),
               ramMatcher: sharedRamMatcher,
               inputSampleRate: sampleRate,
               lastEmitAt: 0,
+              session,
+              unregister,
             };
           } else {
             throw new Error('Audio matcher has not started');
@@ -141,25 +303,51 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
       });
     }
 
-    if (hashes.length && now - session.lastEmitAt > AUDIO_MATCH_INTERVAL_MS) {
-      session.lastEmitAt = now;
-      const MAX_LIVE_MATCH_HASHES = 2000;
-      const queryHashes = hashes.length > MAX_LIVE_MATCH_HASHES
-        ? hashes.slice(-MAX_LIVE_MATCH_HASHES)
-        : hashes;
-      const matches = session.ramMatcher.match(session.eventId, queryHashes);
-      logger.info('audio_match_update', {
-        eventId: session.eventId,
-        matchCount: matches?.length || 0,
-        topMatch: matches?.[0] ? { title: matches[0].title, artist: matches[0].artist, score: matches[0].score } : null,
-      });
-      const update = {
-        eventId: session.eventId,
-        matches,
-        timestamp: new Date().toISOString(),
-      };
-      socket.emit('audio_match_update', update);
-      socket.to(`event:${session.eventId}`).emit('audio_match_update', update);
+    // The match session is the single source of truth for what to emit
+    // back to the client. We feed it the latest hashes and let it decide
+    // whether the top candidate moved, the hold should start, the lock
+    // is now safe, or we should release.
+    if (hashes.length) {
+      const matchSession = session.session;
+      if (matchSession) {
+        const diffs = await matchSession.addChunk(hashes);
+        for (const diff of diffs) {
+          emitMatchDiff(socket, io, session.eventId, diff);
+        }
+        // Re-evaluate the lock condition on a debounce so a candidate
+        // that has been held long enough promotes to "locked" even if
+        // the next audio chunk is silent (DJ muted the room, etc.).
+        if (
+          matchSession.state === 'holding' &&
+          matchSession.holdStartedAt > 0 &&
+          now - (session.lastReEvalAt || 0) > matchSession.reMatchDebounceMs
+        ) {
+          session.lastReEvalAt = now;
+          const reDiff = await matchSession.reEvaluate();
+          for (const diff of reDiff) {
+            emitMatchDiff(socket, io, session.eventId, diff);
+          }
+        }
+      } else {
+        // Fallback for the brief window where the legacy path is still
+        // in use (e.g. tests that bypass session creation). The path
+        // mirrors the old behaviour but throttles the emit.
+        if (now - session.lastEmitAt > AUDIO_MATCH_INTERVAL_MS) {
+          session.lastEmitAt = now;
+          const MAX_LIVE_MATCH_HASHES = 2000;
+          const queryHashes = hashes.length > MAX_LIVE_MATCH_HASHES
+            ? hashes.slice(-MAX_LIVE_MATCH_HASHES)
+            : hashes;
+          const matches = session.ramMatcher.match(session.eventId, queryHashes);
+          const update = {
+            eventId: session.eventId,
+            matches,
+            timestamp: new Date().toISOString(),
+          };
+          socket.emit('audio_match_update', update);
+          socket.to(`event:${session.eventId}`).emit('audio_match_update', update);
+        }
+      }
     }
 
     ackSuccess(callback, {
@@ -183,16 +371,38 @@ const handleAudioMatchStop = async (socket, io, data, callback) => {
   try {
     logger.info('Audio match stop requested', { hadAudioMatch: Boolean(socket.audioMatch) });
     if (socket.audioMatch) {
-      const { eventId, fingerprinter, ramMatcher } = socket.audioMatch;
-      const hashes = fingerprinter.flush();
-      const matches = ramMatcher.match(eventId, hashes);
-      const update = {
-        eventId,
-        matches,
-        timestamp: new Date().toISOString(),
-      };
-      socket.emit('audio_match_update', update);
-      socket.to(`event:${eventId}`).emit('audio_match_update', update);
+      const { eventId, fingerprinter, ramMatcher, session: matchSession, unregister } = socket.audioMatch;
+      if (matchSession) {
+        // Final pass: flush any pending hashes from the fingerprinter
+        // so the session sees the last few seconds of audio. The
+        // session will return a release diff if it was holding.
+        const tailHashes = fingerprinter.flush();
+        if (tailHashes.length) {
+          const diffs = await matchSession.addChunk(tailHashes);
+          for (const diff of diffs) {
+            emitMatchDiff(socket, io, eventId, diff);
+          }
+        }
+        // Reset the session so any subscribed listeners see the
+        // explicit "released" state and the per-event registry drops
+        // the reference.
+        const resetDiffs = matchSession.reset();
+        for (const diff of resetDiffs) {
+          emitMatchDiff(socket, io, eventId, diff);
+        }
+        if (typeof unregister === 'function') unregister();
+      } else {
+        // Legacy path
+        const hashes = fingerprinter.flush();
+        const matches = ramMatcher.match(eventId, hashes);
+        const update = {
+          eventId,
+          matches,
+          timestamp: new Date().toISOString(),
+        };
+        socket.emit('audio_match_update', update);
+        socket.to(`event:${eventId}`).emit('audio_match_update', update);
+      }
     }
     socket.audioMatch = null;
     ackSuccess(callback, { stopped: true });

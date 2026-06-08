@@ -3,6 +3,7 @@ const songsService = require('../services/songs.service');
 const { httpStatus } = require('../constants');
 const { logger } = require('../utils');
 const { verifyToken } = require('../utils/jwt.utils');
+const matchSessionRegistry = require('../services/audio-recognition/match-session-registry');
 
 class AudioTracksController {
   async createTrack(req, res, next) {
@@ -96,6 +97,22 @@ class AudioTracksController {
           timestamp: new Date().toISOString(),
         });
       }
+      // DJ intent: any live match session in this event should either
+      // confirm the candidate (if it matches the track the DJ just
+      // sent) or release the hold (if the DJ chose something else).
+      await matchSessionRegistry.applyDjIntentToEvent(
+        req.params.eventId,
+        req.params.trackId,
+      );
+      // Also notify the match sessions of the song_now_playing event so
+      // their queue-context cache refreshes.
+      await matchSessionRegistry.applyQueueEventToEvent(req.params.eventId, {
+        type: 'song_now_playing',
+        timestamp: new Date().toISOString(),
+        songId: String(song._id),
+        trackId: req.params.trackId,
+        status: song.status,
+      });
       res.status(httpStatus.OK).json({ success: true, data: { song } });
     } catch (error) {
       logger.error('Send matched audio track now error:', error);
