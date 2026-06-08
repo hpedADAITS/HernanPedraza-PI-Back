@@ -51,6 +51,15 @@ const emitQueueUpdated = async (io, eventId) => {
   });
 };
 
+const emitQueueSnapshot = async (socket, eventId) => {
+  const snapshot = await songsService.getQueueSnapshotForEvent(eventId);
+  socket.emit('queue_updated', {
+    eventId,
+    ...snapshot,
+    timestamp: new Date().toISOString(),
+  });
+};
+
 const handleJoinEvent = async (socket, io, data) => {
   if (!data || typeof data !== 'object') {
     socket.emit('error', { message: 'Invalid event ID' });
@@ -127,6 +136,8 @@ const handleJoinEvent = async (socket, io, data) => {
       joinedAt: new Date().toISOString(),
     });
   }
+
+  await emitQueueSnapshot(socket, eventId);
 };
 
 const handleLeaveEvent = (socket, io, data) => {
@@ -166,6 +177,7 @@ module.exports = {
   eventActor,
   rejectLegacyCommand,
   emitQueueUpdated,
+  emitQueueSnapshot,
   isValidId,
   /* Re-export toEventRoom from ./rooms so the pre-existing imports in
      song.js / vote.js / audio.js / participant.js that read it from
