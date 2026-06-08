@@ -8,6 +8,7 @@ const emailService = require('./email.service');
 const friendsService = require('./friends.service');
 const { audioTracksService, sharedRamMatcher } = require('./audio-tracks.service');
 const eventPermissionsService = require('./event-permissions.service');
+const textCrypto = require('./text-crypto');
 
 module.exports = {
   authService,
@@ -21,4 +22,5 @@ module.exports = {
   audioTracksService,
   eventPermissionsService,
   sharedRamMatcher,
+  textCrypto,
 };

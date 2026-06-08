@@ -18,7 +18,8 @@ const {
   socketActor,
   socketUserId,
 } = require('./auth');
-const { participantsService, songsService } = require('../services');
+const { participantsService, songsService, textCrypto } = require('../services');
+const { EventModel } = require('../models');
 
 const eventActor = (socket, payloadUserId) => {
   const actor = socketActor(socket, payloadUserId);
@@ -178,8 +179,36 @@ const handleDisconnect = (socket, io) => {
     });
   }
 
+  /* Owner-DJ left the room: drop the cached at-rest text-encryption
+     key for this event so the derived key no longer lives in process
+     memory. The next read will re-derive from the owner's current
+     `authTokenVersion`, so a future disconnect will evict again. */
+  if (socket.isEventStaff && socket.eventId) {
+    const userId = socketUserId(socket);
+    if (userId) {
+      evictOwnerTextKey(socket.eventId, userId).catch((err) => {
+        logger.warn('Failed to evict owner text key on disconnect', {
+          message: err.message,
+          eventId: socket.eventId,
+          userId,
+        });
+      });
+    }
+  }
+
   logger.info(`Socket ${socket.id} disconnected`);
 };
+
+async function evictOwnerTextKey(eventId, ownerId) {
+  const event = isValidId(eventId)
+    ? await EventModel.findById(eventId).select('ownerId').lean()
+    : await EventModel.findOne({ eventId: String(eventId).toUpperCase() })
+      .select('ownerId')
+      .lean();
+  if (!event) return;
+  if (event.ownerId?.toString() !== ownerId.toString()) return;
+  textCrypto.evictEvent(event._id.toString(), ownerId.toString());
+}
 
 module.exports = {
   handleJoinEvent,

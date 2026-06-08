@@ -9,9 +9,10 @@
 //                       200k entries ≈ 10 MB. MAX_CACHED_EVENTS=2 → ~20 MB.
 //   Available heap:     ~260 MB after Node + Mongoose + app. Audio is a small share.
 
-const { AudioFingerprintModel, AudioTrackModel } = require('../../models/schema');
+const { AudioFingerprintModel, AudioTrackModel, EventModel } = require('../../models/schema');
 const { logger } = require('../../utils');
 const { decryptCoverUrl } = require('../cover-url-crypto');
+const textCrypto = require('../text-crypto');
 const { storedHashRows } = require('./fingerprint-codec');
 
 const MIN_MATCH_SCORE = 4;
@@ -89,6 +90,25 @@ class RamMatcher {
     const tracks = await AudioTrackModel.find({ _id: { $in: trackIds } })
       .select('title artist coverUrl duration sampleRate')
       .lean();
+    // title/artist are encrypted at rest. Decrypt them now so the
+    // match payload sent to the phone (and any other listener) carries
+    // plaintext. Stale-version rows return null and the fallback
+    // placeholder text is used.
+    const eventDoc = await EventModel.findById(eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) {
+      await Promise.all(
+        tracks.map(async (track) => {
+          const [title, artist] = await textCrypto.decryptFields(eventDoc, [
+            track.title,
+            track.artist,
+          ]);
+          if (title !== undefined) track.title = title;
+          if (artist !== undefined) track.artist = artist;
+        }),
+      );
+    }
     const trackInfoById = new Map(tracks.map((t) => [t._id.toString(), t]));
 
     // Build in-memory hash index
@@ -169,6 +189,7 @@ class RamMatcher {
 
     const { index, tracks, trackIds } = cached;
     const buckets = new Map();
+    const hitCounts = new Map();
 
     for (const { hash, time } of hashes) {
       const key = Number(hash);
@@ -178,16 +199,29 @@ class RamMatcher {
       const candidates = index.get(key);
       if (!candidates) continue;
 
+      const offsetsByTrack = new Map();
       for (const [trackIndex, sourceTime] of candidates) {
         const trackId = trackIds[trackIndex];
         if (!trackId) continue;
         const offset = sourceTime - sampleTime;
+        let offsets = offsetsByTrack.get(trackId);
+        if (!offsets) {
+          offsets = new Set();
+          offsetsByTrack.set(trackId, offsets);
+        }
+        offsets.add(offset);
+      }
+
+      for (const [trackId, offsets] of offsetsByTrack) {
+        hitCounts.set(trackId, (hitCounts.get(trackId) || 0) + 1);
         let byOffset = buckets.get(trackId);
         if (!byOffset) {
           byOffset = new Map();
           buckets.set(trackId, byOffset);
         }
-        byOffset.set(offset, (byOffset.get(offset) || 0) + 1);
+        for (const offset of offsets) {
+          byOffset.set(offset, (byOffset.get(offset) || 0) + 1);
+        }
       }
     }
 
@@ -195,15 +229,14 @@ class RamMatcher {
     for (const [trackId, byOffset] of buckets) {
       let bestOffset = 0;
       let bestScore = 0;
-      let totalAligned = 0;
       for (const [offset, count] of byOffset) {
-        totalAligned += count;
         if (count > bestScore) {
           bestScore = count;
           bestOffset = offset;
         }
       }
       if (bestScore < MIN_MATCH_SCORE) continue;
+      const totalAligned = hitCounts.get(trackId) || bestScore;
       // totalAligned and offsetConcentration are additive fields — older
       // callers that destructure { trackId, score } keep working. The
       // confidence gate (match-thresholds.js) uses offsetConcentration
@@ -214,7 +247,7 @@ class RamMatcher {
         offset: bestOffset,
         score: bestScore,
         totalAligned,
-        offsetConcentration: totalAligned > 0 ? bestScore / totalAligned : 0,
+        offsetConcentration: totalAligned > 0 ? Math.min(1, bestScore / totalAligned) : 0,
       });
     }
 
@@ -226,6 +259,8 @@ class RamMatcher {
         trackId: match.trackId,
         offset: match.offset,
         score: match.score,
+        totalAligned: match.totalAligned,
+        offsetConcentration: match.offsetConcentration,
         title: track?.title || 'Unknown track',
         artist: track?.artist || 'Unknown artist',
         coverUrl: decryptCoverUrl(track?.coverUrl),

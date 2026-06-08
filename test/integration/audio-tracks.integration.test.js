@@ -23,6 +23,7 @@ const { audioTracksService } = require('../../src/services/audio-tracks.service'
 const { AudioFingerprintModel } = require('../../src/models/schema');
 const { storedHashRows } = require('../../src/services/audio-recognition/fingerprint-codec');
 const { resampleLinear, TARGET_SAMPLE_RATE } = require('../../src/services/audio-recognition/wav');
+const textCrypto = require('../../src/services/text-crypto');
 
 jest.setTimeout(60000);
 
@@ -140,6 +141,9 @@ describe('Audio track REST integration', () => {
 
     const trackId = res.body.data.track.id;
     await expect(AudioTrackModel.countDocuments({ eventId: event.id })).resolves.toBe(1);
+    const storedTrack = await AudioTrackModel.findById(trackId).select('title artist').lean();
+    expect(textCrypto.isEncrypted(storedTrack.title)).toBe(true);
+    expect(textCrypto.isEncrypted(storedTrack.artist)).toBe(true);
     const bundled = await AudioFingerprintModel.findOne({ eventId: event.id, trackId }).select('hashData hashes hashesCount');
     expect(storedHashRows(bundled).length).toBe(res.body.data.track.hashesCount);
     expect(bundled.hashData.length).toBe(res.body.data.track.hashesCount * 8);

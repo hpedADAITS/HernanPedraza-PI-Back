@@ -44,8 +44,9 @@ function resolveThresholds(overrides = {}) {
 }
 
 // A single match fails the absolute gate if it does not clear the
-// minimum score AND the minimum offset concentration. Returns an object
-// describing which gates failed (empty object = passed).
+// minimum score and either the minimum offset concentration or a strong
+// absolute score. The score bypass keeps transformed but real streams
+// usable while low-score noise still fails.
 function evaluateAbsoluteGates(match, thresholds = {}) {
   const { minScore, minOffsetConcentration } = resolveThresholds(thresholds);
   const failures = {};
@@ -56,14 +57,14 @@ function evaluateAbsoluteGates(match, thresholds = {}) {
   }
 
   const concentration = computeOffsetConcentration(match);
-  if (concentration < minOffsetConcentration) {
+  if (concentration < minOffsetConcentration && score < minScore * 10) {
     failures.offsetConcentration = { value: concentration, threshold: minOffsetConcentration };
   }
 
   return { passed: Object.keys(failures).length === 0, failures, concentration };
 }
 
-// True iff the candidate is a confident winner of the ranking.
+// True if the candidate is a confident winner of the ranking.
 // The relative gate is only applied when there is more than one
 // candidate; with a single candidate, margin is undefined.
 function isConfidentWinner(matches, thresholds = {}) {

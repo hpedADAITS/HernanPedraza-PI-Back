@@ -14,8 +14,9 @@
 // sent now by the DJ. That promotion is opt-in (default off) and is
 // driven by the match-session hold state, not by every chunk match.
 
-const { SongModel, AudioTrackModel } = require('../../models/schema');
+const { SongModel, AudioTrackModel, EventModel } = require('../../models/schema');
 const { logger } = require('../../utils');
+const textCrypto = require('../text-crypto');
 
 const ACTIVE_STATUSES = ['PENDING', 'APPROVED', 'PLAYING'];
 
@@ -43,6 +44,7 @@ async function findQueueContextForTrack(eventId, trackId) {
         'startedPlayingAt totalDuration duration recognitionMatch requestedBy createdAt',
     )
     .lean();
+  await decryptSongTitles(songs, eventIdString);
 
   if (!songs.length) {
     return { trackId: trackIdString, songs: [], hasMatch: false, isInQueue: false };
@@ -96,6 +98,7 @@ async function enrichMatchesWithQueueContext(eventId, matches) {
         'startedPlayingAt totalDuration duration recognitionMatch requestedBy createdAt',
     )
     .lean();
+  await decryptSongTitles(songs, eventIdString);
 
   const byTrackId = new Map();
   for (const song of songs) {
@@ -182,6 +185,23 @@ async function bindRecognitionMatchToPendingSong(eventId, trackId, actor) {
 
   if (!song) return null;
 
+  // title/artist are encrypted at rest; decrypt both the song and the
+  // candidate track before the fuzzy comparison below. A null return
+  // here means the row was written under a stale `authTokenVersion`
+  // and cannot be decrypted — we skip the bind rather than risk a
+  // false-positive fuzzy match against ciphertext.
+  const eventDoc = await EventModel.findById(eventIdString)
+    .select('ownerId')
+    .lean();
+  if (eventDoc) {
+    const [songTitle, songArtist] = await textCrypto.decryptFields(eventDoc, [
+      song.title,
+      song.artist,
+    ]);
+    if (songTitle !== undefined) song.title = songTitle;
+    if (songArtist !== undefined) song.artist = songArtist;
+  }
+
   // Only bind when title/artist from the track actually line up with the
   // song the attendee typed. False-positive track matches must never
   // retitle a PENDING song; the DJ should still review the candidate
@@ -190,6 +210,14 @@ async function bindRecognitionMatchToPendingSong(eventId, trackId, actor) {
     .select('title artist')
     .lean();
   if (!track) return null;
+  if (eventDoc) {
+    const [trackTitle, trackArtist] = await textCrypto.decryptFields(eventDoc, [
+      track.title,
+      track.artist,
+    ]);
+    if (trackTitle !== undefined) track.title = trackTitle;
+    if (trackArtist !== undefined) track.artist = trackArtist;
+  }
 
   const titleClose = fuzzyEquals(song.title, track.title);
   const artistClose = fuzzyEquals(song.artist, track.artist);
@@ -216,6 +244,14 @@ async function bindRecognitionMatchToPendingSong(eventId, trackId, actor) {
     matchedOn: 'fingerprint',
     boundAt: new Date(),
   };
+  if (eventDoc) {
+    const [title, artist] = await Promise.all([
+      textCrypto.encryptText(nextMatch.title, eventDoc),
+      textCrypto.encryptText(nextMatch.artist, eventDoc),
+    ]);
+    if (title !== undefined) nextMatch.title = title;
+    if (artist !== undefined) nextMatch.artist = artist;
+  }
 
   await SongModel.updateOne(
     { _id: song._id },
@@ -234,6 +270,24 @@ function fuzzyEquals(a, b) {
   if (!a || !b) return false;
   const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
   return norm(a) === norm(b);
+}
+
+async function decryptSongTitles(songs, eventId) {
+  if (!Array.isArray(songs) || !songs.length || !eventId) return;
+  const eventDoc = await EventModel.findById(eventId)
+    .select('ownerId')
+    .lean();
+  if (!eventDoc) return;
+  await Promise.all(
+    songs.map(async (song) => {
+      const [title, artist] = await textCrypto.decryptFields(eventDoc, [
+        song.title,
+        song.artist,
+      ]);
+      if (title !== undefined) song.title = title;
+      if (artist !== undefined) song.artist = artist;
+    }),
+  );
 }
 
 function formatQueueSongSummary(song) {

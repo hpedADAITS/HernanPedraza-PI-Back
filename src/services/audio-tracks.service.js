@@ -13,7 +13,19 @@ const { ForbiddenError, NotFoundError, ValidationError } = require('../errors');
 const eventPermissionsService = require('./event-permissions.service');
 const songsService = require('./songs.service');
 const { coverUrlCacheKey, decryptCoverUrl, encryptCoverUrl } = require('./cover-url-crypto');
+const textCrypto = require('./text-crypto');
 const { fingerprintWavStreamed } = require('./audio-recognition/fingerprint');
+
+async function decryptTrackMetadataInPlace(track, eventDoc) {
+  if (!track || !eventDoc) return track;
+  const [title, artist] = await textCrypto.decryptFields(eventDoc, [
+    track.title,
+    track.artist,
+  ]);
+  if (title !== undefined) track.title = title;
+  if (artist !== undefined) track.artist = artist;
+  return track;
+}
 const { encodeHashRows } = require('./audio-recognition/fingerprint-codec');
 const { matchHashes, RamMatcher } = require('./audio-recognition/ram-matcher');
 const { parseWavHeader, TARGET_SAMPLE_RATE } = require('./audio-recognition/wav');
@@ -55,7 +67,11 @@ class AudioTracksService {
     const coverUrl = encryptCoverUrl(cleanOptional(fields.coverUrl), actor?.authToken);
     const tmpFile = await writeTempFile(file);
 
+    let eventDoc;
     try {
+      eventDoc = await EventModel.findById(eventObjectId).select('ownerId').lean();
+      if (!eventDoc) throw new NotFoundError('Event not found');
+
       const audioSha256 = await computeAudioSha256(tmpFile);
 
       // Check for duplicate upload
@@ -74,11 +90,16 @@ class AudioTracksService {
       const totalFrames = Math.floor(header.dataSize / bytesPerFrame);
       const expectedDuration = totalFrames / header.fmt.sampleRate;
 
+      const [encryptedTitle, encryptedArtist] = await Promise.all([
+        textCrypto.encryptText(title, eventDoc),
+        textCrypto.encryptText(artist, eventDoc),
+      ]);
+
       const track = await AudioTrackModel.create({
         eventId: eventObjectId,
         audioSha256,
-        title,
-        artist,
+        title: encryptedTitle,
+        artist: encryptedArtist,
         coverUrl,
         uploadedBy: userId,
         duration: expectedDuration,
@@ -131,6 +152,7 @@ class AudioTracksService {
       ]);
 
       const updated = await AudioTrackModel.findById(track._id).lean();
+      await decryptTrackMetadataInPlace(updated, eventDoc);
       return this._formatTrack(updated);
     } catch (error) {
       throw error instanceof ValidationError
@@ -147,6 +169,14 @@ class AudioTracksService {
     const tracks = await AudioTrackModel.find({ eventId: eventObjectId })
       .sort({ createdAt: -1 })
       .lean();
+    const eventDoc = await EventModel.findById(eventObjectId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) {
+      await Promise.all(
+        tracks.map((track) => decryptTrackMetadataInPlace(track, eventDoc)),
+      );
+    }
 
     const trackIds = tracks.map((t) => t._id);
     const songCounts = await SongModel.aggregate([
@@ -193,6 +223,10 @@ class AudioTracksService {
 
     const track = await AudioTrackModel.findOne({ _id: trackId, eventId: eventObjectId });
     if (!track) throw new NotFoundError('Audio track not found');
+    const eventDoc = await EventModel.findById(eventObjectId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) await decryptTrackMetadataInPlace(track, eventDoc);
 
     await Promise.all([
       AudioFingerprintModel.deleteMany({ eventId: eventObjectId, trackId }),

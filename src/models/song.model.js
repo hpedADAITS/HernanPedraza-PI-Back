@@ -15,7 +15,7 @@ const SongSchema = new Schema(
     artist: { type: String, required: true, trim: true },
     recognitionMatch: {
       trackId: { type: Schema.Types.ObjectId, ref: 'AudioTrack' },
-      source: { type: String, enum: ['local', 'musicbrainz'] },
+      source: { type: String, enum: ['local', 'musicbrainz', 'fingerprint'] },
       recordingId: { type: String, trim: true },
       releaseId: { type: String, trim: true },
       metadataSha512: { type: String, trim: true },
@@ -24,7 +24,7 @@ const SongSchema = new Schema(
       coverUrl: { type: String, trim: true },
       duration: { type: Number, min: 0 },
       score: { type: Number, min: 0, max: 1 },
-      matchedOn: { type: String, enum: ['title', 'artist', 'title_artist', 'lenient'] },
+      matchedOn: { type: String, enum: ['title', 'artist', 'title_artist', 'lenient', 'fingerprint'] },
       /* When MusicBrainz returns no match, the backend falls back to the DJ's
          fingerprinted library and stores the top candidates here so the DJ
          can review and pick the right track from the picker dialog. */
@@ -36,7 +36,7 @@ const SongSchema = new Schema(
           coverUrl: { type: String, trim: true, default: null },
           duration: { type: Number, min: 0 },
           score: { type: Number, min: 0, max: 1 },
-          matchedOn: { type: String, enum: ['title', 'artist', 'title_artist', 'lenient'] },
+          matchedOn: { type: String, enum: ['title', 'artist', 'title_artist', 'lenient', 'fingerprint'] },
         },
       ],
       fallbackUsed: { type: Boolean, default: false },

@@ -12,6 +12,80 @@ const participantsService = require('./participants.service');
 const eventPermissionsService = require('./event-permissions.service');
 const musicBrainzService = require('./musicbrainz.service');
 const { decryptCoverUrl, encryptCoverUrl } = require('./cover-url-crypto');
+const textCrypto = require('./text-crypto');
+
+/* Decrypt `title` / `artist` on a Song or AudioTrack Mongoose doc in
+   place. Every Mongo read in this service routes through this helper
+   so the rest of the service (formatters, fingerprint matchers, queue
+   fan-out) keeps operating on plaintext. Returns the same doc. */
+async function decryptMetadataInPlace(doc, eventDoc) {
+  if (!doc || !eventDoc) return doc;
+  const [title, artist] = await textCrypto.decryptFields(eventDoc, [
+    doc.title,
+    doc.artist,
+  ]);
+  if (title !== undefined) doc.title = title;
+  if (artist !== undefined) doc.artist = artist;
+  await decryptRecognitionMatchInPlace(doc.recognitionMatch, eventDoc);
+  return doc;
+}
+
+async function encryptMetadataInPlace(doc, eventDoc) {
+  if (!doc || !eventDoc) return doc;
+  const [title, artist] = await Promise.all([
+    textCrypto.encryptText(doc.title, eventDoc),
+    textCrypto.encryptText(doc.artist, eventDoc),
+  ]);
+  if (title !== undefined) doc.title = title;
+  if (artist !== undefined) doc.artist = artist;
+  await encryptRecognitionMatchInPlace(doc.recognitionMatch, eventDoc);
+  return doc;
+}
+
+async function saveSongWithEncryptedMetadata(song, eventDoc) {
+  await encryptMetadataInPlace(song, eventDoc);
+  await song.save();
+  await decryptMetadataInPlace(song, eventDoc);
+  return song;
+}
+
+function recognitionTextSlots(match) {
+  if (!match) return [];
+  const slots = [];
+  if (match.title !== undefined) slots.push([match, 'title']);
+  if (match.artist !== undefined) slots.push([match, 'artist']);
+  const alternates = Array.isArray(match.alternates) ? match.alternates : [];
+  for (const alt of alternates) {
+    if (alt?.title !== undefined) slots.push([alt, 'title']);
+    if (alt?.artist !== undefined) slots.push([alt, 'artist']);
+  }
+  return slots;
+}
+
+async function decryptRecognitionMatchInPlace(match, eventDoc) {
+  const slots = recognitionTextSlots(match);
+  if (!slots.length || !eventDoc) return match;
+  const values = await textCrypto.decryptFields(
+    eventDoc,
+    slots.map(([owner, key]) => owner[key]),
+  );
+  values.forEach((value, i) => {
+    if (value !== undefined) slots[i][0][slots[i][1]] = value;
+  });
+  return match;
+}
+
+async function encryptRecognitionMatchInPlace(match, eventDoc) {
+  const slots = recognitionTextSlots(match);
+  if (!slots.length || !eventDoc) return match;
+  const values = await Promise.all(
+    slots.map(([owner, key]) => textCrypto.encryptText(owner[key], eventDoc)),
+  );
+  values.forEach((value, i) => {
+    if (value !== undefined) slots[i][0][slots[i][1]] = value;
+  });
+  return match;
+}
 
 const MUSICBRAINZ_LOOKUP_THROTTLE_MS = 1550;
 const COVER_DOWNLOAD_TIMEOUT_MS = 8000;
@@ -42,10 +116,21 @@ class SongsService {
       ? Number(totalDuration)
       : recognitionMatch?.duration ?? undefined;
 
+    const eventDoc = await EventModel.findById(eventId).select('ownerId').lean();
+    if (!eventDoc) throw new NotFoundError('Event not found');
+
+    const [encryptedTitle, encryptedArtist] = await Promise.all([
+      textCrypto.encryptText(title, eventDoc),
+      textCrypto.encryptText(artist, eventDoc),
+    ]);
+    if (recognitionMatch) {
+      await encryptRecognitionMatchInPlace(recognitionMatch, eventDoc);
+    }
+
     const songData = {
       eventId,
-      title,
-      artist,
+      title: encryptedTitle,
+      artist: encryptedArtist,
       requestedBy: participantId,
       status: 'PENDING',
       isPremiumSuggestion,
@@ -59,6 +144,10 @@ class SongsService {
     await song.save();
     logger.info(`Song suggested: ${title} by ${artist}`);
 
+    // Decrypt the just-saved fields so the returned formatter shape
+    // (used by the controller's REST response and the socket
+    // `song_suggested` broadcast) carries plaintext.
+    await decryptMetadataInPlace(song, eventDoc);
     return this._formatSong(song);
   }
 
@@ -100,6 +189,14 @@ class SongsService {
     }
 
     const tracks = await AudioTrackModel.find({ eventId: song.eventId }).lean();
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) {
+      await Promise.all(
+        tracks.map((track) => decryptMetadataInPlace(track, eventDoc)),
+      );
+    }
     const targetTitle = normalizeText(musicBrainzMatch.title || song.title);
     const targetArtist = normalizeText(musicBrainzMatch.artist || song.artist);
     const candidates = tracks
@@ -136,6 +233,14 @@ class SongsService {
     );
 
     const tracks = await AudioTrackModel.find({ eventId: song.eventId }).lean();
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) {
+      await Promise.all(
+        tracks.map((track) => decryptMetadataInPlace(track, eventDoc)),
+      );
+    }
     const trackById = new Map(tracks.map((track) => [String(track._id), track]));
 
     const enriched = candidates
@@ -195,6 +300,14 @@ class SongsService {
     })
       .select('title artist coverUrl duration')
       .lean();
+    const eventDoc = await EventModel.findById(eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) {
+      await Promise.all(
+        tracks.map((track) => decryptMetadataInPlace(track, eventDoc)),
+      );
+    }
     const trackById = new Map(tracks.map((track) => [String(track._id), track]));
 
     const matches = candidates
@@ -234,10 +347,16 @@ class SongsService {
 
     const track = await AudioTrackModel.findOne({ _id: trackId, eventId: song.eventId });
     if (!track) throw new NotFoundError('Audio track not found');
+    const eventDoc = await EventModel.findById(song.eventId).select('ownerId').lean();
+    if (!eventDoc) throw new NotFoundError('Event not found');
 
     const metadataSha512 = musicBrainzMatch.metadataSha512 || sha512MusicBrainzMatch(musicBrainzMatch);
-    track.title = musicBrainzMatch.title;
-    track.artist = musicBrainzMatch.artist;
+    const [encryptedTitle, encryptedArtist] = await Promise.all([
+      textCrypto.encryptText(musicBrainzMatch.title, eventDoc),
+      textCrypto.encryptText(musicBrainzMatch.artist, eventDoc),
+    ]);
+    track.title = encryptedTitle;
+    track.artist = encryptedArtist;
     const coverSource = await coverSourceFromMusicBrainzMatch(musicBrainzMatch);
     const coverUrl = await encryptedCoverFromSource(coverSource, actorUser?.authToken);
     if (coverUrl) track.coverUrl = coverUrl;
@@ -249,7 +368,12 @@ class SongsService {
     const matchData = musicBrainzMatch.toObject?.() || musicBrainzMatch;
     song.recognitionMatch = { ...matchData, trackId: track._id, metadataSha512 };
 
+    await encryptMetadataInPlace(song, eventDoc);
     await Promise.all([track.save(), song.save()]);
+    await Promise.all([
+      decryptMetadataInPlace(track, eventDoc),
+      decryptMetadataInPlace(song, eventDoc),
+    ]);
     logger.info('Assigned MusicBrainz metadata to fingerprinted track', {
       eventId,
       songId,
@@ -270,6 +394,10 @@ class SongsService {
     const song = await this._getSongForEvent(songId, eventId);
     const track = await AudioTrackModel.findOne({ _id: trackId, eventId: song.eventId });
     if (!track) throw new NotFoundError('Audio track not found');
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) await decryptMetadataInPlace(track, eventDoc);
 
     song.recognitionMatch = {
       source: 'fingerprint',
@@ -282,7 +410,7 @@ class SongsService {
       matchedOn: 'fingerprint',
     };
 
-    await song.save();
+    await saveSongWithEncryptedMetadata(song, eventDoc);
     logger.info('Assigned fingerprint to song', {
       eventId,
       songId,
@@ -299,6 +427,15 @@ class SongsService {
     })
       .populate('requestedBy', 'nickname profilePicture isPremium approvalCount')
       .sort(this._queueDbSort());
+
+    const eventDoc = await EventModel.findById(eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) {
+      await Promise.all(
+        songs.map((song) => decryptMetadataInPlace(song, eventDoc)),
+      );
+    }
 
     return this._withQueuePositions(songs);
   }
@@ -319,6 +456,15 @@ class SongsService {
       .populate('requestedBy', 'nickname profilePicture isPremium approvalCount')
       .sort({ isPremiumSuggestion: -1, createdAt: 1 });
 
+    const eventDoc = await EventModel.findById(eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) {
+      await Promise.all(
+        songs.map((song) => decryptMetadataInPlace(song, eventDoc)),
+      );
+    }
+
     return songs.map((s) => this._formatSong(s));
   }
 
@@ -329,12 +475,15 @@ class SongsService {
     /* Validate state transition using state machine */
     validateTransition(song.status, 'APPROVED', 'DJ');
 
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
     if (song.recognitionMatch?.title) {
       song.title = song.recognitionMatch.title;
       song.artist = song.recognitionMatch.artist || song.artist;
     }
     song.status = 'APPROVED';
-    await song.save();
+    await saveSongWithEncryptedMetadata(song, eventDoc);
 
     // Increment approval count for the participant who suggested this song
     const participantId = song.requestedBy;
@@ -361,7 +510,10 @@ class SongsService {
     validateTransition(song.status, 'REJECTED', 'DJ');
 
     song.status = 'REJECTED';
-    await song.save();
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
+    await saveSongWithEncryptedMetadata(song, eventDoc);
 
     logger.info(`Song rejected: ${song._id}`, {
       eventId,
@@ -397,7 +549,10 @@ class SongsService {
 
     song.status = 'PLAYING';
     song.startedPlayingAt = new Date();
-    await song.save();
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
+    await saveSongWithEncryptedMetadata(song, eventDoc);
 
     await EventModel.findByIdAndUpdate(eventId, {
       currentSongId: song._id,
@@ -424,7 +579,10 @@ class SongsService {
     song.skippedAt = new Date();
     song.skippedBy = context?.userId || actorUserId(userId);
     song.skippedReason = reason;
-    await song.save();
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
+    await saveSongWithEncryptedMetadata(song, eventDoc);
 
     logger.info(`Song skipped: ${song._id}`, {
       eventId,
@@ -454,6 +612,12 @@ class SongsService {
       },
       { new: true, sort: this._queueDbSort() },
     );
+    if (nextSong) {
+      const eventDoc = await EventModel.findById(eventId)
+        .select('ownerId')
+        .lean();
+      if (eventDoc) await decryptMetadataInPlace(nextSong, eventDoc);
+    }
 
     if (nextSong) {
       logger.info(`Playing song: ${nextSong._id}`, {
@@ -483,7 +647,10 @@ class SongsService {
     validateTransition(song.status, 'PLAYED', 'DJ');
 
     song.status = 'PLAYED';
-    await song.save();
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
+    await saveSongWithEncryptedMetadata(song, eventDoc);
 
     logger.info(`Song marked as played: ${song._id}`, {
       eventId,
@@ -501,6 +668,11 @@ class SongsService {
       throw new NotFoundError('Song not found');
     }
 
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) await decryptMetadataInPlace(song, eventDoc);
+
     const queue = await this.getQueueForEvent(song.eventId);
     const queuedSong = queue.find((item) => item._id.toString() === songId.toString());
 
@@ -515,6 +687,10 @@ class SongsService {
     if (!song) {
       throw new NotFoundError('Song not found');
     }
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) await decryptMetadataInPlace(song, eventDoc);
 
     return {
       ...this._formatSong(song),
@@ -746,6 +922,14 @@ class SongsService {
     const tracks = await AudioTrackModel.find({ eventId })
       .select('title artist coverUrl duration')
       .lean();
+    const eventDoc = await EventModel.findById(eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) {
+      await Promise.all(
+        tracks.map((track) => decryptMetadataInPlace(track, eventDoc)),
+      );
+    }
 
     const candidates = [];
     for (const track of tracks) {
@@ -802,7 +986,9 @@ class SongsService {
     return eventPermissionsService.assertSongAdmin(eventId, actorUser);
   }
 
-  // Helper: Get song and validate ownership for a specific event
+  // Helper: Get song and validate ownership for a specific event.
+  // Decrypts `title`/`artist` in place so downstream formatters see
+  // plaintext without having to know about encryption.
   async _getSongForEvent(songId, eventId) {
     const song = await SongModel.findById(songId);
     if (!song) {
@@ -811,6 +997,10 @@ class SongsService {
     if (song.eventId.toString() !== eventId.toString()) {
       throw new NotFoundError('Song not in this event');
     }
+    const eventDoc = await EventModel.findById(song.eventId)
+      .select('ownerId')
+      .lean();
+    if (eventDoc) await decryptMetadataInPlace(song, eventDoc);
     return song;
   }
 

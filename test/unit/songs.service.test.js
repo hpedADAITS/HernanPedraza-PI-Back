@@ -17,6 +17,7 @@ const songsService = require('../../src/services/songs.service');
 const participantsService = require('../../src/services/participants.service');
 const eventPermissionsService = require('../../src/services/event-permissions.service');
 const musicBrainzService = require('../../src/services/musicbrainz.service');
+const textCrypto = require('../../src/services/text-crypto');
 
 let mongoServer;
 
@@ -275,6 +276,39 @@ describe('SongsService - Real Implementation Tests', () => {
         matchedOn: 'title_artist',
       });
       expect(result.recognitionMatch.score).toBeGreaterThan(0.5);
+
+      let stored = await SongModel.findById(result._id).lean();
+      expect(textCrypto.isEncrypted(stored.title)).toBe(true);
+      expect(textCrypto.isEncrypted(stored.artist)).toBe(true);
+      expect(textCrypto.isEncrypted(stored.recognitionMatch.title)).toBe(true);
+      expect(textCrypto.isEncrypted(stored.recognitionMatch.artist)).toBe(true);
+
+      await songsService.approveSong(
+        result._id.toString(),
+        event._id.toString(),
+        { userId: user._id.toString(), role: 'DJ' },
+      );
+      const playing = await songsService.sendNow(
+        result._id.toString(),
+        event._id.toString(),
+        { userId: user._id.toString(), role: 'DJ' },
+      );
+      expect(playing.title).toBe('Bohemian Rhapsody');
+      expect(playing.artist).toBe('Queen');
+      expect(playing.recognitionMatch.title).toBe('Bohemian Rhapsody');
+      expect(playing.recognitionMatch.artist).toBe('Queen');
+
+      stored = await SongModel.findById(result._id).lean();
+      expect(textCrypto.isEncrypted(stored.title)).toBe(true);
+      expect(textCrypto.isEncrypted(stored.artist)).toBe(true);
+      expect(textCrypto.isEncrypted(stored.recognitionMatch.title)).toBe(true);
+      expect(textCrypto.isEncrypted(stored.recognitionMatch.artist)).toBe(true);
+
+      const snapshot = await songsService.getQueueSnapshotForEvent(event._id.toString());
+      expect(snapshot.queue[0].title).toBe('Bohemian Rhapsody');
+      expect(snapshot.queue[0].artist).toBe('Queen');
+      expect(snapshot.nowPlaying.title).toBe('Bohemian Rhapsody');
+      expect(snapshot.nowPlaying.artist).toBe('Queen');
     });
 
     test('falls back to lenient local fingerprint when MusicBrainz fails and stores alternates', async () => {
