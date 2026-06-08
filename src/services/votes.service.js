@@ -23,6 +23,14 @@ class VotesService {
       throw new NotFoundError('Song not found');
     }
 
+    const settings = await this._getEventSettings(song.eventId);
+    if (settings.votingEnabled === false) {
+      throw new ValidationError('Voting is disabled for this event');
+    }
+    if (value === -1 && settings.allowDownvotes === false) {
+      throw new ValidationError('Downvotes are disabled for this event');
+    }
+
     await participantsService.ensureParticipantCanInteract(
       participantId,
       song.eventId,
@@ -40,13 +48,14 @@ class VotesService {
       /* Update existing vote */
       const oldValue = existingVote.value;
       const oldWeightedValue = oldValue * (existingVote.isPremiumVote ? PREMIUM_VOTE_WEIGHT : REGULAR_VOTE_WEIGHT);
+      const wasRejected = song.status === 'REJECTED';
       existingVote.value = value;
       existingVote.isPremiumVote = voter?.isPremium || false;
       await existingVote.save();
 
       /* Update song vote score with weight difference */
       song.voteScore = song.voteScore - oldWeightedValue + (value * voteWeight);
-      await this._applyAutoReject(song);
+      await this._applyAutoReject(song, settings);
       await song.save();
 
       logger.info(`Vote updated for song ${songId}: ${oldValue}(${oldWeightedValue}) -> ${value}(${voteWeight}), new score: ${song.voteScore}`);
@@ -55,7 +64,7 @@ class VotesService {
         ...formattedVote,
         vote: formattedVote,
         song: this._formatSongVoteState(song),
-        autoRejected: song.status === 'REJECTED' && song.autoRejectedAt,
+        autoRejected: !wasRejected && song.status === 'REJECTED' && song.autoRejectedAt,
       };
     }
 
@@ -70,9 +79,10 @@ class VotesService {
     await vote.save();
 
     /* Update song vote score with weight */
+    const wasRejected = song.status === 'REJECTED';
     song.voteScore += value * voteWeight;
     song.voteCount += 1;
-    await this._applyAutoReject(song);
+    await this._applyAutoReject(song, settings);
     await song.save();
 
     logger.info(`Vote cast for song ${songId}: ${value}(${voteWeight}), new score: ${song.voteScore}`);
@@ -81,7 +91,7 @@ class VotesService {
       ...formattedVote,
       vote: formattedVote,
       song: this._formatSongVoteState(song),
-      autoRejected: song.status === 'REJECTED' && song.autoRejectedAt,
+      autoRejected: !wasRejected && song.status === 'REJECTED' && song.autoRejectedAt,
     };
   }
 
@@ -107,12 +117,12 @@ class VotesService {
     if (song) {
       const voteWeight = vote.isPremiumVote ? PREMIUM_VOTE_WEIGHT : REGULAR_VOTE_WEIGHT;
       song.voteScore -= vote.value * voteWeight;
-      song.voteCount -= 1;
+      song.voteCount = Math.max(0, (song.voteCount || 0) - 1);
       await song.save();
     }
 
     logger.info(`Vote removed for song ${songId}`);
-    return { success: true };
+    return { success: true, song: this._formatSongVoteState(song) };
   }
 
   async getVoteStats(eventId) {
@@ -163,10 +173,15 @@ class VotesService {
     };
   }
 
-  async _applyAutoReject(song) {
-    // Fetch event settings to get custom skip threshold
-    const eventSettings = await EventModel.findById(song.eventId).select('settings').lean();
-    const threshold = eventSettings?.settings?.skipThreshold ?? AUTO_REJECT_SCORE;
+  async _getEventSettings(eventId) {
+    const event = await EventModel.findById(eventId).select('settings').lean();
+    if (!event) throw new NotFoundError('Event not found');
+    return event.settings || {};
+  }
+
+  async _applyAutoReject(song, settings = null) {
+    const resolvedSettings = settings || (await this._getEventSettings(song.eventId));
+    const threshold = resolvedSettings.skipThreshold ?? AUTO_REJECT_SCORE;
     
     if (
       song.voteScore <= threshold &&

@@ -24,13 +24,13 @@ const handleCastVote = async (socket, io, data, callback) => {
     const vote = result.vote;
     const song = result.song;
     toEventRoom(io, eventId).emit('votes_updated', {
-      songId, participantId, value,
+      eventId, songId, participantId, value,
       voteScore: song?.voteScore, voteCount: song?.voteCount, status: song?.status,
       timestamp: new Date().toISOString(),
     });
     if (result.autoRejected) {
       toEventRoom(io, eventId).emit('song_rejected', {
-        songId, title: song.title, artist: song.artist, status: song.status,
+        eventId, songId, title: song.title, artist: song.artist, status: song.status,
         reason: song.removalReason || 'Rejected by downvotes',
         timestamp: new Date().toISOString(),
       });
@@ -54,12 +54,21 @@ const handleRemoveVote = async (socket, io, data, callback) => {
       throw new Error('Invalid ID format');
     }
     await assertJoinedEvent(socket, eventId, participantId);
-    const vote = await votesService.removeVote(songId, participantId, eventActor(socket));
+    const result = await votesService.removeVote(songId, participantId, eventActor(socket));
+    const song = result.song;
     toEventRoom(io, eventId).emit('vote_removed', {
-      songId, participantId, timestamp: new Date().toISOString(),
+      eventId, songId, participantId,
+      voteScore: song?.voteScore, voteCount: song?.voteCount,
+      timestamp: new Date().toISOString(),
     });
+    toEventRoom(io, eventId).emit('votes_updated', {
+      eventId, songId, participantId, value: 0,
+      voteScore: song?.voteScore, voteCount: song?.voteCount, status: song?.status,
+      timestamp: new Date().toISOString(),
+    });
+    await emitQueueUpdated(io, eventId);
     logger.info('Vote removed via Socket.IO', { songId, participantId });
-    ackSuccess(callback, vote);
+    ackSuccess(callback, result);
   } catch (error) {
     logger.error('Error removing vote via Socket.IO:', error);
     ackError(callback, error);

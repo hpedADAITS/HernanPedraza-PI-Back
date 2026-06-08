@@ -298,12 +298,7 @@ class SongsService {
       status: { $in: ['APPROVED', 'PLAYING'] },
     })
       .populate('requestedBy', 'nickname profilePicture isPremium approvalCount')
-      .sort({
-        pinned: -1,
-        isPremiumSuggestion: -1,  // Premium songs first
-        voteScore: -1,            // Then by votes (within premium group)
-        sortKey: 1,
-      });
+      .sort(this._queueDbSort());
 
     return this._withQueuePositions(songs);
   }
@@ -457,7 +452,7 @@ class SongsService {
         status: 'PLAYING',
         startedPlayingAt: new Date(),
       },
-      { new: true, sort: { pinned: -1, voteScore: -1, sortKey: 1 } },
+      { new: true, sort: this._queueDbSort() },
     );
 
     if (nextSong) {
@@ -538,8 +533,10 @@ class SongsService {
         if (Number(b.pinned) !== Number(a.pinned)) {
           return Number(b.pinned) - Number(a.pinned);
         }
-        if ((b.voteScore || 0) !== (a.voteScore || 0)) {
-          return (b.voteScore || 0) - (a.voteScore || 0);
+        const voteDiff = (b.voteScore || 0) - (a.voteScore || 0);
+        if (voteDiff) return voteDiff;
+        if (Number(b.isPremiumSuggestion) !== Number(a.isPremiumSuggestion)) {
+          return Number(b.isPremiumSuggestion) - Number(a.isPremiumSuggestion);
         }
         return String(a.sortKey).localeCompare(String(b.sortKey));
       })
@@ -592,6 +589,7 @@ class SongsService {
       voteScore: song.voteScore,
       voteCount: song.voteCount,
       queuePosition: song.queuePosition,
+      isPremiumSuggestion: song.isPremiumSuggestion,
       totalDuration,
       duration: totalDuration,
       pinned: song.pinned,
@@ -599,6 +597,15 @@ class SongsService {
       playingStartedAt: song.startedPlayingAt,
       skippedAt: song.skippedAt,
       createdAt: song.createdAt,
+    };
+  }
+
+  _queueDbSort() {
+    return {
+      pinned: -1,
+      voteScore: -1,
+      isPremiumSuggestion: -1,
+      sortKey: 1,
     };
   }
 

@@ -140,6 +140,44 @@ describe('VotesService - Real Implementation Tests', () => {
         votesService.castVote(fakeSongId, participant._id, 1, { userId: participant.userId?.toString() })
       ).rejects.toThrow('Song not found');
     });
+
+    test('should reject votes when voting is disabled', async () => {
+      const { event } = await createTestEvent({ settings: { votingEnabled: false } });
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id);
+
+      await expect(
+        votesService.castVote(song._id, participant._id, 1, { userId: participant.userId?.toString() })
+      ).rejects.toThrow('Voting is disabled for this event');
+    });
+
+    test('should reject downvotes when downvotes are disabled', async () => {
+      const { event } = await createTestEvent({
+        settings: { votingEnabled: true, allowDownvotes: false },
+      });
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id);
+
+      await expect(
+        votesService.castVote(song._id, participant._id, -1, { userId: participant.userId?.toString() })
+      ).rejects.toThrow('Downvotes are disabled for this event');
+    });
+  });
+
+  describe('castVote score accounting', () => {
+    test('should keep voteCount stable when participant changes vote', async () => {
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id);
+      const actor = { userId: participant.userId?.toString() };
+
+      await votesService.castVote(song._id, participant._id, 1, actor);
+      await votesService.castVote(song._id, participant._id, -1, actor);
+
+      const updatedSong = await SongModel.findById(song._id);
+      expect(updatedSong.voteScore).toBe(-1);
+      expect(updatedSong.voteCount).toBe(1);
+    });
   });
 
   describe('removeVote', () => {
@@ -178,6 +216,21 @@ describe('VotesService - Real Implementation Tests', () => {
       const updatedSong = await SongModel.findById(song._id);
       expect(updatedSong.voteScore).toBe(2);
       expect(updatedSong.voteCount).toBe(1);
+    });
+
+    test('should not restore an auto-rejected song when downvote is removed', async () => {
+      const { event } = await createTestEvent({ settings: { skipThreshold: -1 } });
+      const participant = await createTestParticipant(event._id);
+      const song = await createTestSong(event._id, participant._id, { status: 'APPROVED' });
+      const actor = { userId: participant.userId?.toString() };
+
+      await votesService.castVote(song._id, participant._id, -1, actor);
+      await votesService.removeVote(song._id, participant._id, actor);
+
+      const updatedSong = await SongModel.findById(song._id);
+      expect(updatedSong.status).toBe('REJECTED');
+      expect(updatedSong.voteScore).toBe(0);
+      expect(updatedSong.voteCount).toBe(0);
     });
   });
 

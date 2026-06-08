@@ -820,6 +820,7 @@ describe('SongsService - Real Implementation Tests', () => {
 
       expect(result).toBeDefined();
       expect(result.status).toBe('PLAYING');
+      expect(result._id.toString()).toBe(song2._id.toString());
     });
 
     test('should return null when no approved songs remain', async () => {
@@ -929,6 +930,22 @@ describe('SongsService - Real Implementation Tests', () => {
       expect(result[0]._id).toBe('c'); // pinned first
       expect(result[1]._id).toBe('b'); // highest voteScore
       expect(result[2]._id).toBe('a'); // lowest voteScore
+    });
+
+    test('should use premium only as a tie-breaker after votes', () => {
+      const songs = [
+        { _id: 'regular-high', status: 'APPROVED', voteScore: 2, isPremiumSuggestion: false, pinned: false, sortKey: 'a' },
+        { _id: 'premium-low', status: 'APPROVED', voteScore: 1, isPremiumSuggestion: true, pinned: false, sortKey: 'b' },
+        { _id: 'premium-tie', status: 'APPROVED', voteScore: 2, isPremiumSuggestion: true, pinned: false, sortKey: 'c' },
+      ];
+
+      const result = songsService._withQueuePositions(songs);
+
+      expect(result.map((song) => song._id)).toEqual([
+        'premium-tie',
+        'regular-high',
+        'premium-low',
+      ]);
     });
   });
 
