@@ -123,7 +123,7 @@ describe('Event, participant, song and vote integration flow', () => {
     expect(decoded.exp - decoded.iat).toBe(15 * 60);
 
     await request(app)
-      .post(`/api/v1/events/${event.id}/phone-microphone/connect`)
+      .post(`/api/v1/events/${event.eventId}/phone-microphone/connect`)
       .send({ deviceName: 'Android microphone', token })
       .expect(200)
       .expect((res) => {

@@ -17,6 +17,9 @@ const {
   ForbiddenError,
 } = require('../errors');
 
+const OBJECT_ID = /^[a-f\d]{24}$/i;
+const EVENT_CODE = /^[a-z0-9]{6,12}$/i;
+
 class EventsService {
   async createEvent(actorUser, name, description, startsAt, eventId = null) {
     const ownerId = await this._assertCanCreateEvent(actorUser);
@@ -94,10 +97,13 @@ class EventsService {
   }
 
   async getEvent(eventId) {
-    const event = await EventModel.findById(eventId).populate(
-      'ownerId',
-      'email displayName profilePicture',
-    );
+    const value = String(eventId || '');
+    const query = OBJECT_ID.test(value)
+      ? EventModel.findById(value)
+      : EVENT_CODE.test(value)
+        ? EventModel.findOne({ eventId: value.toUpperCase() })
+        : EventModel.findById(value);
+    const event = await query.populate('ownerId', 'email displayName profilePicture');
     if (!event) {
       throw new NotFoundError('Event not found');
     }
@@ -278,7 +284,12 @@ class EventsService {
   }
 
   async connectPhoneMicrophone(eventId, deviceName = 'Phone microphone', token) {
-    const event = await EventModel.findById(eventId);
+    const value = String(eventId || '');
+    const event = OBJECT_ID.test(value)
+      ? await EventModel.findById(value)
+      : EVENT_CODE.test(value)
+        ? await EventModel.findOne({ eventId: value.toUpperCase() })
+        : await EventModel.findById(value);
     if (!event) {
       throw new NotFoundError('Event not found');
     }

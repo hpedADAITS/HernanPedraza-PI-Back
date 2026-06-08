@@ -10,6 +10,8 @@ const PHONE_MICROPHONE_PERMISSIONS = [
 ];
 
 const VALID_ROLES = new Set(['DJ', 'ATTENDEE']);
+const OBJECT_ID = /^[a-f\d]{24}$/i;
+const EVENT_CODE = /^[a-z0-9]{6,12}$/i;
 
 function actorId(actor) {
   if (typeof actor === 'string') return actor;
@@ -43,7 +45,12 @@ function assertActorRole(actor) {
 
 class EventPermissionsService {
   async getEvent(eventId) {
-    const event = await EventModel.findById(eventId).select('ownerId').lean();
+    const value = String(eventId || '');
+    const event = OBJECT_ID.test(value)
+      ? await EventModel.findById(value).select('ownerId').lean()
+      : EVENT_CODE.test(value)
+        ? await EventModel.findOne({ eventId: value.toUpperCase() }).select('ownerId').lean()
+        : await EventModel.findById(value).select('ownerId').lean();
     if (!event) throw new NotFoundError('Event not found');
     return event;
   }

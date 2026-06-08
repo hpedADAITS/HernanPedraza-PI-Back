@@ -3,6 +3,7 @@
 // concerns are isolated from business logic.
 
 const { logger } = require('../utils');
+const { EventModel } = require('../models/schema');
 const { ackSuccess, ackError } = require('./ack');
 const { audioTracksService, sharedRamMatcher, songsService } = require('../services');
 const {
@@ -32,13 +33,23 @@ const LIVE_MATCH_OPTIONS = {
   minPersistentChunks: 2,
 };
 
-function assertAudioEventAccess(socket, eventId) {
-  if (!isValidId(eventId)) throw new Error('Invalid event ID');
+async function resolveAudioEventId(eventId) {
+  if (isValidId(eventId)) return String(eventId);
+  const event = await EventModel.findOne({ eventId: String(eventId || '').toUpperCase() })
+    .select('_id')
+    .lean();
+  if (!event) throw new Error('Invalid event ID');
+  return event._id.toString();
+}
+
+async function assertAudioEventAccess(socket, eventId) {
+  const eventObjectId = await resolveAudioEventId(eventId);
   if (socket.user?.type === 'phone-microphone') {
-    if (socket.user.eventId !== eventId) throw new Error('Invalid phone microphone token');
-    return true;
+    if (socket.user.eventId !== eventObjectId) throw new Error('Invalid phone microphone token');
+    return eventObjectId;
   }
-  return audioTracksService.listTracks(eventId, socket.user);
+  await audioTracksService.listTracks(eventObjectId, socket.user);
+  return eventObjectId;
 }
 
 function extractFloat32Pcm(payload) {
@@ -246,8 +257,8 @@ const handleAudioMatchStart = async (socket, io, data, callback) => {
   try {
     const { eventId, sampleRate } = data || {};
     logger.info('Audio match start', { eventId, sampleRate: sampleRate ?? 'not provided' });
-    await assertAudioEventAccess(socket, eventId);
-    await sharedRamMatcher.loadEvent(eventId);
+    const eventObjectId = await assertAudioEventAccess(socket, eventId);
+    await sharedRamMatcher.loadEvent(eventObjectId);
 
     // Tear down any prior session cleanly (e.g. client retried the
     // start call). Releasing the prior hold lets listeners settle
@@ -258,19 +269,19 @@ const handleAudioMatchStart = async (socket, io, data, callback) => {
     }
 
     const session = new MatchSession({
-      eventId,
+      eventId: eventObjectId,
       ramMatcher: sharedRamMatcher,
       options: LIVE_MATCH_OPTIONS,
     });
     // Deliver queue/DJ driven transitions (release on track change, lock
     // confirmation) back to this socket so the phone can pause/resume its
     // stream even though those diffs originate outside the chunk loop.
-    const unregister = matchSessionRegistry.register(eventId, session, (diff) =>
-      emitMatchDiff(socket, io, eventId, diff),
+    const unregister = matchSessionRegistry.register(eventObjectId, session, (diff) =>
+      emitMatchDiff(socket, io, eventObjectId, diff),
     );
 
     socket.audioMatch = {
-      eventId,
+      eventId: eventObjectId,
       fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE, { keepHashHistory: false }),
       ramMatcher: sharedRamMatcher,
       inputSampleRate: sampleRate,
@@ -279,7 +290,7 @@ const handleAudioMatchStart = async (socket, io, data, callback) => {
       unregister,
     };
     ackSuccess(callback, {
-      eventId,
+      eventId: eventObjectId,
       session: session.getState(),
     });
   } catch (error) {
@@ -299,18 +310,19 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
         try {
           const { eventId, sampleRate } = data || {};
           if (socket.user?.type === 'phone-microphone' && eventId) {
-            logger.info('Auto-starting audio matcher for phone microphone', { eventId, sampleRate });
-            await sharedRamMatcher.loadEvent(eventId);
+            const eventObjectId = await assertAudioEventAccess(socket, eventId);
+            logger.info('Auto-starting audio matcher for phone microphone', { eventId: eventObjectId, sampleRate });
+            await sharedRamMatcher.loadEvent(eventObjectId);
             const session = new MatchSession({
-              eventId,
+              eventId: eventObjectId,
               ramMatcher: sharedRamMatcher,
               options: LIVE_MATCH_OPTIONS,
             });
-            const unregister = matchSessionRegistry.register(eventId, session, (diff) =>
-              emitMatchDiff(socket, io, eventId, diff),
+            const unregister = matchSessionRegistry.register(eventObjectId, session, (diff) =>
+              emitMatchDiff(socket, io, eventObjectId, diff),
             );
             socket.audioMatch = {
-              eventId,
+              eventId: eventObjectId,
               fingerprinter: new StreamingFingerprinter(TARGET_SAMPLE_RATE, { keepHashHistory: false }),
               ramMatcher: sharedRamMatcher,
               inputSampleRate: sampleRate,

@@ -352,7 +352,7 @@ class EventsController {
         token,
       );
 
-      this.emitEventUpdate(eventId, 'phone_microphone_connected', {
+      this.emitEventUpdate(microphone.eventId, 'phone_microphone_connected', {
         microphone,
       });
 
