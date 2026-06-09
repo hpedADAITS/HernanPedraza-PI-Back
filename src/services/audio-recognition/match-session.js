@@ -59,6 +59,12 @@ const EVENT = Object.freeze({
   IDLE: 'idle',
 });
 
+// Queue events that move a song out of PLAYING. When the locked
+// candidate's song receives one of these, the lock is no longer
+// meaningful and the matcher should wake up to re-lock onto whatever
+// is actually playing next.
+const PLAYING_LEAVE_EVENTS = new Set(['song_skipped', 'song_rejected', 'song_played']);
+
 class MatchSession {
   constructor({ eventId, ramMatcher, options = {} } = {}) {
     if (!eventId) throw new Error('MatchSession requires an eventId');
@@ -180,15 +186,17 @@ class MatchSession {
   // song_approved, song_now_playing, song_rejected, song_skipped).
   // The session reacts by:
   //   - refreshing the queue context on the current candidate
-  //   - releasing the hold if the candidate track was just PLAYING a
-  //     different song (i.e. a song with a *different* trackId
-  //     transitioned to PLAYING — the DJ has decided what plays next)
+  //   - releasing the lock when the candidate song transitions out of
+  //     PLAYING (skip / reject / end-of-track) so recognition wakes up
+  //   - releasing the hold if a different song became PLAYING
+  //     (the DJ has decided what plays next)
   async applyQueueEvent(event) {
     if (!event || typeof event !== 'object') return [];
     const type = String(event.type || event.event || '');
     if (!type) return [];
 
     const diffs = [];
+    const eventTrackId = event.trackId ? String(event.trackId) : null;
 
     const target = await findUpNextQueueTrack(this.eventId);
     if (this.candidate) {
@@ -211,23 +219,41 @@ class MatchSession {
 
     if (
       type === 'song_now_playing' &&
-      event.trackId &&
+      eventTrackId &&
       this.candidate &&
-      event.trackId !== this.candidate.trackId
+      eventTrackId !== this.candidate.trackId
     ) {
       diffs.push(
         ...this._dropCandidate('dj_sent_different_track', {
-          conflictingTrackId: event.trackId,
+          conflictingTrackId: eventTrackId,
           conflictingSongId: event.songId,
         }),
       );
-    } else if (type === 'song_now_playing' && event.trackId === this.candidate?.trackId) {
+    } else if (type === 'song_now_playing' && eventTrackId === this.candidate?.trackId) {
       // Our candidate is now actually playing. Promote the lock to a
       // confirmed play (no separate event needed; the song_now_playing
       // broadcast already covers it).
       if (this.state !== STATE.LOCKED) {
         diffs.push(...this._lock({ confirmedByQueue: true }));
       }
+    } else if (
+      this.candidate &&
+      this.state === STATE.LOCKED &&
+      this.candidate.queueContext?.hasPlaying &&
+      PLAYING_LEAVE_EVENTS.has(type) &&
+      eventTrackId &&
+      eventTrackId === this.candidate.trackId
+    ) {
+      // The song we were locked on just left PLAYING (skipped,
+      // rejected, or marked played). The lock no longer represents
+      // anything real — release so the matcher can wake up and lock
+      // onto the next thing that's actually playing.
+      diffs.push(
+        ...this._dropCandidate('candidate_left_playing', {
+          previousStatus: this.candidate.queueContext?.playing?.status || 'PLAYING',
+          trigger: type,
+        }),
+      );
     }
 
     // For any queue event, refresh the queue context of the current
@@ -243,6 +269,8 @@ class MatchSession {
           !this.candidate.queueContext?.hasApproved
         ) {
           diffs.push(this._dropCandidate('candidate_left_queue')[0]);
+          this.lastDiff = diffs;
+          return diffs;
         }
         if (queueContextChanged(before, this.candidate.queueContext)) {
           diffs.push(this._makeDiff(EVENT.QUEUE_UPDATED, { trackId: this.candidate.trackId }));

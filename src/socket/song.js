@@ -113,7 +113,7 @@ const handleRejectSong = async (socket, io, data, callback) => {
     await notifyMatchSessions(eventId, 'song_rejected', {
       songId: song._id,
       status: song.status,
-      trackId: null,
+      trackId: song.recognitionMatch?.trackId || null,
     });
     await emitQueueUpdated(io, eventId);
     logger.info('Song rejected via Socket.IO', { songId, eventId, reason });
