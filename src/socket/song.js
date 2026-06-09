@@ -1,5 +1,6 @@
 // Song state-change handlers: suggest, approve, reject, skip, sendNow.
 const { logger } = require('../utils');
+const { buildNowPlayingPayload } = require('../utils/now-playing');
 const { ackSuccess, ackError } = require('./ack');
 const { songsService } = require('../services');
 const { assertJoinedEvent, eventActor, emitQueueUpdated, rejectLegacyCommand, toEventRoom } = require('./room');
@@ -160,10 +161,8 @@ const handleSendNow = async (socket, io, data, callback) => {
     await assertJoinedEvent(socket, eventId);
     const song = await songsService.sendNow(songId, eventId, actor);
     toEventRoom(io, eventId).emit('song_now_playing', {
-      songId: song._id, title: song.title, artist: song.artist,
-      recognitionMatch: song.recognitionMatch || null, status: song.status,
-      totalDuration: song.totalDuration || 0, duration: song.duration || 0,
-      playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
+      ...buildNowPlayingPayload(song),
+      status: song.status,
       timestamp: new Date().toISOString(),
     });
     await notifyMatchSessions(eventId, 'song_now_playing', {

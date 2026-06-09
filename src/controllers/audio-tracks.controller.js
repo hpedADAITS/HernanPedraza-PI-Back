@@ -2,6 +2,7 @@ const { audioTracksService } = require('../services');
 const songsService = require('../services/songs.service');
 const { httpStatus } = require('../constants');
 const { logger } = require('../utils');
+const { buildNowPlayingPayload } = require('../utils/now-playing');
 const { verifyToken } = require('../utils/jwt.utils');
 const matchSessionRegistry = require('../services/audio-recognition/match-session-registry');
 
@@ -82,14 +83,8 @@ class AudioTracksController {
       const io = req.app.get('io');
       if (io) {
         io.to(`event:${req.params.eventId}`).emit('song_now_playing', {
-          songId: song._id,
-          title: song.title,
-          artist: song.artist,
-          recognitionMatch: song.recognitionMatch || null,
           status: song.status,
-          totalDuration: song.totalDuration || 0,
-          duration: song.duration || 0,
-          playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
+          ...buildNowPlayingPayload(song),
           timestamp: new Date().toISOString(),
         });
         io.to(`event:${req.params.eventId}`).emit('queue_updated', {

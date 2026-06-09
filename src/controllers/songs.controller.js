@@ -1,5 +1,6 @@
 const { participantsService, songsService } = require('../services');
 const { logger } = require('../utils');
+const { buildNowPlayingPayload } = require('../utils/now-playing');
 const { httpStatus } = require('../constants');
 const { songsSchema } = require('../schemas');
 const matchSessionRegistry = require('../services/audio-recognition/match-session-registry');
@@ -361,14 +362,8 @@ class SongsController {
       );
 
       this.emitSongEvent(eventId, 'song_now_playing', {
-        songId: getSongId(song),
-        title: song.title,
-        artist: song.artist,
-        recognitionMatch: song.recognitionMatch || null,
         status: song.status,
-        totalDuration: song.totalDuration || 0,
-        duration: song.duration || 0,
-        playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
+        ...buildNowPlayingPayload(song),
       });
       // Notify the per-event match session registry so any held or
       // locked candidate either confirms the now-playing track or
@@ -424,14 +419,8 @@ class SongsController {
       }
 
       this.emitSongEvent(eventId, 'song_now_playing', {
-        songId: getSongId(song),
-        title: song.title,
-        artist: song.artist,
-        recognitionMatch: song.recognitionMatch || null,
         status: song.status,
-        totalDuration: song.totalDuration || 0,
-        duration: song.duration || 0,
-        playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
+        ...buildNowPlayingPayload(song),
       });
       // Notify the per-event match session registry so any held or
       // locked candidate either confirms the now-playing track or

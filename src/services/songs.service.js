@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const { logger } = require('../utils');
 const { ForbiddenError, NotFoundError, ValidationError, MatchRequiredError } = require('../errors');
 const { validateTransition } = require('../utils/song-state-machine');
+const { buildNowPlayingPayload } = require('../utils/now-playing');
 const participantsService = require('./participants.service');
 const eventPermissionsService = require('./event-permissions.service');
 const musicBrainzService = require('./musicbrainz.service');
@@ -745,26 +746,7 @@ class SongsService {
   _buildNowPlaying(queue) {
     const playing = queue.find((song) => song.status === 'PLAYING');
     if (!playing) return null;
-
-    const startedAt = playing.playingStartedAt || playing.startedPlayingAt;
-    const elapsedTime = startedAt
-      ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
-      : 0;
-    const totalDuration = playing.totalDuration || playing.duration || 0;
-
-    return {
-      songId: playing._id || playing.id,
-      title: playing.title,
-      artist: playing.artist,
-      recognitionMatch: playing.recognitionMatch || null,
-      albumArt: playing.recognitionMatch?.coverUrl || null,
-      totalDuration,
-      duration: totalDuration,
-      playingStartedAt: startedAt,
-      startedPlayingAt: startedAt,
-      elapsedTime,
-      remainingTime: totalDuration ? Math.max(0, totalDuration - elapsedTime) : null,
-    };
+    return buildNowPlayingPayload(playing);
   }
 
   _formatSong(song) {

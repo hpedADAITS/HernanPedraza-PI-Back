@@ -3,6 +3,7 @@
 // concerns are isolated from business logic.
 
 const { logger } = require('../utils');
+const { buildNowPlayingPayload } = require('../utils/now-playing');
 const { EventModel } = require('../models/schema');
 const { ackSuccess, ackError } = require('./ack');
 const { audioTracksService, sharedRamMatcher, songsService } = require('../services');
@@ -201,16 +202,9 @@ async function sendLockedUpNextNow(socket, io, eventId, candidate) {
     const song = await audioTracksService.sendMatchedTrackNow(eventId, socket.user, trackId);
     const payload = {
       eventId,
-      songId: song._id,
-      title: song.title,
-      artist: song.artist,
-      recognitionMatch: song.recognitionMatch || null,
+      ...buildNowPlayingPayload(song),
       trackId,
       status: song.status,
-      totalDuration: song.totalDuration || 0,
-      duration: song.duration || 0,
-      albumArt: song.recognitionMatch?.coverUrl || null,
-      playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
       timestamp: new Date().toISOString(),
     };
 
