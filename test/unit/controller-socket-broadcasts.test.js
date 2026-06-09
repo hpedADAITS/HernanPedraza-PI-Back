@@ -12,6 +12,7 @@ const {
   UserModel,
   VoteModel,
 } = require('../../src/models');
+const textCrypto = require('../../src/services/text-crypto');
 
 let mongoServer;
 
@@ -206,9 +207,11 @@ describe('REST controller Socket.IO broadcasts', () => {
     );
 
     const stored = await SongModel.findById(song._id).lean();
+    const eventDoc = await EventModel.findById(event._id).select('ownerId').lean();
+    const [title, artist] = await textCrypto.decryptFields(eventDoc, [stored.title, stored.artist]);
 
     expect(next).not.toHaveBeenCalled();
-    expect(stored).toMatchObject({
+    expect({ ...stored, title, artist }).toMatchObject({
       title: 'Midnight City',
       artist: 'M83',
       status: 'APPROVED',
