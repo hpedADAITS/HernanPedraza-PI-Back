@@ -7,7 +7,7 @@ const { ValidationError } = require('../errors');
 const SONG_STATES = {
   PENDING: {
     canTransitionTo: ['APPROVED', 'REJECTED'],
-    roles: ['DJ'], // Only DJ can approve/reject
+    roles: ['DJ'],
   },
   APPROVED: {
     canTransitionTo: ['PLAYING', 'REJECTED'],

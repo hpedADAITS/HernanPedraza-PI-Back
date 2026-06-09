@@ -187,12 +187,33 @@ class VotesService {
       if (vote.value === -1) song.downvoteCount += weight;
     }
 
+    await this._applyLadderEffects(song, resolvedSettings);
     await this._applyAutoReject(song);
     return song;
   }
 
+  async _applyLadderEffects(song, settings) {
+    if (song.status !== 'PENDING') return;
+
+    const resolvedSettings = settings || (await this._getEventSettings(song.eventId));
+
+    if ((song.downvoteCount || 0) >= await this._getAutoRejectThreshold(song.eventId)) {
+      song.status = 'REJECTED';
+      song.autoRejectedAt = new Date();
+      song.removedAt = song.autoRejectedAt;
+      song.removalReason = AUTO_REJECT_REASON;
+      return;
+    }
+
+    const threshold = resolvedSettings.approveLadderThreshold ?? 3;
+    if (song.voteScore >= threshold) {
+      song.status = 'APPROVED';
+    }
+  }
+
   async _applyAutoReject(song) {
-    if (!['PENDING', 'APPROVED', 'PLAYING'].includes(song.status)) return;
+    if (song.status === 'PENDING') return;
+    if (!['APPROVED', 'PLAYING'].includes(song.status)) return;
 
     if ((song.downvoteCount || 0) >= await this._getAutoRejectThreshold(song.eventId)) {
       const wasPlaying = song.status === 'PLAYING';

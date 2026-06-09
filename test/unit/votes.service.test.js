@@ -324,7 +324,7 @@ describe('VotesService - Real Implementation Tests', () => {
         downvoteCount: 4,
       });
 
-      await votesService._applyAutoReject(song);
+      await votesService._applyLadderEffects(song);
 
       expect(song.status).toBe('REJECTED');
     });
@@ -361,7 +361,7 @@ describe('VotesService - Real Implementation Tests', () => {
       expect(updatedEvent.currentSongId).toBeUndefined();
     });
 
-    test('should not change if score is above threshold', async () => {
+    test('should not change PENDING if downvote count is below threshold', async () => {
       const { event } = await createTestEvent();
       const participant = await createTestParticipant(event._id);
       await Promise.all(Array.from({ length: 7 }, () => createTestParticipant(event._id)));
@@ -370,7 +370,7 @@ describe('VotesService - Real Implementation Tests', () => {
         downvoteCount: 3,
       });
 
-      await votesService._applyAutoReject(song);
+      await votesService._applyLadderEffects(song);
 
       expect(song.status).toBe('PENDING');
     });
@@ -385,7 +385,7 @@ describe('VotesService - Real Implementation Tests', () => {
         downvoteCount: 3,
       });
 
-      await votesService._applyAutoReject(song);
+      await votesService._applyLadderEffects(song);
 
       expect(song.status).toBe('REJECTED');
     });

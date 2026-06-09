@@ -12,6 +12,7 @@ const EventSettingsSchema = new Schema(
     allowDownvotes: { type: Boolean, default: true },
     premiumVotesEnabled: { type: Boolean, default: true },
     maxRequestsPerParticipant: { type: Number, default: 3, min: 0 },
+    approveLadderThreshold: { type: Number, default: 3 },
   },
   { _id: false },
 );

@@ -459,7 +459,7 @@ class SongsService {
       status: 'PENDING',
     })
       .populate('requestedBy', 'nickname profilePicture isPremium approvalCount')
-      .sort({ isPremiumSuggestion: -1, createdAt: 1 });
+      .sort({ voteScore: -1, isPremiumSuggestion: -1, createdAt: 1 });
 
     const eventDoc = await EventModel.findById(eventId)
       .select('ownerId')
@@ -476,6 +476,10 @@ class SongsService {
   async approveSong(songId, eventId, userId) {
     await this._assertSongAdmin(eventId, userId);
     const song = await this._getSongForEvent(songId, eventId);
+
+    if (song.status === 'APPROVED') {
+      return this._formatSong(song);
+    }
 
     /* Validate state transition using state machine */
     validateTransition(song.status, 'APPROVED', 'DJ');
