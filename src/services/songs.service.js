@@ -744,6 +744,8 @@ class SongsService {
       songId: playing._id || playing.id,
       title: playing.title,
       artist: playing.artist,
+      recognitionMatch: playing.recognitionMatch || null,
+      albumArt: playing.recognitionMatch?.coverUrl || null,
       totalDuration,
       duration: totalDuration,
       playingStartedAt: startedAt,

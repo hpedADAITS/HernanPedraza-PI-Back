@@ -159,4 +159,43 @@ describe('MatchSession release on PLAYING -> other state transitions', () => {
     expect(ramMatcher.match).toHaveBeenCalledTimes(1);
     expect(diffs.some((d) => d.event === EVENT.HOLD_STARTED || d.event === EVENT.LOCKED)).toBe(true);
   });
+
+  test('proper queue update releases locked PLAYING candidate and wakes recognition for the next phone song', async () => {
+    queueLinker.findUpNextQueueTrack.mockResolvedValue({ songId: 'song-t2-approved', trackId: 't2' });
+    queueLinker.enrichMatchesWithQueueContext
+      .mockImplementationOnce(async (_e, matches) => matches.map((c) => withQueueContext(c, { playing: true })))
+      .mockImplementationOnce(async (_e, matches) => matches.map((c) => withQueueContext(c, { approved: true })));
+
+    const ramMatcher = { match: jest.fn(() => [match('t1', 30)]) };
+    const session = new MatchSession({
+      eventId: 'e1',
+      ramMatcher,
+      options: { holdWindowMs: 0, minPersistentChunks: 1, minMatchQueryHashes: 1 },
+    });
+
+    await session.addChunk([{ hash: 1, time: 1 }]);
+    expect(session.getState().state).toBe(STATE.LOCKED);
+
+    const diffs = await session.applyQueueEvent({ type: 'queue_updated' });
+
+    expect(diffs).toEqual(expect.arrayContaining([expect.objectContaining({
+      event: EVENT.RELEASED,
+      payload: expect.objectContaining({
+        reason: 'queue_target_changed',
+        targetTrackId: 't2',
+      }),
+    })]));
+    expect(session.getState().state).toBe(STATE.IDLE);
+
+    ramMatcher.match.mockImplementation(() => [match('t2', 30)]);
+    ramMatcher.match.mockClear();
+    queueLinker.enrichMatchesWithQueueContext
+      .mockImplementationOnce(async (_e, matches) => matches.map((c) => withQueueContext(c, { playing: true })));
+
+    const wakeDiffs = await session.addChunk([{ hash: 2, time: 2 }]);
+
+    expect(ramMatcher.match).toHaveBeenCalledTimes(1);
+    expect(session.getState().state).toBe(STATE.LOCKED);
+    expect(wakeDiffs.some((d) => d.event === EVENT.LOCKED)).toBe(true);
+  });
 });

@@ -204,7 +204,7 @@ class MatchSession {
       if (
         target?.trackId &&
         String(target.trackId) !== String(this.candidate.trackId) &&
-        !candidateIsPlaying
+        (!candidateIsPlaying || this.state === STATE.LOCKED)
       ) {
         diffs.push(
           ...this._dropCandidate('queue_target_changed', {
