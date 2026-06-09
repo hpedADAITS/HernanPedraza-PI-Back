@@ -199,6 +199,15 @@ class MatchSession {
     const eventTrackId = event.trackId ? String(event.trackId) : null;
 
     const target = await findUpNextQueueTrack(this.eventId);
+    if (this.state === STATE.LOCKED && this._lockedCandidateHasFinished()) {
+      diffs.push(
+        ...this._dropCandidate('candidate_duration_elapsed', {
+          trigger: type,
+        }),
+      );
+      this.lastDiff = diffs;
+      return diffs;
+    }
     if (this.candidate) {
       const candidateIsPlaying = Boolean(this.candidate.queueContext?.hasPlaying);
       if (
@@ -412,6 +421,15 @@ class MatchSession {
       timestamp: Date.now(),
       payload,
     };
+  }
+
+  _lockedCandidateHasFinished() {
+    if (this.state !== STATE.LOCKED || !this.candidate?.queueContext?.hasPlaying) return false;
+    const playing = this.candidate.queueContext.playing;
+    const startedAt = playing?.startedPlayingAt || playing?.playingStartedAt;
+    const duration = Number(playing?.totalDuration ?? playing?.duration ?? this.candidate.duration);
+    if (!startedAt || !Number.isFinite(duration) || duration <= 0) return false;
+    return Date.now() - new Date(startedAt).getTime() >= duration * 1000;
   }
 }
 

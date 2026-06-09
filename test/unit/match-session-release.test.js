@@ -198,4 +198,45 @@ describe('MatchSession release on PLAYING -> other state transitions', () => {
     expect(session.getState().state).toBe(STATE.LOCKED);
     expect(wakeDiffs.some((d) => d.event === EVENT.LOCKED)).toBe(true);
   });
+
+  test('queue update releases locked PLAYING candidate after its duration elapses', async () => {
+    queueLinker.findUpNextQueueTrack.mockResolvedValue(null);
+    queueLinker.enrichMatchesWithQueueContext.mockImplementationOnce(async (_e, matches) =>
+      matches.map((candidate) => {
+        const enriched = withQueueContext(candidate, { playing: true });
+        return {
+          ...enriched,
+          duration: 1,
+          queueContext: {
+            ...enriched.queueContext,
+            playing: {
+              ...enriched.queueContext.playing,
+              totalDuration: 1,
+              startedPlayingAt: new Date(Date.now() - 1500).toISOString(),
+            },
+          },
+        };
+      }),
+    );
+
+    const ramMatcher = { match: jest.fn(() => [match('t1', 30)]) };
+    const session = new MatchSession({
+      eventId: 'e1',
+      ramMatcher,
+      options: { holdWindowMs: 0, minPersistentChunks: 1, minMatchQueryHashes: 1 },
+    });
+
+    await session.addChunk([{ hash: 1, time: 1 }]);
+    expect(session.getState().state).toBe(STATE.LOCKED);
+
+    const diffs = await session.applyQueueEvent({ type: 'queue_updated' });
+
+    expect(diffs).toEqual(expect.arrayContaining([expect.objectContaining({
+      event: EVENT.RELEASED,
+      payload: expect.objectContaining({
+        reason: 'candidate_duration_elapsed',
+      }),
+    })]));
+    expect(session.getState().state).toBe(STATE.IDLE);
+  });
 });
