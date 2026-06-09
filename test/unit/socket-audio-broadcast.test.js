@@ -82,4 +82,30 @@ describe('socket audio match broadcasts', () => {
       ]),
     );
   });
+
+  test('clears autoSentTrackId when the released trackId matches the auto-sent one', () => {
+    const { socket } = createSocketAndIo();
+    socket.audioMatch = { autoSentTrackId: 'track-1' };
+
+    emitMatchDiff(socket, null, 'event-1', {
+      event: EVENT.RELEASED,
+      state: 'idle',
+      payload: { ...candidate(), reason: 'candidate_left_queue' },
+    });
+
+    expect(socket.audioMatch.autoSentTrackId).toBe('');
+  });
+
+  test('leaves autoSentTrackId alone when the released trackId is different (DJ picked a different track)', () => {
+    const { socket } = createSocketAndIo();
+    socket.audioMatch = { autoSentTrackId: 'track-1' };
+
+    emitMatchDiff(socket, null, 'event-1', {
+      event: EVENT.RELEASED,
+      state: 'idle',
+      payload: { ...candidate(), trackId: 'track-2', reason: 'dj_intent_other_track' },
+    });
+
+    expect(socket.audioMatch.autoSentTrackId).toBe('track-1');
+  });
 });

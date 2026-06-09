@@ -609,6 +609,14 @@ class SongsService {
     /* Validate state transition before update */
     validateTransition('APPROVED', 'PLAYING', 'DJ');
 
+    // Demote the currently PLAYING song (if any) to PLAYED so the
+    // queue does not end up with two songs in PLAYING status. This
+    // mirrors sendNow() which also updates the previous PLAYING row.
+    await SongModel.updateMany(
+      { eventId, status: 'PLAYING' },
+      { $set: { status: 'PLAYED' } },
+    );
+
     const nextSong = await SongModel.findOneAndUpdate(
       {
         eventId,

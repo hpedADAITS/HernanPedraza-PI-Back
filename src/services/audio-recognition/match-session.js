@@ -49,6 +49,12 @@ const STATE = Object.freeze({
   RELEASED: 'released',
 });
 
+// Upper bound on the query window the match session keeps alive
+// between chunks. Roughly 5 minutes of dense hashes — well past the
+// minMatchQueryHashes default (30) and the longest hold window the
+// product is tuned for, so capping here never starves a real match.
+const MAX_ACCUMULATED_HASHES = 5000;
+
 const EVENT = Object.freeze({
   CANDIDATE: 'candidate',
   HOLD_STARTED: 'hold_started',
@@ -130,6 +136,15 @@ class MatchSession {
 
     this.lastChunkAt = Date.now();
     this.accumulatedHashes.push(...cleanHashes);
+    // Cap the accumulated window so a long-lived match stream does
+    // not grow the query list without bound. Once the candidate is
+    // locked the matcher stops reading this list, so capping only
+    // matters while we are still warming / holding. Older hashes
+    // past MAX_ACCUMULATED_HASHES are dropped; the matcher only
+    // needs a sliding window long enough to seed minMatchQueryHashes.
+    if (this.accumulatedHashes.length > MAX_ACCUMULATED_HASHES) {
+      this.accumulatedHashes = this.accumulatedHashes.slice(-MAX_ACCUMULATED_HASHES);
+    }
 
     const diffs = [];
     const ranked = this.ramMatcher.match(this.eventId, this.accumulatedHashes);
@@ -178,8 +193,17 @@ class MatchSession {
   // the next chunk. Returns a fresh diff list (possibly empty).
   async reEvaluate() {
     if (this.state === STATE.LOCKED) return [];
-    if (this.accumulatedHashes.length === 0) return [];
-    return this.addChunk([]);
+    if (this.state !== STATE.HOLDING) return [];
+    if (!this.candidate) return [];
+
+    // Hold window must have elapsed and the persistence threshold
+    // must be met before we can promote HOLDING -> LOCKED on a
+    // timer-driven re-evaluation.
+    const now = Date.now();
+    if (now - this.holdStartedAt < this.holdWindowMs) return [];
+    if (this.persistentChunks < this.minPersistentChunks) return [];
+
+    return this._lock();
   }
 
   // Apply a queue event the server broadcast (song_suggested,

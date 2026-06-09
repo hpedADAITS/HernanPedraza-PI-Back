@@ -370,6 +370,18 @@ class SongsController {
         duration: song.duration || 0,
         playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
       });
+      // Notify the per-event match session registry so any held or
+      // locked candidate either confirms the now-playing track or
+      // releases when the DJ chose something else.
+      await matchSessionRegistry.applyQueueEventToEvent(eventId, {
+        type: 'song_now_playing',
+        timestamp: new Date().toISOString(),
+        songId: getSongId(song),
+        trackId: song.recognitionMatch?.trackId
+          ? String(song.recognitionMatch.trackId)
+          : null,
+        status: song.status,
+      });
       await this.emitQueueUpdated(eventId);
 
       res.status(httpStatus.OK).json({
@@ -420,6 +432,18 @@ class SongsController {
         totalDuration: song.totalDuration || 0,
         duration: song.duration || 0,
         playingStartedAt: song.playingStartedAt || song.startedPlayingAt,
+      });
+      // Notify the per-event match session registry so any held or
+      // locked candidate either confirms the now-playing track or
+      // releases when playNext chose something else.
+      await matchSessionRegistry.applyQueueEventToEvent(eventId, {
+        type: 'song_now_playing',
+        timestamp: new Date().toISOString(),
+        songId: getSongId(song),
+        trackId: song.recognitionMatch?.trackId
+          ? String(song.recognitionMatch.trackId)
+          : null,
+        status: song.status,
       });
       await this.emitQueueUpdated(eventId);
 

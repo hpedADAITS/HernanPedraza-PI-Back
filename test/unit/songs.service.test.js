@@ -980,6 +980,38 @@ describe('SongsService - Real Implementation Tests', () => {
       const stillApproved = await SongModel.findById(unmatched._id);
       expect(stillApproved.status).toBe('APPROVED');
     });
+
+    test('demotes the previously PLAYING song to PLAYED so the queue never has two PLAYING songs', async () => {
+      const { event, user } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+      const track = await createTestAudioTrack(event._id, user._id);
+
+      const current = await createTestSong(event._id, participant._id, {
+        status: 'PLAYING',
+        startedPlayingAt: new Date(Date.now() - 60_000),
+        sortKey: 'current',
+        recognitionMatch: { trackId: track._id, title: 'Current', artist: 'A', score: 1, matchedOn: 'title' },
+      });
+      const next = await createTestSong(event._id, participant._id, {
+        status: 'APPROVED',
+        voteScore: 5,
+        sortKey: 'next',
+        recognitionMatch: { trackId: track._id, title: 'Next', artist: 'A', score: 1, matchedOn: 'title' },
+      });
+
+      const result = await songsService.playNextSong(
+        event._id.toString(),
+        { userId: user._id.toString(), role: 'DJ' },
+      );
+
+      expect(result).not.toBeNull();
+      expect(result._id.toString()).toBe(next._id.toString());
+      expect(result.status).toBe('PLAYING');
+      expect(result.startedPlayingAt).toBeInstanceOf(Date);
+      // The previous PLAYING song must have been demoted.
+      const previous = await SongModel.findById(current._id);
+      expect(previous.status).toBe('PLAYED');
+    });
   });
 
   describe('getSongPosition', () => {
@@ -1118,6 +1150,31 @@ describe('SongsService - Real Implementation Tests', () => {
         artist: 'Canonical Queue Artist',
         totalDuration: 244,
       });
+    });
+
+    test('nowPlaying exposes elapsedTime and remainingTime so the front-end can drive the duration bar', async () => {
+      const { event } = await createTestEvent();
+      const participant = await createTestParticipant(event._id);
+
+      const fiveSecondsAgo = new Date(Date.now() - 5_000);
+      await createTestSong(event._id, participant._id, {
+        status: 'PLAYING',
+        totalDuration: 200,
+        startedPlayingAt: fiveSecondsAgo,
+      });
+
+      const result = await songsService.getQueueSnapshotForEvent(event._id.toString());
+
+      expect(result.nowPlaying).toBeDefined();
+      // elapsedTime is floored to whole seconds, so allow a small
+      // tolerance around the expected 5-second mark.
+      expect(result.nowPlaying.elapsedTime).toBeGreaterThanOrEqual(4);
+      expect(result.nowPlaying.elapsedTime).toBeLessThanOrEqual(6);
+      expect(result.nowPlaying.remainingTime).toBe(
+        200 - result.nowPlaying.elapsedTime,
+      );
+      expect(result.nowPlaying.playingStartedAt).toEqual(fiveSecondsAgo);
+      expect(result.nowPlaying.startedPlayingAt).toEqual(fiveSecondsAgo);
     });
 
     test('should return null nowPlaying when nothing is playing', async () => {

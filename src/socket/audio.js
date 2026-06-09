@@ -138,6 +138,19 @@ function emitMatchDiff(socket, io, eventId, diff) {
       }
       break;
     case SESSION_EVENT.RELEASED:
+      // Clear the auto-send guard when the locked candidate is released
+      // so the same trackId can be auto-sent again on a future re-match
+      // (e.g. the same song plays later in the night). Only clear it
+      // when the released trackId matches what we previously auto-sent
+      // — a release triggered by a DJ intent on a different track
+      // should not poison the auto-send for the actually-playing one.
+      const releasedTrackId = diff.payload?.trackId;
+      if (
+        releasedTrackId &&
+        socket.audioMatch?.autoSentTrackId === releasedTrackId
+      ) {
+        socket.audioMatch.autoSentTrackId = '';
+      }
       socket.emit('audio_match_released', {
         ...base,
         state: diff.state,
@@ -382,46 +395,49 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
     // back to the client. We feed it the latest hashes and let it decide
     // whether the top candidate moved, the hold should start, the lock
     // is now safe, or we should release.
-    if (hashes.length) {
-      const matchSession = session.session;
-      if (matchSession) {
+    const matchSession = session.session;
+    if (matchSession) {
+      if (hashes.length) {
         const diffs = await matchSession.addChunk(hashes);
         for (const diff of diffs) {
           await emitMatchDiffAndActions(socket, io, session.eventId, diff);
         }
-        // Re-evaluate the lock condition on a debounce so a candidate
-        // that has been held long enough promotes to "locked" even if
-        // the next audio chunk is silent (DJ muted the room, etc.).
-        if (
-          matchSession.state === 'holding' &&
-          matchSession.holdStartedAt > 0 &&
-          now - (session.lastReEvalAt || 0) > matchSession.reMatchDebounceMs
-        ) {
-          session.lastReEvalAt = now;
-          const reDiff = await matchSession.reEvaluate();
-          for (const diff of reDiff) {
-            await emitMatchDiffAndActions(socket, io, session.eventId, diff);
-          }
+      }
+      // Re-evaluate the lock condition on a debounce so a candidate
+      // that has been held long enough promotes to "locked" even if
+      // the next audio chunk is silent (DJ muted the room, etc.).
+      // The re-eval runs on every chunk arrival — silence or not —
+      // because the promotion depends on the wall clock, not on new
+      // audio data. The debounce just caps the work rate.
+      if (
+        matchSession.state === 'holding' &&
+        matchSession.holdStartedAt > 0 &&
+        now - (session.lastReEvalAt || 0) > matchSession.reMatchDebounceMs
+      ) {
+        session.lastReEvalAt = now;
+        const reDiff = await matchSession.reEvaluate();
+        for (const diff of reDiff) {
+          await emitMatchDiffAndActions(socket, io, session.eventId, diff);
         }
-      } else {
-        // Fallback for the brief window where the legacy path is still
-        // in use (e.g. tests that bypass session creation). The path
-        // mirrors the old behaviour but throttles the emit.
-        if (now - session.lastEmitAt > AUDIO_MATCH_INTERVAL_MS) {
-          session.lastEmitAt = now;
-          const MAX_LIVE_MATCH_HASHES = 2000;
-          const queryHashes = hashes.length > MAX_LIVE_MATCH_HASHES
-            ? hashes.slice(-MAX_LIVE_MATCH_HASHES)
-            : hashes;
-          const matches = session.ramMatcher.match(session.eventId, queryHashes);
-          const update = {
-            eventId: session.eventId,
-            matches,
-            timestamp: new Date().toISOString(),
-          };
-          socket.emit('audio_match_update', update);
-          socket.to(`event:${session.eventId}`).emit('audio_match_update', update);
-        }
+      }
+    } else if (hashes.length) {
+      // Fallback for the brief window where the legacy path is still
+      // in use (e.g. tests that bypass session creation). The path
+      // mirrors the old behaviour but throttles the emit.
+      if (now - session.lastEmitAt > AUDIO_MATCH_INTERVAL_MS) {
+        session.lastEmitAt = now;
+        const MAX_LIVE_MATCH_HASHES = 2000;
+        const queryHashes = hashes.length > MAX_LIVE_MATCH_HASHES
+          ? hashes.slice(-MAX_LIVE_MATCH_HASHES)
+          : hashes;
+        const matches = session.ramMatcher.match(session.eventId, queryHashes);
+        const update = {
+          eventId: session.eventId,
+          matches,
+          timestamp: new Date().toISOString(),
+        };
+        socket.emit('audio_match_update', update);
+        socket.to(`event:${session.eventId}`).emit('audio_match_update', update);
       }
     }
 
