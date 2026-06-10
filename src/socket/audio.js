@@ -194,8 +194,18 @@ async function emitMatchDiffAndActions(socket, io, eventId, diff) {
 
 async function sendLockedUpNextNow(socket, io, eventId, candidate) {
   const trackId = candidate?.trackId;
-  if (!trackId || !candidate.queueContext?.nextApproved) return;
+  if (!trackId) return;
   if (socket.audioMatch?.autoSentTrackId === trackId) return;
+
+  const queueContext = candidate.queueContext || {};
+  const playing = queueContext.playing;
+  const nextApproved = queueContext.nextApproved;
+  
+  if (playing) {
+    await broadcastLockedNowPlaying(socket, io, eventId, candidate, playing);
+  }
+
+  if (!nextApproved) return;
 
   try {
     socket.audioMatch.autoSentTrackId = trackId;
@@ -235,6 +245,61 @@ async function sendLockedUpNextNow(socket, io, eventId, candidate) {
     });
     const resetDiffs = socket.audioMatch?.session?.reset?.() || [];
     for (const resetDiff of resetDiffs) emitMatchDiff(socket, io, eventId, resetDiff);
+  }
+}
+
+// Build a song_now_playing payload from the queue context's playing
+// summary plus the recognized candidate's metadata, and broadcast it
+// to the event room. The match session is then notified so any other
+// phone microphones that happen to be streaming the same room see a
+// consistent locked-on-the-playing-track state.
+async function broadcastLockedNowPlaying(socket, io, eventId, candidate, playing) {
+  try {
+    const songId = String(playing.songId || playing._id || candidate.songId || candidate.trackId);
+    const startedAt = playing.startedPlayingAt || playing.playingStartedAt || null;
+    const totalDuration = Number(
+      playing.totalDuration ?? playing.duration ?? candidate.duration,
+    );
+    const payload = {
+      eventId,
+      songId,
+      _id: songId,
+      title: candidate.title || playing.title,
+      artist: candidate.artist || playing.artist,
+      recognitionMatch: candidate.coverUrl
+        ? { coverUrl: candidate.coverUrl, title: candidate.title, artist: candidate.artist }
+        : null,
+      albumArt: candidate.coverUrl || playing.albumArt || null,
+      totalDuration: Number.isFinite(totalDuration) && totalDuration > 0 ? totalDuration : 0,
+      duration: Number.isFinite(totalDuration) && totalDuration > 0 ? totalDuration : 0,
+      startedAt,
+      playingStartedAt: startedAt,
+      startedPlayingAt: startedAt,
+      elapsedTime: startedAt
+        ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+        : 0,
+      remainingTime: Number.isFinite(totalDuration) && totalDuration > 0 && startedAt
+        ? Math.max(0, totalDuration - Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+        : null,
+      trackId: candidate.trackId,
+      status: 'PLAYING',
+      timestamp: new Date().toISOString(),
+    };
+
+    toEventRoom(io, eventId).emit('song_now_playing', payload);
+    await matchSessionRegistry.applyQueueEventToEvent(eventId, {
+      type: 'song_now_playing',
+      songId,
+      trackId: candidate.trackId,
+      status: 'PLAYING',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.warn('Broadcast locked now-playing failed', {
+      eventId,
+      trackId: candidate?.trackId,
+      message: error.message,
+    });
   }
 }
 
@@ -504,4 +569,5 @@ module.exports = {
   assertAudioEventAccess,
   extractFloat32Pcm,
   emitMatchDiff,
+  emitMatchDiffAndActions,
 };
