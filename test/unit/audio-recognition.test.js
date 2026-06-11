@@ -1,16 +1,6 @@
 const path = require('path');
-const fs = require('fs');
-
-const __root = path.resolve(__dirname, '../../../..');
-const fixture = firstExisting([
-  path.join(__root, 'latest', 'simple_house_140bpm_60s.wav'),
-  path.join(__root, 'repo', 'simple_house_140bpm_60s.wav'),
-]);
+const fixture = path.join(__dirname, '..', 'fixtures', 'simple_house_140bpm_60s.wav');
 const { TARGET_SAMPLE_RATE } = require('../../src/services/audio-recognition/wav');
-
-function firstExisting(paths) {
-  return paths.find((candidate) => fs.existsSync(candidate)) || paths[0];
-}
 
 function snapshotHeapMB() {
   return process.memoryUsage().heapUsed / 1024 / 1024;

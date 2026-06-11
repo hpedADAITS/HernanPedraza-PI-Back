@@ -15,6 +15,7 @@
 //   holding ── top match swaps (different trackId) ──► holding (new candidate)
 //   holding ── DJ sent a different track now        ──► released
 //   locked  ── DJ sent a different track now         ──► released
+//   locked  ── recent audio window picks a different trackId ──► released
 //   any     ── explicit reset()                      ──► idle
 //
 // The session is fed three inputs:
@@ -54,6 +55,7 @@ const STATE = Object.freeze({
 // minMatchQueryHashes default (30) and the longest hold window the
 // product is tuned for, so capping here never starves a real match.
 const MAX_ACCUMULATED_HASHES = 5000;
+const AUDIO_REVOCATION_RECENT_HASH_CAP = 4000;
 
 const EVENT = Object.freeze({
   CANDIDATE: 'candidate',
@@ -93,6 +95,17 @@ class MatchSession {
       : base.reMatchDebounceMs;
     this.confidenceOverrides = options.confidenceOverrides || null;
 
+    this.audioRevocationRequiredConfirmations = Number.isFinite(
+      options.audioRevocationRequiredConfirmations,
+    )
+      ? options.audioRevocationRequiredConfirmations
+      : 2;
+    this.audioRevocationMinElapsedMs = Number.isFinite(
+      options.audioRevocationMinElapsedMs,
+    )
+      ? options.audioRevocationMinElapsedMs
+      : 1500;
+
     this.state = STATE.IDLE;
     this.accumulatedHashes = [];
     this.hashesByTrackId = new Map();
@@ -103,6 +116,8 @@ class MatchSession {
     this.lastDiff = null;
     this.djLockedTrackId = null;
     this.queueSnapshot = { queue: [], nowPlaying: null };
+    this.recentHashes = [];
+    this.audioRevocationCandidate = null;
   }
 
   // Reset the session to idle. Called when the socket match session
@@ -118,6 +133,8 @@ class MatchSession {
     this.persistentChunks = 0;
     this.lastChunkAt = 0;
     this.djLockedTrackId = null;
+    this.recentHashes = [];
+    this.audioRevocationCandidate = null;
     if (wasLocked) {
       return [this._makeDiff(EVENT.RELEASED, { trackId: previousTrackId, reason: 'reset' })];
     }
@@ -127,15 +144,31 @@ class MatchSession {
   // Feed the session the hashes from one streaming chunk. Returns a
   // list of diffs the socket layer can act on.
   async addChunk(hashes) {
-    if (this.state === STATE.LOCKED) return [];
     if (!Array.isArray(hashes) || hashes.length === 0) {
+      if (this.state === STATE.LOCKED) {
+        this.lastChunkAt = Date.now();
+      }
       return [];
     }
     const cleanHashes = sanitizeHashes(hashes);
-    if (!cleanHashes.length) return [];
-
+    if (!cleanHashes.length) {
+      if (this.state === STATE.LOCKED) {
+        this.lastChunkAt = Date.now();
+      }
+      return [];
+    }
     this.lastChunkAt = Date.now();
+
+    if (this.state === STATE.LOCKED) {
+      return this._evaluateAudioRevocation(cleanHashes);
+    }
+
     this.accumulatedHashes.push(...cleanHashes);
+    this.recentHashes.push(...cleanHashes);
+    if (this.recentHashes.length > AUDIO_REVOCATION_RECENT_HASH_CAP) {
+      this.recentHashes = this.recentHashes.slice(-AUDIO_REVOCATION_RECENT_HASH_CAP);
+    }
+
     // Cap the accumulated window so a long-lived match stream does
     // not grow the query list without bound. Once the candidate is
     // locked the matcher stops reading this list, so capping only
@@ -357,9 +390,19 @@ class MatchSession {
       holdStartedAt: this.holdStartedAt || null,
       persistentChunks: this.persistentChunks,
       accumulatedHashes: this.accumulatedHashes.length,
+      recentHashes: this.recentHashes.length,
+      audioRevocationCandidate: this.audioRevocationCandidate
+        ? {
+          trackId: this.audioRevocationCandidate.trackId,
+          confirmations: this.audioRevocationCandidate.confirmations,
+          firstSeenAt: this.audioRevocationCandidate.firstSeenAt,
+        }
+        : null,
       holdWindowMs: this.holdWindowMs,
       minPersistentChunks: this.minPersistentChunks,
       minMatchQueryHashes: this.minMatchQueryHashes,
+      audioRevocationRequiredConfirmations: this.audioRevocationRequiredConfirmations,
+      audioRevocationMinElapsedMs: this.audioRevocationMinElapsedMs,
     };
   }
 
@@ -423,6 +466,9 @@ class MatchSession {
   }
 
   _dropCandidate(reason, extra = {}) {
+    this.recentHashes = [];
+    this.audioRevocationCandidate = null;
+
     if (!this.candidate) {
       if (this.state !== STATE.IDLE) {
         this.state = STATE.IDLE;
@@ -445,6 +491,51 @@ class MatchSession {
       timestamp: Date.now(),
       payload,
     };
+  }
+
+  async _evaluateAudioRevocation(cleanHashes) {
+    this.recentHashes.push(...cleanHashes);
+    if (this.recentHashes.length > AUDIO_REVOCATION_RECENT_HASH_CAP) {
+      this.recentHashes = this.recentHashes.slice(-AUDIO_REVOCATION_RECENT_HASH_CAP);
+    }
+
+    const lockedTrackId = this.candidate?.trackId;
+    const ranked = this.ramMatcher.match(this.eventId, this.recentHashes);
+    const enriched = await enrichMatchesWithQueueContext(this.eventId, ranked);
+    const verdict = isConfidentWinner(enriched, this.confidenceOverrides);
+    const top = verdict.winner;
+
+    if (!top || !lockedTrackId || top.trackId === lockedTrackId) {
+      this.audioRevocationCandidate = null;
+      return [];
+    }
+
+    const now = Date.now();
+    if (this.audioRevocationCandidate?.trackId !== top.trackId) {
+      this.audioRevocationCandidate = {
+        trackId: top.trackId,
+        firstSeenAt: now,
+        confirmations: 1,
+      };
+      return [];
+    }
+
+    this.audioRevocationCandidate.confirmations += 1;
+    const elapsed = now - this.audioRevocationCandidate.firstSeenAt;
+    if (
+      this.audioRevocationCandidate.confirmations < this.audioRevocationRequiredConfirmations ||
+      elapsed < this.audioRevocationMinElapsedMs
+    ) {
+      return [];
+    }
+
+    const seedHashes = this.recentHashes.slice();
+    const diffs = this._dropCandidate('audio_revoked_by_recent_match', {
+      newTopTrackId: top.trackId,
+    });
+    this.accumulatedHashes = seedHashes;
+    diffs.push(...this._maybeStartHold(top, enriched, { warming: false }));
+    return diffs;
   }
 
   _lockedCandidateHasFinished() {

@@ -15,7 +15,6 @@
 process.env.DEBUG_MODE = 'true';
 
 const mongoose = require('mongoose');
-const fs = require('fs');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { normalizeHashRows: ramNormalize, matchHashes } = require('../../src/services/audio-recognition/ram-matcher');
 const { AudioFingerprintModel, AudioTrackModel } = require('../../src/models/schema');
@@ -28,10 +27,6 @@ jest.setTimeout(60000);
 const MIN_MATCH_SCORE = 4;
 
 let mongoServer;
-
-function firstExisting(paths) {
-  return paths.find((candidate) => fs.existsSync(candidate)) || paths[0];
-}
 
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
@@ -184,11 +179,7 @@ describe('normalizeHashRows', () => {
 
 describe('RAM matcher end-to-end with real fingerprints', () => {
   const path = require('path');
-  const __root = path.resolve(__dirname, '../../../..');
-  const fixture = firstExisting([
-    path.join(__root, 'repo', 'simple_house_140bpm_60s.wav'),
-    path.join(__root, 'latest', 'simple_house_140bpm_60s.wav'),
-  ]);
+  const fixture = path.join(__dirname, '..', 'fixtures', 'simple_house_140bpm_60s.wav');
 
   test('matches an uploaded track against a noisy query that still has aligned hashes', async () => {
     const { samples, sampleRate } = await readWavNormalized(fixture, TARGET_SAMPLE_RATE);

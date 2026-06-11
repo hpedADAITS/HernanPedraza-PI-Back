@@ -131,7 +131,7 @@ describe('MatchSession microphone recognition', () => {
     expect(session.getState().state).toBe('idle');
   });
 
-  test('pauses while locked and wakes when the queue target changes', async () => {
+  test('keeps the recent-window matcher running while locked and wakes on queue target change', async () => {
     queueLinker.findUpNextQueueTrack.mockResolvedValue({
       songId: 'song-target',
       trackId: 'target',
@@ -149,7 +149,8 @@ describe('MatchSession microphone recognition', () => {
     expect(session.getState().state).toBe('locked');
 
     await session.addChunk([{ hash: 2, time: 2 }]);
-    expect(ramMatcher.match).toHaveBeenCalledTimes(1);
+    expect(ramMatcher.match.mock.calls.length).toBeGreaterThan(1);
+    expect(session.getState().state).toBe('locked');
 
     queueLinker.findUpNextQueueTrack.mockResolvedValue({
       songId: 'song-next',

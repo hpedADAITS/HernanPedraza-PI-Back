@@ -31,16 +31,8 @@ let mongoServer;
 let fixture;
 let phoneStreamFixture;
 
-const __root = path.resolve(__dirname, '../../../..');
-const firstExisting = (paths) => paths.find((candidate) => fs.existsSync(candidate)) || paths[0];
-const houseTrackWav = firstExisting([
-  path.join(__root, 'repo', 'simple_house_140bpm_60s.wav'),
-  path.join(__root, 'latest', 'simple_house_140bpm_60s.wav'),
-]);
-const phoneStreamWav = firstExisting([
-  path.join(__root, 'repo', 'phone_stream_reverb_32kHz.wav'),
-  path.join(__root, 'latest', 'phone_stream_reverb_32kHz.wav'),
-]);
+const houseTrackWav = path.join(__dirname, '..', 'fixtures', 'simple_house_140bpm_60s.wav');
+const phoneStreamWav = path.join(__dirname, '..', 'fixtures', 'phone_stream_reverb_32kHz.wav');
 const dataImageCover = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2w==';
 
 const authHeader = (token) => ({ Authorization: `Bearer ${token}` });

@@ -151,7 +151,7 @@ describe('createConstellation', () => {
 
   test('scales with duration for a real music signal', async () => {
     const path = require('path');
-    const fixture = path.resolve(__dirname, '../../../simple_house_140bpm_60s.wav');
+    const fixture = path.join(__dirname, '..', 'fixtures', 'simple_house_140bpm_60s.wav');
     const { samples, sampleRate } = await readWavNormalized(fixture, TARGET_SAMPLE_RATE);
     const total = createConstellation(samples, sampleRate).length;
     const truncated = createConstellation(samples.slice(0, sampleRate * 5), sampleRate);
