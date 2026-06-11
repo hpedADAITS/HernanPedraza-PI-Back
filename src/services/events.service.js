@@ -89,7 +89,7 @@ class EventsService {
 
     if (user.role === 'DJ' && !user.emailRegistered) {
       throw new ValidationError(
-        'Please confirm your email before creating an event. Check your inbox for the welcome email.'
+        'Please confirm your email before creating an event. Check your inbox for the welcome email.',
       );
     }
 

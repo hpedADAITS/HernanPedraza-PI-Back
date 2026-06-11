@@ -1,6 +1,6 @@
 /**
  * test/integration/socket-io.integration.test.js
- * 
+ *
  * Socket.IO integration tests with REAL service layer (no mocks)
  * Tests the complete flow: Socket event -> Service -> DB -> Broadcast
  */
@@ -160,7 +160,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         'New Song',
         'New Artist',
         undefined,
-        testActor
+        testActor,
       );
 
       expect(result).toBeDefined();
@@ -182,7 +182,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         testEvent._id.toString(),
         testParticipant._id.toString(),
         5000,
-        'Spam prevention'
+        'Spam prevention',
       );
       await ParticipantModel.findByIdAndUpdate(testParticipant._id, {
         cooldownUntil: new Date(Date.now() + 5000),
@@ -197,8 +197,8 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
           'Cooldown Song',
           'Artist',
           undefined,
-          testActor
-        )
+          testActor,
+        ),
       ).rejects.toThrow('Participant is on cooldown');
     });
 
@@ -206,7 +206,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       const fakeId = new (require('mongoose')).Types.ObjectId();
 
       await expect(
-        songsService.suggestSong(testEvent._id, fakeId, 'Song', 'Artist', undefined, testActor)
+        songsService.suggestSong(testEvent._id, fakeId, 'Song', 'Artist', undefined, testActor),
       ).rejects.toThrow('Participant not found');
     });
   });
@@ -218,7 +218,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       const updated = await songsService.approveSong(
         testSong._id,
         testEvent._id,
-        testDjActor
+        testDjActor,
       );
 
       expect(updated.status).toBe('APPROVED');
@@ -233,7 +233,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       await songsService.approveSong(
         testSong._id,
         testEvent._id,
-        testDjActor
+        testDjActor,
       );
 
       // Then reject
@@ -241,7 +241,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         testSong._id,
         testEvent._id,
         'Not suitable',
-        testDjActor
+        testDjActor,
       );
 
       expect(updated.status).toBe('REJECTED');
@@ -257,7 +257,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         testSong._id,
         testEvent._id,
         'Wrong song',
-        testDjActor
+        testDjActor,
       );
 
       expect(updated.status).toBe('SKIPPED');
@@ -274,8 +274,8 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         songsService.approveSong(
           testSong._id,
           testEvent._id,
-          testDjActor
-        )
+          testDjActor,
+        ),
       ).rejects.toThrow();
     });
 
@@ -458,7 +458,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         testParticipant._id,
         duration,
         'Spam prevention',
-        { userId: testDj._id.toString(), role: 'DJ' }
+        { userId: testDj._id.toString(), role: 'DJ' },
       );
 
       expect(result.participant).toBeDefined();
@@ -472,7 +472,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       const result = await participantsService.kickParticipant(
         testParticipant._id,
         'Inappropriate behavior',
-        { userId: testDj._id.toString(), role: 'DJ' }
+        { userId: testDj._id.toString(), role: 'DJ' },
       );
 
       expect(result.participant).toBeDefined();
@@ -540,7 +540,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         'Popular Song',
         'Artist Name',
         undefined,
-        testActor
+        testActor,
       );
       expect(suggested.status).toBe('PENDING');
 
@@ -548,7 +548,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
       const approved = await songsService.approveSong(
         suggested._id,
         testEvent._id,
-        testDjActor
+        testDjActor,
       );
       expect(approved.status).toBe('APPROVED');
 
@@ -558,7 +558,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         role: 'ATTENDEE',
       });
 
-      let song = await SongModel.findById(suggested._id);
+      const song = await SongModel.findById(suggested._id);
       expect(song.voteCount).toBe(1);
       expect(song.voteScore).toBe(1);
 
@@ -628,7 +628,7 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
         testParticipant._id,
         5000,
         'Spam',
-        { userId: testDj._id.toString(), role: 'DJ' }
+        { userId: testDj._id.toString(), role: 'DJ' },
       );
 
       // Try to suggest (should fail)
@@ -639,8 +639,8 @@ describe('Socket.IO Integration Tests (No Mocks)', () => {
           'New Song',
           'Artist',
           undefined,
-          testActor
-        )
+          testActor,
+        ),
       ).rejects.toThrow('on cooldown');
     });
   });

@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 const BYTES_PER_HASH = 8;
 

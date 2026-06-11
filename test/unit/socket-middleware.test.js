@@ -29,7 +29,7 @@ describe('socketAuthMiddleware', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     mockSocket = {
       handshake: {
         headers: {},
@@ -39,7 +39,7 @@ describe('socketAuthMiddleware', () => {
       user: null,
       token: null,
     };
-    
+
     mockNext = jest.fn();
   });
 
@@ -59,7 +59,7 @@ describe('socketAuthMiddleware', () => {
 
   test('should accept token from auth object', async () => {
     mockSocket.handshake.auth.token = 'valid-token';
-    
+
     authService.validateDefaultToken.mockResolvedValue({
       decoded: { userId: 'user-1', role: 'DJ' },
       user: { role: 'DJ' },
@@ -76,7 +76,7 @@ describe('socketAuthMiddleware', () => {
 
   test('should accept token from query params', async () => {
     mockSocket.handshake.query.token = 'valid-token';
-    
+
     authService.validateDefaultToken.mockResolvedValue({
       decoded: { userId: 'user-2', role: 'ATTENDEE' },
       user: { role: 'ATTENDEE' },
@@ -90,7 +90,7 @@ describe('socketAuthMiddleware', () => {
 
   test('should accept token from Authorization header', async () => {
     mockSocket.handshake.headers.authorization = 'Bearer header-token';
-    
+
     authService.validateDefaultToken.mockResolvedValue({
       decoded: { userId: 'user-3', role: 'DJ' },
       user: { role: 'DJ' },
@@ -105,7 +105,7 @@ describe('socketAuthMiddleware', () => {
     mockSocket.handshake.auth.token = 'auth-token';
     mockSocket.handshake.query.token = 'query-token';
     mockSocket.handshake.headers.authorization = 'Bearer header-token';
-    
+
     authService.validateDefaultToken.mockResolvedValue({
       decoded: { userId: 'user-1', role: 'DJ' },
       user: { role: 'DJ' },
@@ -118,7 +118,7 @@ describe('socketAuthMiddleware', () => {
 
   test('should fall back to phone-microphone token', async () => {
     mockSocket.handshake.auth.token = 'phone-token';
-    
+
     authService.validateDefaultToken.mockRejectedValue(new Error('Invalid'));
     verifyToken.mockReturnValue({
       userId: 'phone-1',
@@ -134,7 +134,7 @@ describe('socketAuthMiddleware', () => {
 
   test('should reject invalid fallback token type', async () => {
     mockSocket.handshake.auth.token = 'invalid-token';
-    
+
     authService.validateDefaultToken.mockRejectedValue(new Error('Invalid'));
     verifyToken.mockReturnValue({
       userId: 'user-1',
@@ -148,7 +148,7 @@ describe('socketAuthMiddleware', () => {
 
   test('should attach token to socket object', async () => {
     mockSocket.handshake.auth.token = 'my-token';
-    
+
     authService.validateDefaultToken.mockResolvedValue({
       decoded: { userId: 'user-1', role: 'DJ' },
       user: { role: 'DJ' },
@@ -161,7 +161,7 @@ describe('socketAuthMiddleware', () => {
 
   test('should convert userId to string', async () => {
     mockSocket.handshake.auth.token = 'valid-token';
-    
+
     authService.validateDefaultToken.mockResolvedValue({
       decoded: { userId: 'user-1', role: 'DJ' },
       user: { role: 'DJ' },
@@ -174,9 +174,9 @@ describe('socketAuthMiddleware', () => {
 
   test('should log auth failures', async () => {
     const { logger } = require('../../src/utils');
-    
+
     mockSocket.handshake.auth.token = 'bad-token';
-    
+
     authService.validateDefaultToken.mockRejectedValue(new Error('Failed'));
 
     await socketAuthMiddleware(mockSocket, mockNext);

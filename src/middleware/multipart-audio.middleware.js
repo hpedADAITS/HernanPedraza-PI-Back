@@ -45,7 +45,7 @@ function parseMultipart(buffer, boundary) {
     const headerEnd = buffer.indexOf(Buffer.from('\r\n\r\n'), offset);
     if (headerEnd === -1) break;
     const headers = buffer.toString('utf8', offset, headerEnd);
-    let dataStart = headerEnd + 4;
+    const dataStart = headerEnd + 4;
     let dataEnd = buffer.indexOf(Buffer.from(`\r\n--${boundary}`), dataStart);
     if (dataEnd === -1) dataEnd = buffer.length;
 

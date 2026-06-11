@@ -64,7 +64,7 @@ const createTestEvent = async (overrides = {}) => {
 // Helper to create a real participant
 const createTestParticipant = async (eventId, overrides = {}) => {
   const nickname = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
+
   // Create a linked user if userId is not provided
   let user = overrides.userId;
   if (!user) {
@@ -77,7 +77,7 @@ const createTestParticipant = async (eventId, overrides = {}) => {
       isActive: true,
     });
   }
-  
+
   const participant = await ParticipantModel.create({
     eventId,
     nickname,
@@ -86,11 +86,11 @@ const createTestParticipant = async (eventId, overrides = {}) => {
     userId: user._id,
     ...overrides,
   });
-  
+
   // Update participant with user reference if needed
   participant.userId = user._id;
   await participant.save();
-  
+
   return participant;
 };
 
@@ -117,7 +117,7 @@ describe('VotesService - Real Implementation Tests', () => {
       const song = await createTestSong(event._id, participant._id);
 
       await expect(
-        votesService.castVote(song._id, participant._id, 0, { userId: participant.userId?.toString() })
+        votesService.castVote(song._id, participant._id, 0, { userId: participant.userId?.toString() }),
       ).rejects.toThrow('Vote value must be 1 or -1');
     });
 
@@ -127,7 +127,7 @@ describe('VotesService - Real Implementation Tests', () => {
       const song = await createTestSong(event._id, participant._id);
 
       await expect(
-        votesService.castVote(song._id, participant._id, 2, { userId: participant.userId?.toString() })
+        votesService.castVote(song._id, participant._id, 2, { userId: participant.userId?.toString() }),
       ).rejects.toThrow('Vote value must be 1 or -1');
     });
 
@@ -137,7 +137,7 @@ describe('VotesService - Real Implementation Tests', () => {
       const fakeSongId = new mongoose.Types.ObjectId();
 
       await expect(
-        votesService.castVote(fakeSongId, participant._id, 1, { userId: participant.userId?.toString() })
+        votesService.castVote(fakeSongId, participant._id, 1, { userId: participant.userId?.toString() }),
       ).rejects.toThrow('Song not found');
     });
 
@@ -147,7 +147,7 @@ describe('VotesService - Real Implementation Tests', () => {
       const song = await createTestSong(event._id, participant._id);
 
       await expect(
-        votesService.castVote(song._id, participant._id, 1, { userId: participant.userId?.toString() })
+        votesService.castVote(song._id, participant._id, 1, { userId: participant.userId?.toString() }),
       ).rejects.toThrow('Voting is disabled for this event');
     });
 
@@ -159,7 +159,7 @@ describe('VotesService - Real Implementation Tests', () => {
       const song = await createTestSong(event._id, participant._id);
 
       await expect(
-        votesService.castVote(song._id, participant._id, -1, { userId: participant.userId?.toString() })
+        votesService.castVote(song._id, participant._id, -1, { userId: participant.userId?.toString() }),
       ).rejects.toThrow('Downvotes are disabled for this event');
     });
   });
@@ -204,7 +204,7 @@ describe('VotesService - Real Implementation Tests', () => {
       const fakeSongId = new mongoose.Types.ObjectId();
 
       await expect(
-        votesService.removeVote(fakeSongId, participant._id, { userId: participant.userId?.toString() })
+        votesService.removeVote(fakeSongId, participant._id, { userId: participant.userId?.toString() }),
       ).rejects.toThrow('Song not found');
     });
 

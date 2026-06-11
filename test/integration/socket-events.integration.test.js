@@ -1,6 +1,6 @@
 /**
  * test/integration/socket-events.integration.test.js
- * 
+ *
  * Socket event broadcast tests with REAL callbacks
  * Tests the complete flow: handler -> broadcast
  */

@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 function nextPow2(n) {
   return 1 << Math.ceil(Math.log2(Math.max(1, n)));
@@ -12,7 +12,7 @@ function reverseBits(x, bits) {
 
 function fft(real, imag) {
   const n = real.length;
-  if (n !== imag.length || (n & (n - 1))) throw new Error("FFT length must be a power of two");
+  if (n !== imag.length || (n & (n - 1))) throw new Error('FFT length must be a power of two');
 
   const bits = Math.log2(n);
   for (let i = 0; i < n; i++) {

@@ -314,12 +314,12 @@ class FriendsService {
       toUserId: request.toUserId.toString(),
       other: other
         ? {
-            id: other._id.toString(),
-            displayName: other.displayName || 'Unknown user',
-            profilePicture: other.profilePicture || null,
-            role: other.role,
-            emailRegistered: Boolean(other.emailRegistered),
-          }
+          id: other._id.toString(),
+          displayName: other.displayName || 'Unknown user',
+          profilePicture: other.profilePicture || null,
+          role: other.role,
+          emailRegistered: Boolean(other.emailRegistered),
+        }
         : null,
     };
   }
@@ -355,12 +355,12 @@ class FriendsService {
       toUserId: invite.toUserId.toString(),
       other: other
         ? {
-            id: other._id.toString(),
-            displayName: other.displayName || 'Unknown user',
-            profilePicture: other.profilePicture || null,
-            role: other.role,
-            emailRegistered: Boolean(other.emailRegistered),
-          }
+          id: other._id.toString(),
+          displayName: other.displayName || 'Unknown user',
+          profilePicture: other.profilePicture || null,
+          role: other.role,
+          emailRegistered: Boolean(other.emailRegistered),
+        }
         : null,
     };
   }

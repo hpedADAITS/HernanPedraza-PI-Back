@@ -60,21 +60,33 @@ function extractFloat32Pcm(payload) {
     if (payload.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
       throw new Error(`Invalid Float32 PCM byte length: ${payload.byteLength}`);
     }
-    return new Float32Array(
-      payload.buffer,
-      payload.byteOffset,
-      payload.byteLength / Float32Array.BYTES_PER_ELEMENT,
-    );
+
+    if (payload.byteOffset % Float32Array.BYTES_PER_ELEMENT === 0) {
+      return new Float32Array(
+        payload.buffer,
+        payload.byteOffset,
+        payload.byteLength / Float32Array.BYTES_PER_ELEMENT,
+      );
+    }
+
+    const aligned = new ArrayBuffer(payload.byteLength);
+    new Uint8Array(aligned).set(new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength));
+    return new Float32Array(aligned);
   }
   if (ArrayBuffer.isView(payload)) {
     if (payload.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
       throw new Error(`Invalid typed PCM byte length: ${payload.byteLength}`);
     }
-    return new Float32Array(
-      payload.buffer,
-      payload.byteOffset,
-      payload.byteLength / Float32Array.BYTES_PER_ELEMENT,
-    );
+    if (payload.byteOffset % Float32Array.BYTES_PER_ELEMENT === 0) {
+      return new Float32Array(
+        payload.buffer,
+        payload.byteOffset,
+        payload.byteLength / Float32Array.BYTES_PER_ELEMENT,
+      );
+    }
+    const aligned = new ArrayBuffer(payload.byteLength);
+    new Uint8Array(aligned).set(new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength));
+    return new Float32Array(aligned);
   }
   throw new Error(`Unsupported audio chunk payload: ${typeof payload}`);
 }
@@ -96,93 +108,93 @@ function emitMatchDiff(socket, io, eventId, diff) {
   const queueContext = diff.payload?.queueContext;
 
   switch (diff.event) {
-    case SESSION_EVENT.CANDIDATE:
-      socket.emit('audio_match_candidate', {
+  case SESSION_EVENT.CANDIDATE:
+    socket.emit('audio_match_candidate', {
+      ...base,
+      state: diff.state,
+      candidate: diff.payload,
+    });
+    emitLegacyUpdate([toLegacyMatch(diff.payload)]);
+    break;
+  case SESSION_EVENT.HOLD_STARTED:
+    socket.emit('audio_match_hold', {
+      ...base,
+      state: diff.state,
+      candidate: diff.payload,
+      holdStartedAt: Date.now(),
+    });
+    emitLegacyUpdate([toLegacyMatch(diff.payload)]);
+    break;
+  case SESSION_EVENT.HOLD_UPDATED:
+    socket.emit('audio_match_hold_updated', {
+      ...base,
+      state: diff.state,
+      candidate: diff.payload,
+    });
+    emitLegacyUpdate([toLegacyMatch(diff.payload)]);
+    break;
+  case SESSION_EVENT.LOCKED:
+    socket.emit('audio_match_locked', {
+      ...base,
+      state: diff.state,
+      candidate: diff.payload,
+    });
+    emitLegacyUpdate([toLegacyMatch(diff.payload)]);
+    // Broadcast the lock to the whole event room so other clients
+    // (DJ dashboard, attendee coverflow) can react.
+    if (io) {
+      toEventRoom(io, eventId).emit('audio_match_locked', {
         ...base,
         state: diff.state,
         candidate: diff.payload,
       });
-      emitLegacyUpdate([toLegacyMatch(diff.payload)]);
-      break;
-    case SESSION_EVENT.HOLD_STARTED:
-      socket.emit('audio_match_hold', {
-        ...base,
-        state: diff.state,
-        candidate: diff.payload,
-        holdStartedAt: Date.now(),
-      });
-      emitLegacyUpdate([toLegacyMatch(diff.payload)]);
-      break;
-    case SESSION_EVENT.HOLD_UPDATED:
-      socket.emit('audio_match_hold_updated', {
-        ...base,
-        state: diff.state,
-        candidate: diff.payload,
-      });
-      emitLegacyUpdate([toLegacyMatch(diff.payload)]);
-      break;
-    case SESSION_EVENT.LOCKED:
-      socket.emit('audio_match_locked', {
-        ...base,
-        state: diff.state,
-        candidate: diff.payload,
-      });
-      emitLegacyUpdate([toLegacyMatch(diff.payload)]);
-      // Broadcast the lock to the whole event room so other clients
-      // (DJ dashboard, attendee coverflow) can react.
-      if (io) {
-        toEventRoom(io, eventId).emit('audio_match_locked', {
-          ...base,
-          state: diff.state,
-          candidate: diff.payload,
-        });
-      }
-      break;
-    case SESSION_EVENT.RELEASED:
-      // Clear the auto-send guard when the locked candidate is released
-      // so the same trackId can be auto-sent again on a future re-match
-      // (e.g. the same song plays later in the night). Only clear it
-      // when the released trackId matches what we previously auto-sent
-      // — a release triggered by a DJ intent on a different track
-      // should not poison the auto-send for the actually-playing one.
-      const releasedTrackId = diff.payload?.trackId;
-      if (
-        releasedTrackId &&
+    }
+    break;
+  case SESSION_EVENT.RELEASED:
+    // Clear the auto-send guard when the locked candidate is released
+    // so the same trackId can be auto-sent again on a future re-match
+    // (e.g. the same song plays later in the night). Only clear it
+    // when the released trackId matches what we previously auto-sent
+    // — a release triggered by a DJ intent on a different track
+    // should not poison the auto-send for the actually-playing one.
+    const releasedTrackId = diff.payload?.trackId;
+    if (
+      releasedTrackId &&
         socket.audioMatch?.autoSentTrackId === releasedTrackId
-      ) {
-        socket.audioMatch.autoSentTrackId = '';
-      }
-      socket.emit('audio_match_released', {
+    ) {
+      socket.audioMatch.autoSentTrackId = '';
+    }
+    socket.emit('audio_match_released', {
+      ...base,
+      state: diff.state,
+      reason: diff.payload?.reason || 'released',
+      previousCandidate: diff.payload || null,
+    });
+    emitLegacyUpdate([]);
+    if (io) {
+      toEventRoom(io, eventId).emit('audio_match_released', {
         ...base,
         state: diff.state,
         reason: diff.payload?.reason || 'released',
         previousCandidate: diff.payload || null,
       });
-      emitLegacyUpdate([]);
-      if (io) {
-        toEventRoom(io, eventId).emit('audio_match_released', {
-          ...base,
-          state: diff.state,
-          reason: diff.payload?.reason || 'released',
-          previousCandidate: diff.payload || null,
-        });
-      }
-      break;
-    case SESSION_EVENT.QUEUE_UPDATED:
-      socket.emit('audio_match_queue_updated', {
-        ...base,
-        state: diff.state,
-        trackId: diff.payload?.trackId,
-        queueContext,
-      });
-      break;
-    case SESSION_EVENT.IDLE:
-      socket.emit('audio_match_idle', { ...base, reason: diff.payload?.reason });
-      emitLegacyUpdate([]);
-      break;
-    default:
-      // Unknown event — do not emit anything.
-      break;
+    }
+    break;
+  case SESSION_EVENT.QUEUE_UPDATED:
+    socket.emit('audio_match_queue_updated', {
+      ...base,
+      state: diff.state,
+      trackId: diff.payload?.trackId,
+      queueContext,
+    });
+    break;
+  case SESSION_EVENT.IDLE:
+    socket.emit('audio_match_idle', { ...base, reason: diff.payload?.reason });
+    emitLegacyUpdate([]);
+    break;
+  default:
+    // Unknown event — do not emit anything.
+    break;
   }
 }
 
@@ -200,7 +212,7 @@ async function sendLockedUpNextNow(socket, io, eventId, candidate) {
   const queueContext = candidate.queueContext || {};
   const playing = queueContext.playing;
   const nextApproved = queueContext.nextApproved;
-  
+
   if (playing) {
     await broadcastLockedNowPlaying(socket, io, eventId, candidate, playing);
   }
@@ -425,6 +437,28 @@ const handleAudioMatchChunk = async (socket, io, data, callback) => {
     const hashes = session.fingerprinter.process(samples) ?? [];
     const now = Date.now();
     const AUDIO_MATCH_INTERVAL_MS = 700;
+
+    /* Debug fan-out: when DEBUG_MODE is on, push the freshly generated
+       hashes back to the phone socket so a popup debug window can show
+       them in real time. The payload is the full {hash, sourceTime} array
+       so the popup can render the actual values, not just the count.
+       Throttled to ~10 Hz to keep the wire small on a phone uplink. */
+    if (process.env.DEBUG_MODE === 'true' && hashes.length) {
+      const DEBUG_EMIT_MIN_INTERVAL_MS = 100;
+      if (now - (session._lastDebugHashEmitAt || 0) >= DEBUG_EMIT_MIN_INTERVAL_MS) {
+        session._lastDebugHashEmitAt = now;
+        socket.emit('debug_audio_hashes', {
+          eventId: session.eventId,
+          chunkIndex: (session._debugHashChunkIndex = (session._debugHashChunkIndex || 0) + 1),
+          hashes,
+          hashesGenerated: hashes.length,
+          rawSamplesLength: rawSamples.length,
+          inputSampleRate,
+          targetSampleRate: TARGET_SAMPLE_RATE,
+          timestamp: now,
+        });
+      }
+    }
 
     if (!session._lastDebugLogAt || now - session._lastDebugLogAt > 60000) {
       session._lastDebugLogAt = now;

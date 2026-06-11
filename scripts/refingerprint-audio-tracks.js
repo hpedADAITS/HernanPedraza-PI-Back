@@ -26,18 +26,18 @@
  * it. Without `--clear-missing`, missing tracks are left untouched and logged.
  */
 
-const fs = require("fs");
-const path = require("path");
-const mongoose = require("mongoose");
+const fs = require('fs');
+const path = require('path');
+const mongoose = require('mongoose');
 
-const config = require("../src/config");
+const config = require('../src/config');
 const {
   AudioTrackModel,
   AudioFingerprintModel,
   AudioFingerprintHashModel,
   connectMongo,
-} = require("../src/models/schema");
-const { fingerprintWavStreamed } = require("../src/services/audio-recognition/fingerprint");
+} = require('../src/models/schema');
+const { fingerprintWavStreamed } = require('../src/services/audio-recognition/fingerprint');
 
 const INSERT_CHUNK = 5000;
 
@@ -45,14 +45,14 @@ function parseArgs(argv) {
   const out = { audioDir: null, dryRun: false, clearMissing: false, manifest: null };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--dry-run") out.dryRun = true;
-    else if (arg === "--clear-missing") out.clearMissing = true;
-    else if (arg === "--audio-dir") out.audioDir = argv[++i];
-    else if (arg === "--manifest") out.manifest = argv[++i];
-    else if (arg === "--help" || arg === "-h") {
+    if (arg === '--dry-run') out.dryRun = true;
+    else if (arg === '--clear-missing') out.clearMissing = true;
+    else if (arg === '--audio-dir') out.audioDir = argv[++i];
+    else if (arg === '--manifest') out.manifest = argv[++i];
+    else if (arg === '--help' || arg === '-h') {
       console.log(
-        "Usage: node scripts/refingerprint-audio-tracks.js " +
-          "[--audio-dir <dir>] [--manifest <file>] [--dry-run] [--clear-missing]"
+        'Usage: node scripts/refingerprint-audio-tracks.js ' +
+          '[--audio-dir <dir>] [--manifest <file>] [--dry-run] [--clear-missing]',
       );
       process.exit(0);
     } else {
@@ -69,9 +69,9 @@ function loadManifest(manifestPath) {
   if (!fs.existsSync(resolved)) {
     throw new Error(`Manifest file not found: ${resolved}`);
   }
-  const parsed = JSON.parse(fs.readFileSync(resolved, "utf8"));
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error("Manifest must be a JSON object mapping trackId -> relative path");
+  const parsed = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('Manifest must be a JSON object mapping trackId -> relative path');
   }
   return parsed;
 }
@@ -117,7 +117,7 @@ async function refingerprintTrack(track, audioPath, dryRun) {
       if (!batch.length) return;
       await AudioFingerprintModel.updateOne(
         { trackId },
-        { $push: { hashes: { $each: batch.map(({ hash, time }) => ({ h: hash, t: time })) } } }
+        { $push: { hashes: { $each: batch.map(({ hash, time }) => ({ h: hash, t: time })) } } },
       );
       await AudioFingerprintHashModel.insertMany(
         batch.map(({ hash, time }) => ({
@@ -126,7 +126,7 @@ async function refingerprintTrack(track, audioPath, dryRun) {
           hash,
           sourceTime: time,
         })),
-        { ordered: false }
+        { ordered: false },
       );
     },
   });
@@ -141,7 +141,7 @@ async function refingerprintTrack(track, audioPath, dryRun) {
           pointsCount: totals.pointsCount,
           hashesCount: totals.hashesCount,
         },
-      }
+      },
     ),
     AudioTrackModel.updateOne(
       { _id: trackId },
@@ -152,7 +152,7 @@ async function refingerprintTrack(track, audioPath, dryRun) {
           pointsCount: totals.pointsCount,
           hashesCount: totals.hashesCount,
         },
-      }
+      },
     ),
   ]);
 
@@ -165,7 +165,7 @@ async function clearTrackFingerprints(track) {
   await AudioFingerprintModel.deleteMany({ trackId });
   await AudioTrackModel.updateOne(
     { _id: trackId },
-    { $set: { pointsCount: 0, hashesCount: 0 } }
+    { $set: { pointsCount: 0, hashesCount: 0 } },
   );
 }
 
@@ -174,8 +174,8 @@ async function main() {
 
   if (!opts.audioDir && !opts.manifest && !opts.clearMissing) {
     console.error(
-      "Nothing to do. Pass --audio-dir <dir> (with optional --manifest) to re-fingerprint, " +
-        "or --clear-missing to drop old fingerprints so DJS can re-upload."
+      'Nothing to do. Pass --audio-dir <dir> (with optional --manifest) to re-fingerprint, ' +
+        'or --clear-missing to drop old fingerprints so DJS can re-upload.',
     );
     process.exit(2);
   }
@@ -211,7 +211,7 @@ async function main() {
       } else {
         console.log(
           `  [MISSING] ${track._id}  (${track.title} - ${track.artist})  ` +
-            "-> re-upload required"
+            '-> re-upload required',
         );
       }
       continue;
@@ -221,8 +221,8 @@ async function main() {
       const result = await refingerprintTrack(track, audioPath, opts.dryRun);
       refingerprinted += 1;
       const summary = opts.dryRun
-        ? "dry-run"
-        : `${result.hashesCount} hashes${result.capped ? " (capped)" : ""}`;
+        ? 'dry-run'
+        : `${result.hashesCount} hashes${result.capped ? ' (capped)' : ''}`;
       console.log(`  [OK] ${track._id}  (${track.title} - ${track.artist})  -> ${summary}`);
     } catch (err) {
       failed += 1;
@@ -230,18 +230,18 @@ async function main() {
     }
   }
 
-  console.log("");
-  console.log("Summary:");
+  console.log('');
+  console.log('Summary:');
   console.log(`  refingerprinted : ${refingerprinted}`);
   console.log(`  missing         : ${missing}`);
   if (opts.clearMissing) console.log(`  cleared         : ${cleared}`);
   console.log(`  failed          : ${failed}`);
-  if (opts.dryRun) console.log("  (dry-run: no changes written)");
+  if (opts.dryRun) console.log('  (dry-run: no changes written)');
 }
 
 main()
   .catch((err) => {
-    console.error("Migration failed:", err);
+    console.error('Migration failed:', err);
     process.exitCode = 1;
   })
   .finally(async () => {

@@ -71,13 +71,13 @@ describe('EventsService - Real Implementation Tests', () => {
         { userId: user._id.toString(), role: 'DJ' },
         'Test Event',
         'Test Description',
-        new Date()
+        new Date(),
       );
 
       expect(result).toBeDefined();
       expect(result.name).toBe('Test Event');
       expect(result.ownerId.toString()).toBe(user._id.toString());
-      
+
       // Verify event was saved
       const savedEvent = await EventModel.findById(result._id);
       expect(savedEvent).toBeDefined();
@@ -90,7 +90,7 @@ describe('EventsService - Real Implementation Tests', () => {
         { userId: fakeUserId.toString(), role: 'DJ' },
         'Event',
         'Desc',
-        new Date()
+        new Date(),
       )).rejects.toThrow('User not found');
     });
 
@@ -101,7 +101,7 @@ describe('EventsService - Real Implementation Tests', () => {
         { userId: user._id.toString(), role: 'ATTENDEE' },
         'Event',
         'Desc',
-        new Date()
+        new Date(),
       )).rejects.toThrow('Only DJs can create events');
     });
 
@@ -112,7 +112,7 @@ describe('EventsService - Real Implementation Tests', () => {
         { userId: user._id.toString(), role: 'DJ' },
         'Event',
         'Desc',
-        new Date()
+        new Date(),
       )).rejects.toThrow('Please confirm your email');
     });
   });
@@ -169,7 +169,7 @@ describe('EventsService - Real Implementation Tests', () => {
   describe('listActiveEvents', () => {
     test('should return active events', async () => {
       const user = await createTestUser();
-      
+
       await EventModel.create({
         name: 'Event 1',
         ownerId: user._id,
@@ -194,7 +194,7 @@ describe('EventsService - Real Implementation Tests', () => {
 
     test('should respect pagination', async () => {
       const user = await createTestUser();
-      
+
       // Create 5 events
       for (let i = 0; i < 5; i++) {
         await EventModel.create({
@@ -203,7 +203,7 @@ describe('EventsService - Real Implementation Tests', () => {
           eventId: `EVENT-${i}-${Date.now()}`,
           accessCode: `TEST${i}${Date.now()}`,
           state: 'LIVE',
-        startsAt: new Date(),
+          startsAt: new Date(),
         });
       }
 
@@ -238,7 +238,7 @@ describe('EventsService - Real Implementation Tests', () => {
     test('should throw Unauthorized for non-owner', async () => {
       const owner = await createTestUser();
       const otherUser = await createTestUser({ email: 'other@test.com' });
-      
+
       const event = await EventModel.create({
         name: 'Test Event',
         ownerId: owner._id,
@@ -276,7 +276,7 @@ describe('EventsService - Real Implementation Tests', () => {
       const result = await eventsService.cancelEvent(event._id.toString(), user._id.toString(), 'Test reason');
 
       expect(result.state).toBe('CANCELLED');
-      
+
       // Verify was saved with the reason
       const savedEvent = await EventModel.findById(event._id);
       expect(savedEvent.state).toBe('CANCELLED');
@@ -286,7 +286,7 @@ describe('EventsService - Real Implementation Tests', () => {
     test('should throw Unauthorized for non-owner', async () => {
       const owner = await createTestUser();
       const otherUser = await createTestUser({ email: 'other@test.com' });
-      
+
       const event = await EventModel.create({
         name: 'Test Event',
         ownerId: owner._id,
@@ -329,7 +329,7 @@ describe('EventsService - Real Implementation Tests', () => {
     test('should throw Unauthorized for non-owner', async () => {
       const owner = await createTestUser();
       const otherUser = await createTestUser({ email: 'other@test.com' });
-      
+
       const event = await EventModel.create({
         name: 'Test Event',
         ownerId: owner._id,
@@ -373,7 +373,7 @@ describe('EventsService - Real Implementation Tests', () => {
     test('should throw Unauthorized for non-owner', async () => {
       const owner = await createTestUser();
       const otherUser = await createTestUser({ email: 'other@test.com' });
-      
+
       const event = await EventModel.create({
         name: 'Test Event',
         ownerId: owner._id,
@@ -416,7 +416,7 @@ describe('EventsService - Real Implementation Tests', () => {
     test('should throw Unauthorized for non-owner', async () => {
       const owner = await createTestUser();
       const otherUser = await createTestUser({ email: 'other@test.com' });
-      
+
       const event = await EventModel.create({
         name: 'Test Event',
         ownerId: owner._id,
@@ -434,7 +434,7 @@ describe('EventsService - Real Implementation Tests', () => {
   describe('getActiveEventForOwner', () => {
     test('should return active event for owner', async () => {
       const user = await createTestUser();
-      
+
       await EventModel.create({
         name: 'Active Event',
         ownerId: user._id,

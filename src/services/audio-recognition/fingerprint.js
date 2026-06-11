@@ -1,16 +1,16 @@
-"use strict";
+'use strict';
 
-const fs = require("fs");
-const { createConstellation } = require("./constellation");
-const { createHashes } = require("./hashes");
+const fs = require('fs');
+const { createConstellation } = require('./constellation');
+const { createHashes } = require('./hashes');
 const {
   readWavNormalized,
   parseWavHeader,
   decodePcm,
   resampleLinear,
   TARGET_SAMPLE_RATE,
-} = require("./wav");
-const { StreamingFingerprinter } = require("./streaming");
+} = require('./wav');
+const { StreamingFingerprinter } = require('./streaming');
 
 const STREAM_READ_CHUNK_BYTES = 64 * 1024;
 const MAX_FINGERPRINT_HASHES = 80_000;
@@ -22,7 +22,7 @@ const MAX_AUDIO_SECONDS = 600;
 async function fingerprintWav(file, songId = null) {
   const { sampleRate, samples, originalSampleRate } = await readWavNormalized(
     file,
-    TARGET_SAMPLE_RATE
+    TARGET_SAMPLE_RATE,
   );
 
   const constellation = createConstellation(samples, sampleRate);
@@ -32,7 +32,7 @@ async function fingerprintWav(file, songId = null) {
       hash,
       time,
       songId: id,
-    })
+    }),
   );
 
   return {
@@ -100,7 +100,7 @@ async function fingerprintWavStreamed(file, options = {}) {
     }
   };
 
-  const fd = await fs.promises.open(file, "r");
+  const fd = await fs.promises.open(file, 'r');
   try {
     let offset = dataOffset;
     const end = dataOffset + dataSize;
@@ -157,7 +157,7 @@ function saveFingerprint(fingerprint, file) {
 }
 
 function loadFingerprint(file) {
-  return JSON.parse(fs.readFileSync(file, "utf8"));
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
 function hashMapFromFingerprint(fingerprint) {
@@ -165,7 +165,7 @@ function hashMapFromFingerprint(fingerprint) {
     fingerprint.hashes.map(({ hash, time, songId = null }) => [
       hash,
       [time, songId],
-    ])
+    ]),
   );
 }
 

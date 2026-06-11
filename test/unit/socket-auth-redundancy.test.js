@@ -149,7 +149,7 @@ describe('Socket Auth Redundancy Issue', () => {
     const result = await assertEventRoomAccess(
       mockSocket,
       testEvent._id.toString(),
-      testParticipant._id.toString()
+      testParticipant._id.toString(),
     );
 
     // Verify the access was granted

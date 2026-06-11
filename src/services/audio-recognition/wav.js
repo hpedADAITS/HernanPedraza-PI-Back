@@ -1,6 +1,6 @@
-"use strict";
+'use strict';
 
-const fs = require("fs");
+const fs = require('fs');
 
 const PCM = 1;
 const FLOAT = 3;
@@ -31,17 +31,17 @@ function readInt24LE(data, off) {
 }
 
 async function parseWavHeader(filePath) {
-  const fd = await fs.promises.open(filePath, "r");
+  const fd = await fs.promises.open(filePath, 'r');
   try {
     const headerSize = 1024;
     const header = Buffer.alloc(headerSize);
     const { bytesRead } = await fd.read(header, 0, headerSize, 0);
 
     if (
-      header.toString("ascii", 0, 4) !== "RIFF" ||
-      header.toString("ascii", 8, 12) !== "WAVE"
+      header.toString('ascii', 0, 4) !== 'RIFF' ||
+      header.toString('ascii', 8, 12) !== 'WAVE'
     ) {
-      throw new Error("Not a RIFF/WAVE file");
+      throw new Error('Not a RIFF/WAVE file');
     }
 
     let fmt = null;
@@ -50,18 +50,18 @@ async function parseWavHeader(filePath) {
 
     let off = 12;
     while (off + 8 <= bytesRead) {
-      const id = header.toString("ascii", off, off + 4);
+      const id = header.toString('ascii', off, off + 4);
       const size = header.readUInt32LE(off + 4);
       const start = off + 8;
 
-      if (id === "fmt ") {
+      if (id === 'fmt ') {
         fmt = {
           format: header.readUInt16LE(start),
           channels: header.readUInt16LE(start + 2),
           sampleRate: header.readUInt32LE(start + 4),
           bits: header.readUInt16LE(start + 14),
         };
-      } else if (id === "data") {
+      } else if (id === 'data') {
         dataChunkStart = start;
         dataSize = size;
         break;
@@ -71,7 +71,7 @@ async function parseWavHeader(filePath) {
     }
 
     if (!fmt || !dataSize) {
-      throw new Error("Missing fmt/data chunk");
+      throw new Error('Missing fmt/data chunk');
     }
 
     return { fmt, dataOffset: dataChunkStart, dataSize };
@@ -129,7 +129,7 @@ async function readWavNormalized(filePath, targetSampleRate = TARGET_SAMPLE_RATE
 
   const decodedSamples = new Float32Array(totalFrames);
 
-  const fd = await fs.promises.open(filePath, "r");
+  const fd = await fs.promises.open(filePath, 'r');
   try {
     let offset = dataOffset;
     let decodedOffset = 0;
@@ -166,7 +166,7 @@ async function readWavNormalizedChunked(filePath, targetSampleRate = TARGET_SAMP
 
   let frameOffset = 0;
 
-  const fd = await fs.promises.open(filePath, "r");
+  const fd = await fs.promises.open(filePath, 'r');
   try {
     let offset = dataOffset;
     const chunkSize = 64 * 1024;

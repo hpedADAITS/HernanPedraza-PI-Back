@@ -109,7 +109,7 @@ describe('AuthService - Real Implementation Tests', () => {
       });
 
       await expect(
-        authService.validateDefaultToken(wrongTypeToken)
+        authService.validateDefaultToken(wrongTypeToken),
       ).rejects.toThrow('Invalid token type');
     });
 
@@ -124,7 +124,7 @@ describe('AuthService - Real Implementation Tests', () => {
       });
 
       await expect(
-        authService.validateDefaultToken(token)
+        authService.validateDefaultToken(token),
       ).rejects.toThrow();
     });
 
@@ -142,7 +142,7 @@ describe('AuthService - Real Implementation Tests', () => {
       const token = authService.buildAuthToken(inactiveUser);
 
       await expect(
-        authService.validateDefaultToken(token)
+        authService.validateDefaultToken(token),
       ).rejects.toThrow();
     });
 
@@ -167,7 +167,7 @@ describe('AuthService - Real Implementation Tests', () => {
       });
 
       await expect(
-        authService.validateDefaultToken(oldToken)
+        authService.validateDefaultToken(oldToken),
       ).rejects.toThrow();
     });
   });
@@ -178,7 +178,7 @@ describe('AuthService - Real Implementation Tests', () => {
         'new@test.com',
         'SecurePass123!',
         'New DJ',
-        'DJ'
+        'DJ',
       );
 
       expect(result.token).toBeDefined();
@@ -200,13 +200,13 @@ describe('AuthService - Real Implementation Tests', () => {
 
       // Try to register with same email
       await expect(
-        authService.register('exists@test.com', 'SecurePass456!', 'Second', 'DJ')
+        authService.register('exists@test.com', 'SecurePass456!', 'Second', 'DJ'),
       ).rejects.toThrow();
     });
 
     test('should reject weak password (real validation)', async () => {
       await expect(
-        authService.register('weak@test.com', '12345', 'Weak', 'ATTENDEE')
+        authService.register('weak@test.com', '12345', 'Weak', 'ATTENDEE'),
       ).rejects.toThrow();
     });
 
@@ -215,7 +215,7 @@ describe('AuthService - Real Implementation Tests', () => {
         'attendee@test.com',
         'SecurePass123!',
         'Attendee User',
-        'ATTENDEE'
+        'ATTENDEE',
       );
 
       expect(result.user.role).toBe('ATTENDEE');
@@ -246,13 +246,13 @@ describe('AuthService - Real Implementation Tests', () => {
 
       // Try login with wrong password
       await expect(
-        authService.login('wrongpass@test.com', 'WrongPassword123!')
+        authService.login('wrongpass@test.com', 'WrongPassword123!'),
       ).rejects.toThrow();
     });
 
     test('should reject unknown email', async () => {
       await expect(
-        authService.login('nobody@test.com', 'AnyPassword123!')
+        authService.login('nobody@test.com', 'AnyPassword123!'),
       ).rejects.toThrow();
     });
 
@@ -272,7 +272,7 @@ describe('AuthService - Real Implementation Tests', () => {
         'logout@test.com',
         'SecurePass123!',
         'Logout User',
-        'ATTENDEE'
+        'ATTENDEE',
       );
       const user = await UserModel.findOne({ email: 'logout@test.com' });
       expect(user.authTokenVersion).toBe(0);
@@ -287,7 +287,7 @@ describe('AuthService - Real Implementation Tests', () => {
 
     test('should throw when user not found', async () => {
       await expect(
-        authService.logout(new mongoose.Types.ObjectId().toString())
+        authService.logout(new mongoose.Types.ObjectId().toString()),
       ).rejects.toThrow('User not found');
     });
   });
@@ -312,7 +312,7 @@ describe('AuthService - Real Implementation Tests', () => {
 
     test('should throw when user not found', async () => {
       await expect(
-        authService.getCurrentUser(new mongoose.Types.ObjectId().toString())
+        authService.getCurrentUser(new mongoose.Types.ObjectId().toString()),
       ).rejects.toThrow('User not found');
     });
   });
@@ -346,7 +346,7 @@ describe('AuthService - Real Implementation Tests', () => {
       });
 
       await expect(
-        authService.updateProfile(user._id.toString(), { displayName: 'X' })
+        authService.updateProfile(user._id.toString(), { displayName: 'X' }),
       ).rejects.toThrow('Display name must be at least 2 characters');
     });
   });
@@ -362,7 +362,7 @@ describe('AuthService - Real Implementation Tests', () => {
       });
 
       await expect(
-        authService.verifyEmail(user._id.toString())
+        authService.verifyEmail(user._id.toString()),
       ).rejects.toThrow('Only DJ accounts require email verification');
     });
 
@@ -394,7 +394,7 @@ describe('AuthService - Real Implementation Tests', () => {
         'invalidate@test.com',
         'SecurePass123!',
         'Invalidate User',
-        'ATTENDEE'
+        'ATTENDEE',
       );
       const oldToken = registerResult.token;
 
@@ -403,7 +403,7 @@ describe('AuthService - Real Implementation Tests', () => {
 
       // Try to validate old token
       await expect(
-        authService.validateDefaultToken(oldToken)
+        authService.validateDefaultToken(oldToken),
       ).rejects.toThrow();
     });
 
@@ -424,7 +424,7 @@ describe('AuthService - Real Implementation Tests', () => {
 
       // Old token should be invalid
       await expect(
-        authService.validateDefaultToken(token1)
+        authService.validateDefaultToken(token1),
       ).rejects.toThrow();
 
       // New token should be valid

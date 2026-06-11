@@ -1,6 +1,6 @@
 /**
  * test/integration/socket-handlers.integration.test.js
- * 
+ *
  * Socket.IO handler tests with REAL callbacks and broadcasts
  * Tests the complete flow: emit -> handler -> service -> DB -> callback + broadcast
  */
@@ -171,7 +171,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           title: 'New Song',
           artist: 'New Artist',
         },
-        callback
+        callback,
       );
 
       // Check acknowledgment callback
@@ -184,7 +184,7 @@ describe('Socket.IO Handler Integration Tests', () => {
             artist: 'New Artist',
             status: 'PENDING',
           }),
-        })
+        }),
       );
 
       // Check broadcast
@@ -256,14 +256,14 @@ describe('Socket.IO Handler Integration Tests', () => {
           title: 'Song',
           artist: 'Artist',
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
           error: expect.any(String),
-        })
+        }),
       );
     });
 
@@ -277,14 +277,14 @@ describe('Socket.IO Handler Integration Tests', () => {
           eventId: testEvent._id.toString(),
           // Missing participantId, title, artist
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
           error: expect.stringContaining('Missing required fields'),
-        })
+        }),
       );
     });
 
@@ -300,14 +300,14 @@ describe('Socket.IO Handler Integration Tests', () => {
           title: '<script>',
           artist: 'Artist',
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
           error: expect.stringContaining('Song title contains invalid characters'),
-        })
+        }),
       );
     });
   });
@@ -326,7 +326,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
         },
-        callback
+        callback,
       );
 
       // Check acknowledgment
@@ -336,7 +336,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           data: expect.objectContaining({
             status: 'APPROVED',
           }),
-        })
+        }),
       );
 
       // Check broadcast
@@ -348,7 +348,7 @@ describe('Socket.IO Handler Integration Tests', () => {
               status: 'APPROVED',
             }),
           }),
-        ])
+        ]),
       );
 
       // Verify in database
@@ -372,14 +372,14 @@ describe('Socket.IO Handler Integration Tests', () => {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
           error: expect.any(String),
-        })
+        }),
       );
     });
   });
@@ -399,7 +399,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           songId: testSong._id.toString(),
           reason: 'Explicit content',
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
@@ -408,7 +408,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           data: expect.objectContaining({
             status: 'REJECTED',
           }),
-        })
+        }),
       );
 
       expect(broadcastedEvents).toEqual(
@@ -419,7 +419,7 @@ describe('Socket.IO Handler Integration Tests', () => {
               reason: 'Explicit content',
             }),
           }),
-        ])
+        ]),
       );
     });
   });
@@ -443,7 +443,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           songId: testSong._id.toString(),
           reason: 'Wrong song',
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
@@ -452,7 +452,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           data: expect.objectContaining({
             status: 'SKIPPED',
           }),
-        })
+        }),
       );
 
       const song = await SongModel.findById(testSong._id);
@@ -487,7 +487,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           eventId: testEvent._id.toString(),
           songId: testSong._id.toString(),
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
@@ -496,7 +496,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           data: expect.objectContaining({
             status: 'PLAYING',
           }),
-        })
+        }),
       );
 
       expect(broadcastedEvents).toEqual(
@@ -509,7 +509,7 @@ describe('Socket.IO Handler Integration Tests', () => {
               }),
             }),
           }),
-        ])
+        ]),
       );
     });
   });
@@ -529,13 +529,13 @@ describe('Socket.IO Handler Integration Tests', () => {
           participantId: testParticipant._id.toString(),
           value: 1,
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
-        })
+        }),
       );
 
       expect(broadcastedEvents).toEqual(
@@ -546,7 +546,7 @@ describe('Socket.IO Handler Integration Tests', () => {
               value: 1,
             }),
           }),
-        ])
+        ]),
       );
 
       const song = await SongModel.findById(testSong._id);
@@ -565,14 +565,14 @@ describe('Socket.IO Handler Integration Tests', () => {
           participantId: testParticipant._id.toString(),
           value: 5, // Invalid
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
           error: expect.stringContaining('Vote value must be'),
-        })
+        }),
       );
     });
   });
@@ -591,7 +591,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           participantId: testParticipant._id.toString(),
           value: 1,
         },
-        jest.fn()
+        jest.fn(),
       );
 
       broadcastedEvents = []; // Reset broadcasts
@@ -605,13 +605,13 @@ describe('Socket.IO Handler Integration Tests', () => {
           songId: testSong._id.toString(),
           participantId: testParticipant._id.toString(),
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
-        })
+        }),
       );
 
       expect(broadcastedEvents).toEqual(
@@ -619,7 +619,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           expect.objectContaining({
             event: 'vote_removed',
           }),
-        ])
+        ]),
       );
 
       const song = await SongModel.findById(testSong._id);
@@ -643,13 +643,13 @@ describe('Socket.IO Handler Integration Tests', () => {
           durationMs: 5000,
           reason: 'Spam',
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
-        })
+        }),
       );
 
       expect(broadcastedEvents).toEqual(
@@ -660,7 +660,7 @@ describe('Socket.IO Handler Integration Tests', () => {
               reason: 'Spam',
             }),
           }),
-        ])
+        ]),
       );
 
       const participant = await ParticipantModel.findById(testParticipant._id);
@@ -682,13 +682,13 @@ describe('Socket.IO Handler Integration Tests', () => {
           participantId: testParticipant._id.toString(),
           reason: 'Inappropriate behavior',
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
-        })
+        }),
       );
 
       expect(broadcastedEvents).toEqual(
@@ -699,7 +699,7 @@ describe('Socket.IO Handler Integration Tests', () => {
               reason: 'Inappropriate behavior',
             }),
           }),
-        ])
+        ]),
       );
 
       const participant = await ParticipantModel.findById(testParticipant._id);
@@ -719,7 +719,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           participantId: testParticipant._id.toString(),
           isPremium: true,
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
@@ -728,7 +728,7 @@ describe('Socket.IO Handler Integration Tests', () => {
           data: expect.objectContaining({
             isPremium: true,
           }),
-        })
+        }),
       );
 
       expect(broadcastedEvents).toEqual(
@@ -739,7 +739,7 @@ describe('Socket.IO Handler Integration Tests', () => {
               isPremium: true,
             }),
           }),
-        ])
+        ]),
       );
     });
   });
@@ -774,13 +774,13 @@ describe('Socket.IO Handler Integration Tests', () => {
         {
           // Missing required fields
         },
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
-        })
+        }),
       );
     });
   });

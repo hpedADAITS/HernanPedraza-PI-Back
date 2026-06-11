@@ -69,7 +69,7 @@ const createTestEvent = async (overrides = {}) => {
 // Helper to create a real participant with user
 const createTestParticipant = async (eventId, overrides = {}) => {
   const nickname = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
+
   const userEmail = `participant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@test.com`;
   const user = await UserModel.create({
     email: userEmail,
@@ -78,7 +78,7 @@ const createTestParticipant = async (eventId, overrides = {}) => {
     role: 'ATTENDEE',
     isActive: true,
   });
-  
+
   const participant = await ParticipantModel.create({
     eventId,
     nickname,
@@ -87,10 +87,10 @@ const createTestParticipant = async (eventId, overrides = {}) => {
     userId: user._id,
     ...overrides,
   });
-  
+
   participant.userId = user._id;
   await participant.save();
-  
+
   return participant;
 };
 
@@ -719,7 +719,7 @@ describe('SongsService - Real Implementation Tests', () => {
       expect(result).toBeDefined();
       expect(Array.isArray(result)).toBe(true);
       expect(result.length).toBe(3);
-      
+
       // PLAYING should be first with position 0
       const playingSong = result.find(s => s.status === 'PLAYING');
       expect(playingSong.queuePosition).toBe(0);
@@ -759,11 +759,11 @@ describe('SongsService - Real Implementation Tests', () => {
       const result = await songsService.approveSong(
         song._id.toString(),
         event._id.toString(),
-        { userId: user._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' },
       );
 
       expect(result.status).toBe('APPROVED');
-      
+
       // Verify song was updated
       const updatedSong = await SongModel.findById(song._id);
       expect(updatedSong.status).toBe('APPROVED');
@@ -774,7 +774,7 @@ describe('SongsService - Real Implementation Tests', () => {
       const fakeId = new mongoose.Types.ObjectId();
 
       await expect(
-        songsService.approveSong(fakeId.toString(), event._id.toString(), { userId: user._id.toString(), role: 'DJ' })
+        songsService.approveSong(fakeId.toString(), event._id.toString(), { userId: user._id.toString(), role: 'DJ' }),
       ).rejects.toThrow('Song not found');
     });
 
@@ -785,7 +785,7 @@ describe('SongsService - Real Implementation Tests', () => {
       const song = await createTestSong(event2._id, participant._id);
 
       await expect(
-        songsService.approveSong(song._id.toString(), event1._id.toString(), { userId: user._id.toString(), role: 'DJ' })
+        songsService.approveSong(song._id.toString(), event1._id.toString(), { userId: user._id.toString(), role: 'DJ' }),
       ).rejects.toThrow('Song not in this event');
     });
   });
@@ -800,11 +800,11 @@ describe('SongsService - Real Implementation Tests', () => {
         song._id.toString(),
         event._id.toString(),
         'Inappropriate content',
-        { userId: user._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' },
       );
 
       expect(result.status).toBe('REJECTED');
-      
+
       // Verify song was updated
       const updatedSong = await SongModel.findById(song._id);
       expect(updatedSong.status).toBe('REJECTED');
@@ -825,7 +825,7 @@ describe('SongsService - Real Implementation Tests', () => {
       const result = await songsService.sendNow(
         song._id.toString(),
         event._id.toString(),
-        { userId: user._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' },
       );
 
       expect(result.status).toBe('PLAYING');
@@ -862,7 +862,7 @@ describe('SongsService - Real Implementation Tests', () => {
       await songsService.sendNow(
         nextSong._id.toString(),
         event._id.toString(),
-        { userId: user._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' },
       );
 
       // Verify first song was set to PLAYED
@@ -929,7 +929,7 @@ describe('SongsService - Real Implementation Tests', () => {
 
       const result = await songsService.playNextSong(
         event._id.toString(),
-        { userId: user._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' },
       );
 
       expect(result).toBeDefined();
@@ -942,7 +942,7 @@ describe('SongsService - Real Implementation Tests', () => {
 
       const result = await songsService.playNextSong(
         event._id.toString(),
-        { userId: user._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' },
       );
 
       expect(result).toBeNull();

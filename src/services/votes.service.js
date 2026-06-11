@@ -40,7 +40,7 @@ class VotesService {
     const voter = await participantsService.getParticipantById(participantId);
 
     /* Check if participant already voted */
-    let existingVote = await VoteModel.findOne({ songId, participantId });
+    const existingVote = await VoteModel.findOne({ songId, participantId });
 
     if (existingVote) {
       /* Update existing vote */

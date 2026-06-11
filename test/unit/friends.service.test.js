@@ -42,7 +42,7 @@ jest.mock('../../src/models/schema', () => {
         friendships.find((row) => (
           String(row.userId) === String(query.userId)
           && String(row.friendId) === String(query.friendId)
-        )) || null
+        )) || null,
       ),
     })),
     updateOne: jest.fn((filter, _update, _options) => {
@@ -170,13 +170,13 @@ describe('FriendsService', () => {
 
   test('rejects self-requests', async () => {
     await expect(
-      friendsService.sendFriendRequest(USER_A._id, USER_A._id)
+      friendsService.sendFriendRequest(USER_A._id, USER_A._id),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
   test('rejects requests to anonymous attendees', async () => {
     await expect(
-      friendsService.sendFriendRequest(USER_A._id, ANON_USER._id)
+      friendsService.sendFriendRequest(USER_A._id, ANON_USER._id),
     ).rejects.toThrow(/no account/);
   });
 
@@ -212,7 +212,7 @@ describe('FriendsService', () => {
 
   test('unfriend on a missing pair throws NotFound', async () => {
     await expect(
-      friendsService.unfriend(USER_A._id, USER_B._id)
+      friendsService.unfriend(USER_A._id, USER_B._id),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

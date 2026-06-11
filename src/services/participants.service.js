@@ -319,7 +319,7 @@ class ParticipantsService {
         action: 'PARTICIPANT_COOLDOWN',
         reason,
         durationMs,
-      }
+      },
     );
 
     /* Return both formatted participant and event info for socket broadcast */

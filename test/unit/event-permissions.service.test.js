@@ -315,7 +315,7 @@ describe('EventPermissionsService', () => {
         eventPermissionsService.assertEventDj('event-1', {
           userId: 'dj-user',
           role: 'DJ',
-        })
+        }),
       ).resolves.toBeDefined();
     });
 
@@ -338,7 +338,7 @@ describe('EventPermissionsService', () => {
         eventPermissionsService.assertEventDj('event-1', {
           userId: 'regular-user',
           role: 'ATTENDEE',
-        })
+        }),
       ).rejects.toThrow('You do not have permission');
     });
   });
@@ -436,7 +436,7 @@ describe('EventPermissionsService', () => {
         eventPermissionsService.assertSongAdmin('event-1', {
           userId: 'no-perm-user',
           role: 'ATTENDEE',
-        })
+        }),
       ).rejects.toThrow('do not have permission');
     });
   });
@@ -553,7 +553,7 @@ describe('EventPermissionsService', () => {
         eventPermissionsService.assertOwner('event-1', {
           userId: 'other-user',
           role: 'ATTENDEE',
-        })
+        }),
       ).rejects.toThrow('Unauthorized');
     });
   });

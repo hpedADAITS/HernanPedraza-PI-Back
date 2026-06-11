@@ -54,13 +54,13 @@ function validateTransition(currentStatus, newStatus, userRole = 'DJ') {
     throw new ValidationError(
       isTerminal
         ? `Cannot transition from terminal state ${currentStatus} to ${newStatus}`
-        : `Cannot transition from ${currentStatus} to ${newStatus}`
+        : `Cannot transition from ${currentStatus} to ${newStatus}`,
     );
   }
 
   if (state.roles.length > 0 && !state.roles.includes(userRole)) {
     throw new ValidationError(
-      `Role '${userRole}' cannot perform this action from state '${currentStatus}'`
+      `Role '${userRole}' cannot perform this action from state '${currentStatus}'`,
     );
   }
 }

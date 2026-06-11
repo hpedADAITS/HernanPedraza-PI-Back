@@ -33,12 +33,12 @@ function withQueueContext(candidate, { playing = false, approved = false } = {})
         : null,
       playing: playing
         ? {
-            songId: `song-${candidate.trackId}-playing`,
-            trackId: candidate.trackId,
-            status: 'PLAYING',
-            startedPlayingAt: new Date().toISOString(),
-            totalDuration: 30,
-          }
+          songId: `song-${candidate.trackId}-playing`,
+          trackId: candidate.trackId,
+          status: 'PLAYING',
+          startedPlayingAt: new Date().toISOString(),
+          totalDuration: 30,
+        }
         : null,
       approvedCount: approved ? 1 : 0,
       isPlayableNow: playing || approved,

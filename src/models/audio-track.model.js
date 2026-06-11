@@ -39,7 +39,7 @@ const AudioTrackSchema = new Schema(
 AudioTrackSchema.index({ eventId: 1, title: 1, artist: 1 });
 AudioTrackSchema.index(
   { eventId: 1, audioSha256: 1 },
-  { unique: true, sparse: true }
+  { unique: true, sparse: true },
 );
 
 const AudioTrackModel = model('AudioTrack', AudioTrackSchema, 'audio_tracks');

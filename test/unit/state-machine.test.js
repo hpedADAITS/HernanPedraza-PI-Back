@@ -1,6 +1,6 @@
 /**
  * test/unit/state-machine.test.js
- * 
+ *
  * Comprehensive tests for Song State Machine
  * Validates all state transitions
  */

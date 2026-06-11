@@ -33,17 +33,17 @@ describe('socket-auth.js', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     mockSocket = {
       user: null,
-    handshake: {
-      headers: {},
-    },
-    io: {
-      in: jest.fn().mockReturnThis(),
-      emit: jest.fn(),
-    },
-    join: jest.fn(),
+      handshake: {
+        headers: {},
+      },
+      io: {
+        in: jest.fn().mockReturnThis(),
+        emit: jest.fn(),
+      },
+      join: jest.fn(),
       leave: jest.fn(),
       emit: jest.fn(),
     };
@@ -75,22 +75,22 @@ describe('socket-auth.js', () => {
     test('should return fallback when auth bypassed', () => {
       const oldEnv = process.env.SOCKET_AUTH_DISABLED;
       process.env.SOCKET_AUTH_DISABLED = 'true';
-      
+
       mockSocket.user = null;
       const actor = socketActor(mockSocket, 'fallback-id');
-      
+
       expect(actor).toBe('fallback-id');
-      
+
       process.env.SOCKET_AUTH_DISABLED = oldEnv;
     });
 
     test('should return null without user and no bypass', () => {
       const oldEnv = process.env.SOCKET_AUTH_DISABLED;
       process.env.SOCKET_AUTH_DISABLED = 'false';
-      
+
       mockSocket.user = null;
       expect(socketActor(mockSocket, 'fallback-id')).toBeNull();
-      
+
       process.env.SOCKET_AUTH_DISABLED = oldEnv;
     });
   });
@@ -99,12 +99,12 @@ describe('socket-auth.js', () => {
     test('should return true in dev mode', () => {
       const oldEnv = process.env.SOCKET_AUTH_DISABLED;
       const oldNode = process.env.NODE_ENV;
-      
+
       process.env.SOCKET_AUTH_DISABLED = 'true';
       process.env.NODE_ENV = 'development';
-      
+
       expect(isSocketAuthOptional()).toBe(true);
-      
+
       process.env.SOCKET_AUTH_DISABLED = oldEnv;
       process.env.NODE_ENV = oldNode;
     });
@@ -112,12 +112,12 @@ describe('socket-auth.js', () => {
     test('should return false in production', () => {
       const oldEnv = process.env.SOCKET_AUTH_DISABLED;
       const oldNode = process.env.NODE_ENV;
-      
+
       process.env.SOCKET_AUTH_DISABLED = 'true';
       process.env.NODE_ENV = 'production';
-      
+
       expect(isSocketAuthOptional()).toBe(false);
-      
+
       process.env.SOCKET_AUTH_DISABLED = oldEnv;
       process.env.NODE_ENV = oldNode;
     });
@@ -125,9 +125,9 @@ describe('socket-auth.js', () => {
     test('should return false when not set', () => {
       const oldEnv = process.env.SOCKET_AUTH_DISABLED;
       process.env.SOCKET_AUTH_DISABLED = 'false';
-      
+
       expect(isSocketAuthOptional()).toBe(false);
-      
+
       process.env.SOCKET_AUTH_DISABLED = oldEnv;
     });
   });
@@ -135,14 +135,14 @@ describe('socket-auth.js', () => {
   describe('assertEventRoomAccess', () => {
     test('should reject invalid event ID', async () => {
       mockSocket.user = { userId: 'user-1' };
-      
+
       await expect(assertEventRoomAccess(mockSocket, 'invalid', 'p1'))
         .rejects.toThrow('Invalid event ID');
     });
 
     test('should allow owner access', async () => {
       mockSocket.user = { userId: 'owner-user', role: 'DJ' };
-      
+
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue({
@@ -175,7 +175,7 @@ describe('socket-auth.js', () => {
 
     test('should check ownership via database', async () => {
       mockSocket.user = { userId: 'db-owner', role: 'DJ' };
-      
+
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue({
@@ -185,13 +185,13 @@ describe('socket-auth.js', () => {
       });
 
       await assertEventRoomAccess(mockSocket, eventId, null);
-      
+
       expect(EventModel.findById).toHaveBeenCalledWith(eventId);
     });
 
     test('should check event membership via database', async () => {
       mockSocket.user = { userId: 'member-user', role: 'ATTENDEE' };
-      
+
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue({
@@ -202,7 +202,7 @@ describe('socket-auth.js', () => {
       EventMemberModel.exists.mockResolvedValue({ _id: 'member-1' });
 
       const result = await assertEventRoomAccess(mockSocket, eventId, null);
-      
+
       expect(result).toBeNull();
       expect(EventMemberModel.exists).toHaveBeenCalledWith({
         eventId,
@@ -212,7 +212,7 @@ describe('socket-auth.js', () => {
 
     test('should fallback to participant check', async () => {
       mockSocket.user = { userId: 'user-with-participant', role: 'ATTENDEE' };
-      
+
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue({
@@ -221,7 +221,7 @@ describe('socket-auth.js', () => {
         }),
       });
       EventMemberModel.exists.mockResolvedValue(null);
-      
+
       ParticipantModel.findOne.mockReturnValue({
         select: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue({
@@ -234,15 +234,15 @@ describe('socket-auth.js', () => {
       const result = await assertEventRoomAccess(
         mockSocket,
         eventId,
-        participantId
+        participantId,
       );
-      
+
       expect(result).toBeDefined();
     });
 
     test('should reject unauthorized participant', async () => {
       mockSocket.user = { userId: 'user-1', role: 'ATTENDEE' };
-      
+
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue({
@@ -257,13 +257,13 @@ describe('socket-auth.js', () => {
       });
 
       await expect(
-        assertEventRoomAccess(mockSocket, eventId, participantId)
+        assertEventRoomAccess(mockSocket, eventId, participantId),
       ).rejects.toThrow('cannot join this event');
     });
 
     test('should throw when participant access required but not provided', async () => {
       mockSocket.user = { userId: 'user-new', role: 'ATTENDEE' };
-      
+
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue({
@@ -279,7 +279,7 @@ describe('socket-auth.js', () => {
 
     test('should require participant ID for non-member', async () => {
       mockSocket.user = { userId: 'new-user', role: 'ATTENDEE' };
-      
+
       EventModel.findById.mockReturnValue({
         select: jest.fn().mockReturnThis(),
         lean: jest.fn().mockResolvedValue({
@@ -294,7 +294,7 @@ describe('socket-auth.js', () => {
       });
 
       await expect(
-        assertEventRoomAccess(mockSocket, eventId, 'invalid-id')
+        assertEventRoomAccess(mockSocket, eventId, 'invalid-id'),
       ).rejects.toThrow('Participant access is required');
     });
   });

@@ -83,7 +83,7 @@ const handleSocketEvents = (socket, io) => {
     socket,
     'leave_event',
     (data) => events.handleLeaveEvent(socket, io, data),
-    'Error leaving event'
+    'Error leaving event',
   );
 
   onSocketEvent(socket, 'disconnect', () => events.handleDisconnect(socket, io));
@@ -93,7 +93,7 @@ const handleSocketEvents = (socket, io) => {
       socket,
       eventName,
       () => events.rejectLegacyCommand(socket, eventName),
-      errorMessage
+      errorMessage,
     );
   });
 

@@ -1,6 +1,6 @@
-"use strict";
+'use strict';
 
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
 const { Schema, model } = mongoose;
 
@@ -8,14 +8,14 @@ const AudioFingerprintSchema = new Schema(
   {
     eventId: {
       type: Schema.Types.ObjectId,
-      ref: "Event",
+      ref: 'Event',
       required: true,
       index: true,
     },
 
     trackId: {
       type: Schema.Types.ObjectId,
-      ref: "AudioTrack",
+      ref: 'AudioTrack',
       required: true,
       unique: true,
       index: true,
@@ -60,7 +60,7 @@ const AudioFingerprintSchema = new Schema(
               required: true,
             },
           },
-          { _id: false }
+          { _id: false },
         ),
       ],
       default: undefined,
@@ -68,15 +68,15 @@ const AudioFingerprintSchema = new Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 AudioFingerprintSchema.index({ eventId: 1, trackId: 1 });
 
 const AudioFingerprintModel = model(
-  "AudioFingerprint",
+  'AudioFingerprint',
   AudioFingerprintSchema,
-  "audio_fingerprints"
+  'audio_fingerprints',
 );
 
 // Guardrails for fingerprint size (matching FIX.md recommendations)

@@ -1,5 +1,5 @@
-"use strict";
-const { TARGET_SAMPLE_RATE } = require("./wav");
+'use strict';
+const { TARGET_SAMPLE_RATE } = require('./wav');
 
 
 const FREQUENCY_BITS = 10;

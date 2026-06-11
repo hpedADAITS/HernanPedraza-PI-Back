@@ -1009,7 +1009,7 @@ const swaggerDefinition = {
     '/songs/{songId}/position': {
       get: {
         tags: ['Songs'],
-        summary: "Get a song's queue position",
+        summary: 'Get a song\'s queue position',
         security: [{ BearerAuth: [] }],
         parameters: [
           {
@@ -1362,7 +1362,7 @@ const swaggerDefinition = {
       },
       get: {
         tags: ['Votes'],
-        summary: "Get a participant's vote on a song",
+        summary: 'Get a participant\'s vote on a song',
         security: [{ BearerAuth: [] }],
         parameters: [
           {

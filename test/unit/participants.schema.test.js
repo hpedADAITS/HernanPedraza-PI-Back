@@ -6,7 +6,7 @@ describe('ParticipantsSchema', () => {
       expect(
         participantsSchema.parseJoinEvent({
           nickname: 'John',
-        })
+        }),
       ).toEqual({
         nickname: 'John',
         profilePicture: null,
@@ -18,7 +18,7 @@ describe('ParticipantsSchema', () => {
       expect(
         participantsSchema.parseJoinEvent({
           nickname: 'ABC123',
-        }).nickname
+        }).nickname,
       ).toBe('ABC123');
     });
 
@@ -41,7 +41,7 @@ describe('ParticipantsSchema', () => {
         participantsSchema.parseJoinEvent({
           nickname: 'Ada',
           socialPrefs: { showDisplayName: 'yes' },
-        })
+        }),
       ).toThrow(/showDisplayName must be a boolean/);
     });
   });
@@ -52,7 +52,7 @@ describe('ParticipantsSchema', () => {
         participantsSchema.parseUpdateProfile({
           nickname: ' Ada ',
           profilePicture: 'avatar-1',
-        })
+        }),
       ).toEqual({
         nickname: 'Ada',
         profilePicture: 'avatar-1',
@@ -121,7 +121,7 @@ describe('FriendsSchema', () => {
     expect(() =>
       friendsSchema.parseInvite({
         friendId: '507f1f77bcf86cd799439011',
-      })
+      }),
     ).toThrow('eventCode is required');
   });
 });

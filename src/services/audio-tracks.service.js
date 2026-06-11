@@ -81,7 +81,7 @@ class AudioTracksService {
       }).lean();
       if (existing) {
         throw new ValidationError(
-          'This audio file has already been uploaded to this event'
+          'This audio file has already been uploaded to this event',
         );
       }
 
@@ -134,7 +134,7 @@ class AudioTracksService {
             sampleRate: totals.sampleRate,
             pointsCount: totals.pointsCount,
             hashesCount: totals.hashesCount,
-          }
+          },
         ),
         AudioFingerprintModel.updateOne(
           { trackId: track._id },
@@ -147,7 +147,7 @@ class AudioTracksService {
               hashData,
             },
             $unset: { hashes: 1 },
-          }
+          },
         ),
       ]);
 

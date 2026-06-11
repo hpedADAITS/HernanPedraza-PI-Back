@@ -1,7 +1,7 @@
-"use strict";
+'use strict';
 
-const { WINDOW_SECONDS, hann, windowPeaks } = require("./constellation");
-const { FAN_OUT, createHashes, hashPair } = require("./hashes");
+const { WINDOW_SECONDS, hann, windowPeaks } = require('./constellation');
+const { FAN_OUT, createHashes, hashPair } = require('./hashes');
 
 // Resource budgets (512 MB Render deployment).
 // These caps apply to a single StreamingFingerprinter instance — typically one
@@ -157,7 +157,7 @@ class LiveMatcher {
 }
 
 function matchResult(entry, fallback, offset, score) {
-  if (entry && typeof entry === "object") {
+  if (entry && typeof entry === 'object') {
     return { ...entry, song: entry.title || entry.file || fallback, offset, score };
   }
   return { song: entry || fallback, offset, score };

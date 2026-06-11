@@ -58,7 +58,7 @@ const createTestEvent = async (overrides = {}) => {
 // Helper to create a real participant
 const createTestParticipant = async (eventId, overrides = {}) => {
   const nickname = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
+
   const userEmail = `participant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@test.com`;
   const user = await UserModel.create({
     email: userEmail,
@@ -67,7 +67,7 @@ const createTestParticipant = async (eventId, overrides = {}) => {
     role: 'ATTENDEE',
     isActive: true,
   });
-  
+
   const participant = await ParticipantModel.create({
     eventId,
     nickname,
@@ -76,10 +76,10 @@ const createTestParticipant = async (eventId, overrides = {}) => {
     userId: user._id,
     ...overrides,
   });
-  
+
   participant.userId = user._id;
   await participant.save();
-  
+
   return participant;
 };
 
@@ -106,11 +106,11 @@ describe('ParticipantsService - Real Implementation Tests', () => {
       const result = await participantsService.kickParticipant(
         participant._id.toString(),
         'Violation of rules',
-        { userId: user._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' },
       );
 
       expect(result.action).toBe('participant_kicked');
-      
+
       // Verify participant was updated
       const updatedParticipant = await ParticipantModel.findById(participant._id);
       expect(updatedParticipant.kickedAt).toBeDefined();
@@ -133,11 +133,11 @@ describe('ParticipantsService - Real Implementation Tests', () => {
       const result = await participantsService.banParticipant(
         participant._id.toString(),
         'Repeated violations',
-        { userId: user._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' },
       );
 
       expect(result.action).toBe('participant_banned');
-      
+
       // Verify participant was banned
       const updatedParticipant = await ParticipantModel.findById(participant._id);
       expect(updatedParticipant.isBanned).toBe(true);
@@ -155,11 +155,11 @@ describe('ParticipantsService - Real Implementation Tests', () => {
         participant._id.toString(),
         3600000, // 1 hour
         'Spam',
-        { userId: user._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' },
       );
 
       expect(result.action).toBe('participant_cooldown');
-      
+
       // Verify participant was updated
       const updatedParticipant = await ParticipantModel.findById(participant._id);
       expect(updatedParticipant.cooldownUntil).toBeDefined();
@@ -174,7 +174,7 @@ describe('ParticipantsService - Real Implementation Tests', () => {
 
       const result = await participantsService.ensureParticipantCanInteract(
         participant._id.toString(),
-        event._id.toString()
+        event._id.toString(),
       );
 
       expect(result).toBeDefined();
@@ -198,7 +198,7 @@ describe('ParticipantsService - Real Implementation Tests', () => {
 
     test('should throw for kicked participant', async () => {
       const { event } = await createTestEvent();
-      const participant = await createTestParticipant(event._id, { 
+      const participant = await createTestParticipant(event._id, {
         leftAt: new Date(),
         kickedAt: new Date(),
       });
@@ -210,7 +210,7 @@ describe('ParticipantsService - Real Implementation Tests', () => {
     test('should throw when on cooldown', async () => {
       const futureTime = new Date(Date.now() + 3600000);
       const { event } = await createTestEvent();
-      const participant = await createTestParticipant(event._id, { 
+      const participant = await createTestParticipant(event._id, {
         cooldownUntil: futureTime,
         cooldownReason: 'Spamming',
       });
@@ -218,14 +218,14 @@ describe('ParticipantsService - Real Implementation Tests', () => {
       await expect(participantsService.ensureParticipantCanInteract(
         participant._id.toString(),
         event._id.toString(),
-        { checkCooldown: true }
+        { checkCooldown: true },
       )).rejects.toThrow('on cooldown');
     });
 
     test('should clear expired cooldown', async () => {
       const pastTime = new Date(Date.now() - 3600000);
       const { event } = await createTestEvent();
-      const participant = await createTestParticipant(event._id, { 
+      const participant = await createTestParticipant(event._id, {
         cooldownUntil: pastTime,
         cooldownReason: 'Old',
       });
@@ -233,7 +233,7 @@ describe('ParticipantsService - Real Implementation Tests', () => {
       await participantsService.ensureParticipantCanInteract(
         participant._id.toString(),
         event._id.toString(),
-        { checkCooldown: false }
+        { checkCooldown: false },
       );
 
       // Verify cooldown was cleared
@@ -250,7 +250,7 @@ describe('ParticipantsService - Real Implementation Tests', () => {
       const result = await participantsService.setPremium(
         participant._id.toString(),
         true,
-        { userId: user._id.toString(), role: 'DJ' }
+        { userId: user._id.toString(), role: 'DJ' },
       );
 
       // Verify premium was set

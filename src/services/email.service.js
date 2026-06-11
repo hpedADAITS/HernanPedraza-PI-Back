@@ -29,7 +29,7 @@ class EmailService {
       const timeSinceLastAttempt = Date.now() - user.emailVerificationLastSentAt.getTime();
       if (timeSinceLastAttempt < COOLDOWN_MS) {
         throw new Error(
-          `Email verification cooldown active. Wait ${Math.ceil((COOLDOWN_MS - timeSinceLastAttempt) / 1000)}s`
+          `Email verification cooldown active. Wait ${Math.ceil((COOLDOWN_MS - timeSinceLastAttempt) / 1000)}s`,
         );
       }
     }
@@ -96,7 +96,7 @@ class EmailService {
     };
   }
 
-   /* Get welcome email HTML template */
+  /* Get welcome email HTML template */
 
   getWelcomeEmailTemplate(displayName, verificationToken) {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -332,8 +332,8 @@ class EmailService {
                   <strong>${this.escapeHtml(inviterName)}</strong> has invited you to join ${this.escapeHtml(eventName)} on Syncrequest.
                 </p>
                 ${message
-                  ? `<blockquote style="border-left:3px solid #67e8f9;color:#94a3b8;padding:8px 16px;margin:0 0 24px 0;font-style:italic;">${this.escapeHtml(message)}</blockquote>`
-                  : ''}
+    ? `<blockquote style="border-left:3px solid #67e8f9;color:#94a3b8;padding:8px 16px;margin:0 0 24px 0;font-style:italic;">${this.escapeHtml(message)}</blockquote>`
+    : ''}
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto 32px auto;background:linear-gradient(135deg,rgba(30,58,138,0.2) 0%,rgba(12,30,74,0.2) 100%);border:1px solid rgba(96,165,250,0.2);border-radius:12px;padding:24px;">
                   <tr><td align="center" style="color:#7dd3fc;font-size:14px;font-weight:600;letter-spacing:1px;">EVENT CODE</td></tr>
                   <tr><td align="center" style="color:#e2e8f0;font-size:32px;font-weight:800;letter-spacing:6px;padding:8px 0;font-family:'Courier New',monospace;">${this.escapeHtml(eventCode)}</td></tr>
@@ -366,7 +366,7 @@ class EmailService {
       '<': '&lt;',
       '>': '&gt;',
       '"': '&quot;',
-      "'": '&#039;',
+      '\'': '&#039;',
     };
     return text.replace(/[&<>"']/g, (char) => map[char]);
   }

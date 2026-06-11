@@ -1,6 +1,6 @@
-"use strict";
+'use strict';
 
-const { fft, nextPow2 } = require("./fft");
+const { fft, nextPow2 } = require('./fft');
 
 const WINDOW_SECONDS = 0.5;
 const PEAKS_PER_WINDOW = 15;

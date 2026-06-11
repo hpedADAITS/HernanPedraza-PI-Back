@@ -705,7 +705,7 @@ describe('Event, participant, song and vote integration flow', () => {
       .expect(200);
 
     await request(app)
-      .post(`/api/v1/votes`)
+      .post('/api/v1/votes')
       .set(authHeader(attendeeToken))
       .send({ songId: song.id, participantId: participant._id, value: 1 })
       .expect(400)
@@ -719,7 +719,7 @@ describe('Event, participant, song and vote integration flow', () => {
     });
 
     await request(app)
-      .post(`/api/v1/votes`)
+      .post('/api/v1/votes')
       .set(authHeader(attendeeToken))
       .send({ songId: song.id, participantId: participant._id, value: 1 })
       .expect(201);

@@ -1121,9 +1121,9 @@ function formatRecognitionMatch(match) {
   const plain = match.toObject?.() || match;
   const alternates = Array.isArray(plain.alternates)
     ? plain.alternates.map((alt) => ({
-        ...alt,
-        coverUrl: decryptCoverUrl(alt.coverUrl),
-      }))
+      ...alt,
+      coverUrl: decryptCoverUrl(alt.coverUrl),
+    }))
     : [];
   return {
     ...plain,

@@ -1,6 +1,6 @@
 /**
  * test/unit/cooldown-cache.test.js
- * 
+ *
  * Comprehensive tests for in-memory cooldown cache
  */
 

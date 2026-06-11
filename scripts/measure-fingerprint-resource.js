@@ -1,14 +1,14 @@
-"use strict";
+'use strict';
 
-const fs = require("fs");
-const path = require("path");
-const { performance } = require("perf_hooks");
+const fs = require('fs');
+const path = require('path');
+const { performance } = require('perf_hooks');
 
 const {
   fingerprintWavStreamed,
-} = require("../src/services/audio-recognition/fingerprint");
+} = require('../src/services/audio-recognition/fingerprint');
 
-const DEFAULT_AUDIO = path.resolve(__dirname, "../../simple_house_140bpm_60s.wav");
+const DEFAULT_AUDIO = path.resolve(__dirname, '../../simple_house_140bpm_60s.wav');
 const audioFile = path.resolve(process.argv[2] || DEFAULT_AUDIO);
 const sampleIntervalMs = Number(process.env.SAMPLE_INTERVAL_MS || 25);
 
